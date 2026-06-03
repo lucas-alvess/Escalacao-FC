@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0d1a0d"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="EscalaçãoFC"/>
+  <title>Escalação FC ⚽</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    html,body,#root{height:100%;background:#080e14;overscroll-behavior:none;-webkit-overflow-scrolling:touch;}
+    #root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);}
+    select option{background:#0f1923;}
+    ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:4px;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+    @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
+    #loading{position:fixed;inset:0;background:#080e14;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;}
+    .spin{width:40px;height:40px;border:3px solid rgba(34,197,94,0.3);border-top-color:#22c55e;border-radius:50%;animation:spin 0.8s linear infinite;}
+    .load-text{color:#22c55e;font-family:sans-serif;font-size:14px;letter-spacing:2px;}
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spin"></div>
+    <div class="load-text">CARREGANDO...</div>
+  </div>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM + Babel (loaded from CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useRef, useEffect, useCallback } = React;
+
+
+// ─── Storage ──────────────────────────────────────────────────────────────────
+const STORAGE_KEY = "futebol_app_v3";
+function loadData() {
+  try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+function saveData(d) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(d)); } catch {}
+}
+
+// ─── 16 Formations ───────────────────────────────────────────────────────────
+const FORMATIONS = {
+  "4-4-2": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:14,y:73},{id:2,label:"ZAG",x:36,y:73},{id:3,label:"ZAG",x:64,y:73},{id:4,label:"LE",x:86,y:73},
+    {id:5,label:"MD",x:14,y:52},{id:6,label:"MC",x:36,y:52},{id:7,label:"MC",x:64,y:52},{id:8,label:"ME",x:86,y:52},
+    {id:9,label:"CA",x:36,y:26},{id:10,label:"CA",x:64,y:26},
+  ]},
+  "4-3-3": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:14,y:73},{id:2,label:"ZAG",x:36,y:73},{id:3,label:"ZAG",x:64,y:73},{id:4,label:"LE",x:86,y:73},
+    {id:5,label:"VOL",x:26,y:54},{id:6,label:"MC",x:50,y:54},{id:7,label:"MC",x:74,y:54},
+    {id:8,label:"PD",x:16,y:26},{id:9,label:"CA",x:50,y:22},{id:10,label:"PE",x:84,y:26},
+  ]},
+  "4-2-3-1": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:14,y:73},{id:2,label:"ZAG",x:36,y:73},{id:3,label:"ZAG",x:64,y:73},{id:4,label:"LE",x:86,y:73},
+    {id:5,label:"VOL",x:35,y:60},{id:6,label:"VOL",x:65,y:60},
+    {id:7,label:"MD",x:14,y:42},{id:8,label:"MAT",x:50,y:40},{id:9,label:"ME",x:86,y:42},
+    {id:10,label:"CA",x:50,y:22},
+  ]},
+  "4-1-4-1": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:14,y:73},{id:2,label:"ZAG",x:36,y:73},{id:3,label:"ZAG",x:64,y:73},{id:4,label:"LE",x:86,y:73},
+    {id:5,label:"VOL",x:50,y:62},
+    {id:6,label:"MD",x:10,y:46},{id:7,label:"MC",x:33,y:46},{id:8,label:"MC",x:67,y:46},{id:9,label:"ME",x:90,y:46},
+    {id:10,label:"CA",x:50,y:22},
+  ]},
+  "4-5-1": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:14,y:73},{id:2,label:"ZAG",x:36,y:73},{id:3,label:"ZAG",x:64,y:73},{id:4,label:"LE",x:86,y:73},
+    {id:5,label:"MD",x:10,y:51},{id:6,label:"VOL",x:30,y:51},{id:7,label:"MC",x:50,y:51},{id:8,label:"VOL",x:70,y:51},{id:9,label:"ME",x:90,y:51},
+    {id:10,label:"CA",x:50,y:24},
+  ]},
+  "4-4-2 ◆": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:14,y:73},{id:2,label:"ZAG",x:36,y:73},{id:3,label:"ZAG",x:64,y:73},{id:4,label:"LE",x:86,y:73},
+    {id:5,label:"VOL",x:50,y:61},
+    {id:6,label:"MC",x:22,y:49},{id:7,label:"MC",x:78,y:49},
+    {id:8,label:"MAT",x:50,y:37},
+    {id:9,label:"CA",x:36,y:24},{id:10,label:"CA",x:64,y:24},
+  ]},
+  "4-3-2-1": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:14,y:73},{id:2,label:"ZAG",x:36,y:73},{id:3,label:"ZAG",x:64,y:73},{id:4,label:"LE",x:86,y:73},
+    {id:5,label:"VOL",x:24,y:57},{id:6,label:"MC",x:50,y:57},{id:7,label:"VOL",x:76,y:57},
+    {id:8,label:"MAT",x:35,y:39},{id:9,label:"MAT",x:65,y:39},
+    {id:10,label:"CA",x:50,y:22},
+  ]},
+  "3-5-2": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"ZAG",x:22,y:73},{id:2,label:"ZAG",x:50,y:73},{id:3,label:"ZAG",x:78,y:73},
+    {id:4,label:"AD",x:9,y:52},{id:5,label:"VOL",x:29,y:52},{id:6,label:"MC",x:50,y:52},{id:7,label:"VOL",x:71,y:52},{id:8,label:"AE",x:91,y:52},
+    {id:9,label:"CA",x:36,y:26},{id:10,label:"CA",x:64,y:26},
+  ]},
+  "3-4-3": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"ZAG",x:22,y:73},{id:2,label:"ZAG",x:50,y:73},{id:3,label:"ZAG",x:78,y:73},
+    {id:4,label:"MD",x:14,y:54},{id:5,label:"MC",x:37,y:54},{id:6,label:"MC",x:63,y:54},{id:7,label:"ME",x:86,y:54},
+    {id:8,label:"PD",x:16,y:26},{id:9,label:"CA",x:50,y:22},{id:10,label:"PE",x:84,y:26},
+  ]},
+  "3-4-1-2": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"ZAG",x:22,y:73},{id:2,label:"ZAG",x:50,y:73},{id:3,label:"ZAG",x:78,y:73},
+    {id:4,label:"MD",x:14,y:57},{id:5,label:"MC",x:37,y:57},{id:6,label:"MC",x:63,y:57},{id:7,label:"ME",x:86,y:57},
+    {id:8,label:"MAT",x:50,y:40},
+    {id:9,label:"CA",x:36,y:24},{id:10,label:"CA",x:64,y:24},
+  ]},
+  "3-6-1": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"ZAG",x:22,y:73},{id:2,label:"ZAG",x:50,y:73},{id:3,label:"ZAG",x:78,y:73},
+    {id:4,label:"MD",x:9,y:55},{id:5,label:"VOL",x:27,y:55},{id:6,label:"MC",x:45,y:55},{id:7,label:"MC",x:63,y:55},{id:8,label:"VOL",x:81,y:55},{id:9,label:"ME",x:91,y:55},
+    {id:10,label:"CA",x:50,y:24},
+  ]},
+  "5-3-2": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:9,y:73},{id:2,label:"ZAG",x:27,y:73},{id:3,label:"ZAG",x:50,y:73},{id:4,label:"ZAG",x:73,y:73},{id:5,label:"LE",x:91,y:73},
+    {id:6,label:"MC",x:24,y:52},{id:7,label:"MC",x:50,y:52},{id:8,label:"MC",x:76,y:52},
+    {id:9,label:"CA",x:36,y:26},{id:10,label:"CA",x:64,y:26},
+  ]},
+  "5-4-1": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:9,y:73},{id:2,label:"ZAG",x:27,y:73},{id:3,label:"ZAG",x:50,y:73},{id:4,label:"ZAG",x:73,y:73},{id:5,label:"LE",x:91,y:73},
+    {id:6,label:"MD",x:14,y:52},{id:7,label:"MC",x:37,y:52},{id:8,label:"MC",x:63,y:52},{id:9,label:"ME",x:86,y:52},
+    {id:10,label:"CA",x:50,y:24},
+  ]},
+  "5-2-3": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:9,y:73},{id:2,label:"ZAG",x:27,y:73},{id:3,label:"ZAG",x:50,y:73},{id:4,label:"ZAG",x:73,y:73},{id:5,label:"LE",x:91,y:73},
+    {id:6,label:"VOL",x:35,y:57},{id:7,label:"VOL",x:65,y:57},
+    {id:8,label:"PD",x:16,y:28},{id:9,label:"CA",x:50,y:23},{id:10,label:"PE",x:84,y:28},
+  ]},
+  "4-3-3 ◆": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"LD",x:14,y:73},{id:2,label:"ZAG",x:36,y:73},{id:3,label:"ZAG",x:64,y:73},{id:4,label:"LE",x:86,y:73},
+    {id:5,label:"VOL",x:50,y:62},
+    {id:6,label:"MC",x:32,y:48},{id:7,label:"MC",x:68,y:48},
+    {id:8,label:"PD",x:16,y:28},{id:9,label:"CA",x:50,y:23},{id:10,label:"PE",x:84,y:28},
+  ]},
+  "2-3-5": { slots:[
+    {id:0,label:"GOL",x:50,y:88},
+    {id:1,label:"ZAG",x:32,y:76},{id:2,label:"ZAG",x:68,y:76},
+    {id:3,label:"MC",x:22,y:60},{id:4,label:"VOL",x:50,y:60},{id:5,label:"MC",x:78,y:60},
+    {id:6,label:"PE",x:9,y:30},{id:7,label:"MA",x:29,y:26},{id:8,label:"CA",x:50,y:22},{id:9,label:"MA",x:71,y:26},{id:10,label:"PD",x:91,y:30},
+  ]},
+};
+const FKEYS = Object.keys(FORMATIONS);
+
+// Migrate lineup by slot-index order (keep players when switching formations)
+function migrateLineup(oldLineup, oldSlots, newSlots) {
+  const result = [];
+  oldLineup.forEach(entry => {
+    const oldIdx = oldSlots.findIndex(s => s.id === entry.slotId);
+    if (oldIdx >= 0 && oldIdx < newSlots.length) {
+      result.push({ slotId: newSlots[oldIdx].id, playerId: entry.playerId });
+    }
+  });
+  return result;
+}
+
+const MODES = [
+  {key:"campo",label:"Campo",players:11,icon:"⚽",available:true},
+  {key:"society",label:"Society",players:7,icon:"🏟️",available:false},
+  {key:"futsal",label:"Futsal",players:5,icon:"🥅",available:false},
+];
+const POSITIONS = ["Goleiro","Lateral Direito","Lateral Esquerdo","Zagueiro","Volante","Meio-campo","Meia Atacante","Ponta Direita","Ponta Esquerda","Centroavante","Atacante","Segundo Volante","Líbero"];
+const AVATAR_COLORS = ["#1a6b3a","#c8102e","#003087","#6f2c91","#00539f","#e8650a","#b45309","#0e7490","#7c3aed","#be185d"];
+
+// ─── Icons ────────────────────────────────────────────────────────────────────
+const Ico = {
+  Plus:    ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  Edit:    ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  Trash:   ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>,
+  Close:   ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  Shield:  ()=><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+  Users:   ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+  Tactic:  ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><circle cx="8" cy="8" r="1.5" fill="currentColor"/><circle cx="16" cy="8" r="1.5" fill="currentColor"/><circle cx="12" cy="16" r="1.5" fill="currentColor"/></svg>,
+  Camera:  ()=><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>,
+  Gallery: ()=><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+  ChevL:   ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>,
+  ChevR:   ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>,
+  Share:   ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
+  Download:()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  List:    ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const StarRating = ({value,onChange,readonly,size=14}) => (
+  <div style={{display:"flex",gap:2,cursor:readonly?"default":"pointer"}}>
+    {[1,2,3,4,5].map(n=>(
+      <span key={n} onClick={()=>!readonly&&onChange(n)} style={{transition:"transform 0.1s",display:"inline-block"}}
+        onMouseEnter={e=>{if(!readonly)e.currentTarget.style.transform="scale(1.3)";}}
+        onMouseLeave={e=>{e.currentTarget.style.transform="scale(1)";}}>
+        <svg width={size} height={size} viewBox="0 0 24 24" fill={n<=value?"#F59E0B":"none"} stroke={n<=value?"#F59E0B":"#6B7280"} strokeWidth="1.5">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+      </span>
+    ))}
+  </div>
+);
+
+function PlayerAvatar({player,size=44,style:ex={}}) {
+  const col = AVATAR_COLORS[(parseInt(player?.number)||0) % AVATAR_COLORS.length];
+  const base = {width:size,height:size,borderRadius:"50%",flexShrink:0,overflow:"hidden",...ex};
+  if (player?.photo) return <div style={base}><img src={player.photo} alt={player?.name||""} style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>;
+  return <div style={{...base,background:col,display:"flex",alignItems:"center",justifyContent:"center",
+    fontFamily:"'Bebas Neue',sans-serif",fontSize:size*0.38,color:"#fff"}}>{player?.number||"?"}</div>;
+}
+
+// ─── Photo Picker ─────────────────────────────────────────────────────────────
+function PhotoPicker({photo,onChange}) {
+  const gRef=useRef(), cRef=useRef();
+  const handle=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onChange(ev.target.result);r.readAsDataURL(f);};
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+      <div style={{width:84,height:84,borderRadius:"50%",overflow:"hidden",border:"2px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        {photo?<img src={photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          :<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        {[
+          {ref:cRef,capture:"environment",icon:<Ico.Camera/>,label:"Câmera",color:"#22c55e"},
+          {ref:gRef,capture:null,icon:<Ico.Gallery/>,label:"Galeria",color:"#60a5fa"},
+        ].map(({ref,capture,icon,label,color})=>(
+          <button key={label} onClick={()=>ref.current.click()} style={{
+            display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"9px 14px",
+            background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",
+            borderRadius:12,color:"#9CA3AF",cursor:"pointer",transition:"all 0.2s"
+          }}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=color;e.currentTarget.style.color=color;}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.1)";e.currentTarget.style.color="#9CA3AF";}}>
+            {icon}<span style={{fontFamily:"sans-serif",fontSize:10,fontWeight:700}}>{label}</span>
+          </button>
+        ))}
+        {photo&&<button onClick={()=>onChange("")} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"9px 12px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:12,color:"#f87171",cursor:"pointer"}}>
+          <Ico.Trash/><span style={{fontFamily:"sans-serif",fontSize:10,fontWeight:700}}>Remover</span>
+        </button>}
+      </div>
+      <input ref={cRef} type="file" accept="image/*" capture="environment" onChange={handle} style={{display:"none"}}/>
+      <input ref={gRef} type="file" accept="image/*" onChange={handle} style={{display:"none"}}/>
+    </div>
+  );
+}
+
+// ─── Player Form ──────────────────────────────────────────────────────────────
+const IS = {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 14px",color:"#fff",fontFamily:"sans-serif",fontSize:14,outline:"none",transition:"border-color 0.2s",width:"100%",boxSizing:"border-box"};
+const LT = {color:"#9CA3AF",fontFamily:"sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5};
+
+function PlayerFormModal({initial,onSave,onClose}) {
+  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const valid=form.name.trim()&&String(form.number).trim()!=="";
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.82)",backdropFilter:"blur(6px)",padding:"12px"}}>
+      <div style={{background:"#0f1923",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
+        <div style={{padding:"16px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>{initial?"Editar Jogador":"Novo Jogador"}</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
+        </div>
+        <div style={{padding:"16px 18px 20px",display:"flex",flexDirection:"column",gap:15}}>
+          <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <span style={LT}>Nome</span>
+            <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Nome do jogador" style={IS}
+              onFocus={e=>e.target.style.borderColor="#22c55e"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <div style={{display:"flex",flexDirection:"column",gap:5,flex:"0 0 80px"}}>
+              <span style={LT}>Número</span>
+              <input type="number" min={1} max={99} value={form.number} onChange={e=>set("number",e.target.value)} placeholder="10" style={IS}
+                onFocus={e=>e.target.style.borderColor="#22c55e"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:5,flex:1}}>
+              <span style={LT}>Posição</span>
+              <select value={form.position} onChange={e=>set("position",e.target.value)} style={{...IS,appearance:"none"}}>
+                {POSITIONS.map(p=><option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <span style={LT}>Pé Dominante</span>
+            <div style={{display:"flex",gap:8}}>
+              {["Destro","Canhoto","Ambidestro"].map(f=>(
+                <button key={f} onClick={()=>set("foot",f)} style={{
+                  flex:1,padding:"9px 0",borderRadius:10,border:"1px solid",cursor:"pointer",fontFamily:"sans-serif",fontSize:11,fontWeight:700,transition:"all 0.2s",
+                  borderColor:form.foot===f?"#22c55e":"rgba(255,255,255,0.1)",
+                  background:form.foot===f?"rgba(34,197,94,0.15)":"rgba(255,255,255,0.03)",
+                  color:form.foot===f?"#22c55e":"#9CA3AF",
+                }}>{f==="Ambidestro"?"Ambidex.":f}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <span style={LT}>Habilidade</span>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <StarRating value={form.stars} onChange={v=>set("stars",v)}/>
+              <span style={{color:"#9CA3AF",fontFamily:"sans-serif",fontSize:12}}>{["","Iniciante","Regular","Bom","Ótimo","Elite"][form.stars]}</span>
+            </div>
+          </div>
+          <button onClick={()=>valid&&onSave(form)} style={{
+            marginTop:2,padding:"13px 0",borderRadius:12,border:"none",cursor:valid?"pointer":"not-allowed",
+            background:valid?"linear-gradient(135deg,#16a34a,#22c55e)":"rgba(255,255,255,0.07)",
+            color:valid?"#fff":"#6B7280",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,transition:"all 0.2s",
+            boxShadow:valid?"0 4px 20px rgba(34,197,94,0.3)":"none"
+          }}>SALVAR JOGADOR</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Formation Picker (horizontal scroll) ─────────────────────────────────────
+function FormationPicker({current,onChange}) {
+  const idx = FKEYS.indexOf(current);
+  const prev = ()=>onChange(FKEYS[(idx-1+FKEYS.length)%FKEYS.length]);
+  const next = ()=>onChange(FKEYS[(idx+1)%FKEYS.length]);
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:0,background:"rgba(0,0,0,0.45)",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",overflow:"hidden",flexShrink:0}}>
+      <button onClick={prev} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:"6px 10px",display:"flex",alignItems:"center"}}><Ico.ChevL/></button>
+      <div style={{padding:"5px 8px",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:"#22c55e",letterSpacing:1.5,minWidth:76,textAlign:"center"}}>{current}</div>
+      <button onClick={next} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:"6px 10px",display:"flex",alignItems:"center"}}><Ico.ChevR/></button>
+    </div>
+  );
+}
+
+// ─── Formation List Picker Modal ──────────────────────────────────────────────
+function FormationListModal({current,onSelect,onClose}) {
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0f1923",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,maxHeight:"75vh",overflow:"hidden",display:"flex",flexDirection:"column",boxShadow:"0 -20px 60px rgba(0,0,0,0.7)"}}>
+        <div style={{padding:"16px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>Escolher Formação</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
+        </div>
+        <div style={{overflowY:"auto",padding:"10px 14px 20px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {FKEYS.map(k=>(
+            <button key={k} onClick={()=>{onSelect(k);onClose();}} style={{
+              padding:"12px 10px",borderRadius:12,border:"1.5px solid",cursor:"pointer",transition:"all 0.15s",
+              borderColor: k===current?"#22c55e":"rgba(255,255,255,0.1)",
+              background:  k===current?"rgba(34,197,94,0.12)":"rgba(255,255,255,0.03)",
+              color:       k===current?"#22c55e":"#fff",
+              fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,textAlign:"center"
+            }}
+              onMouseEnter={e=>{if(k!==current){e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.borderColor="rgba(255,255,255,0.2)";}}}
+              onMouseLeave={e=>{if(k!==current){e.currentTarget.style.background="rgba(255,255,255,0.03)";e.currentTarget.style.borderColor="rgba(255,255,255,0.1)";}}}
+            >{k}{k===current&&<span style={{fontSize:11,display:"block",letterSpacing:0,fontFamily:"sans-serif",marginTop:2,opacity:0.8}}>atual</span>}</button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Football Field with Drag & Drop ─────────────────────────────────────────
+function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
+  const fieldRef = useRef();
+  const dragState = useRef(null);
+  const [ghost,setGhost] = useState(null);
+  const [highlight,setHighlight] = useState(null);
+
+  const getFieldRect = ()=>fieldRef.current?.getBoundingClientRect();
+
+  const getSlotUnder = useCallback((cx,cy)=>{
+    const rect=getFieldRect(); if(!rect) return null;
+    const px=((cx-rect.left)/rect.width)*100;
+    const py=((cy-rect.top)/rect.height)*100;
+    let best=null,bestDist=9;
+    for(const s of slots){ const d=Math.hypot(s.x-px,s.y-py); if(d<bestDist){bestDist=d;best=s.id;} }
+    return best;
+  },[slots]);
+
+  const clientXY=e=>e.touches?{cx:e.touches[0].clientX,cy:e.touches[0].clientY}:{cx:e.clientX,cy:e.clientY};
+
+  const onPointerDown=(e,slotId)=>{
+    const {cx,cy}=clientXY(e);
+    dragState.current={slotId,startX:cx,startY:cy,curX:cx,curY:cy,isDragging:false};
+  };
+
+  const onMouseMove=useCallback(e=>{
+    if(!dragState.current) return;
+    const {cx,cy}=clientXY(e);
+    const dist=Math.hypot(cx-dragState.current.startX,cy-dragState.current.startY);
+    if(!dragState.current.isDragging&&dist<6) return;
+    dragState.current.isDragging=true;
+    dragState.current.curX=cx; dragState.current.curY=cy;
+    const rect=getFieldRect(); if(!rect) return;
+    const player=players.find(p=>p.id===lineup.find(l=>l.slotId===dragState.current.slotId)?.playerId);
+    setGhost({slotId:dragState.current.slotId,x:cx-rect.left,y:cy-rect.top,player});
+    setHighlight(getSlotUnder(cx,cy));
+  },[lineup,players,getSlotUnder]);
+
+  const finishDrag=useCallback((cx,cy)=>{
+    if(!dragState.current) return;
+    const {slotId,isDragging}=dragState.current;
+    dragState.current=null; setGhost(null); setHighlight(null);
+    if(!isDragging){ onSlotTap(slotId,slots.find(s=>s.id===slotId)?.label||""); return; }
+    const targetSlotId=getSlotUnder(cx,cy);
+    if(targetSlotId===null||targetSlotId===slotId) return;
+    onLineupChange(prev=>{
+      const src=prev.find(l=>l.slotId===slotId);
+      const tgt=prev.find(l=>l.slotId===targetSlotId);
+      const next=prev.filter(l=>l.slotId!==slotId&&l.slotId!==targetSlotId);
+      if(src) next.push({slotId:targetSlotId,playerId:src.playerId});
+      if(tgt) next.push({slotId,playerId:tgt.playerId});
+      return next;
+    });
+  },[slots,getSlotUnder,onLineupChange,onSlotTap]);
+
+  const onMouseUp=useCallback(e=>{const {cx,cy}=clientXY(e);finishDrag(cx,cy);},[finishDrag]);
+
+  useEffect(()=>{
+    const tm=e=>{if(!dragState.current)return;e.preventDefault();onMouseMove(e);};
+    const tu=e=>{const t=e.changedTouches[0];finishDrag(t.clientX,t.clientY);};
+    window.addEventListener("mousemove",onMouseMove);
+    window.addEventListener("mouseup",onMouseUp);
+    window.addEventListener("touchmove",tm,{passive:false});
+    window.addEventListener("touchend",tu);
+    return()=>{
+      window.removeEventListener("mousemove",onMouseMove);
+      window.removeEventListener("mouseup",onMouseUp);
+      window.removeEventListener("touchmove",tm);
+      window.removeEventListener("touchend",tu);
+    };
+  },[onMouseMove,onMouseUp,finishDrag]);
+
+  return (
+    <div ref={fieldRef} style={{position:"relative",width:"100%",aspectRatio:"0.65",borderRadius:12,overflow:"hidden",userSelect:"none",touchAction:"none"}}>
+      <svg width="100%" height="100%" viewBox="0 0 100 154" preserveAspectRatio="none" style={{position:"absolute",inset:0,display:"block"}}>
+        {[...Array(8)].map((_,i)=><rect key={i} x={0} y={i*19.25} width={100} height={9.625} fill={i%2===0?"#1c7a40":"#18703a"}/>)}
+        <rect x="3" y="3" width="94" height="148" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.65"/>
+        <line x1="3" y1="77" x2="97" y2="77" stroke="rgba(255,255,255,0.75)" strokeWidth="0.5"/>
+        <circle cx="50" cy="77" r="10" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.5"/>
+        <circle cx="50" cy="77" r="0.8" fill="rgba(255,255,255,0.8)"/>
+        <rect x="22" y="3" width="56" height="22" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.5"/>
+        <rect x="22" y="129" width="56" height="22" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.5"/>
+        <rect x="35" y="3" width="30" height="10" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.5"/>
+        <rect x="35" y="141" width="30" height="10" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.5"/>
+        <rect x="42" y="1.2" width="16" height="3" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" strokeWidth="0.4"/>
+        <rect x="42" y="149.8" width="16" height="3" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.5)" strokeWidth="0.4"/>
+        <circle cx="50" cy="18" r="0.8" fill="rgba(255,255,255,0.8)"/>
+        <circle cx="50" cy="136" r="0.8" fill="rgba(255,255,255,0.8)"/>
+        {[[3,3],[97,3],[3,151],[97,151]].map(([cx,cy],i)=>(
+          <circle key={i} cx={cx} cy={cy} r="3" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.5"/>
+        ))}
+      </svg>
+
+      {slots.map(slot=>{
+        const entry=lineup.find(l=>l.slotId===slot.id);
+        const player=entry?players.find(p=>p.id===entry.playerId):null;
+        const isHL=highlight===slot.id;
+        const isDragged=ghost?.slotId===slot.id;
+        return (
+          <div key={slot.id}
+            onMouseDown={e=>onPointerDown(e,slot.id)}
+            onTouchStart={e=>onPointerDown(e,slot.id)}
+            style={{position:"absolute",left:`${slot.x}%`,top:`${slot.y}%`,transform:"translate(-50%,-50%)",
+              display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+              cursor:"grab",zIndex:10,padding:4,opacity:isDragged?0.25:1,transition:"opacity 0.12s"}}>
+            {player?(
+              <>
+                <div style={{width:42,height:42,borderRadius:"50%",overflow:"hidden",
+                  border:isHL?"3px solid #facc15":"2.5px solid #22c55e",
+                  boxShadow:isHL?"0 0 18px rgba(250,204,21,0.8)":"0 0 12px rgba(34,197,94,0.5)",
+                  transition:"border 0.12s,box-shadow 0.12s"}}>
+                  <PlayerAvatar player={player} size={42}/>
+                </div>
+                <div style={{background:"rgba(0,0,0,0.85)",borderRadius:5,padding:"2px 6px",color:"#fff",fontFamily:"sans-serif",fontSize:9,fontWeight:800,whiteSpace:"nowrap",maxWidth:60,overflow:"hidden",textOverflow:"ellipsis"}}>
+                  {player.name.split(" ")[0].toUpperCase()}
+                </div>
+              </>
+            ):(
+              <>
+                <div style={{width:38,height:38,borderRadius:"50%",
+                  border:isHL?"2px solid #facc15":"2px dashed rgba(255,255,255,0.4)",
+                  background:isHL?"rgba(250,204,21,0.18)":"rgba(0,0,0,0.3)",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  transition:"all 0.12s",boxShadow:isHL?"0 0 14px rgba(250,204,21,0.5)":"none"}}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </div>
+                <div style={{background:"rgba(0,0,0,0.6)",borderRadius:4,padding:"1px 5px",color:"rgba(255,255,255,0.75)",fontFamily:"sans-serif",fontSize:8,fontWeight:800}}>{slot.label}</div>
+              </>
+            )}
+          </div>
+        );
+      })}
+
+      {ghost&&(
+        <div style={{position:"absolute",left:ghost.x,top:ghost.y,transform:"translate(-50%,-50%)",pointerEvents:"none",zIndex:100,display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+          <div style={{width:50,height:50,borderRadius:"50%",overflow:"hidden",border:"3px solid #facc15",boxShadow:"0 0 22px rgba(250,204,21,0.9)",opacity:0.96,transform:"scale(1.15)"}}>
+            <PlayerAvatar player={ghost.player} size={50}/>
+          </div>
+          {ghost.player&&<div style={{background:"rgba(0,0,0,0.92)",borderRadius:5,padding:"2px 7px",color:"#facc15",fontFamily:"sans-serif",fontSize:9,fontWeight:800,whiteSpace:"nowrap"}}>
+            {ghost.player.name.split(" ")[0].toUpperCase()}
+          </div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Slot Picker Sheet ────────────────────────────────────────────────────────
+function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose}) {
+  const available=players.filter(p=>!lineup.find(l=>l.playerId===p.id));
+  const inField=players.filter(p=>lineup.find(l=>l.playerId===p.id));
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.72)",backdropFilter:"blur(4px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0f1923",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,maxHeight:"72vh",overflow:"hidden",display:"flex",flexDirection:"column",boxShadow:"0 -20px 60px rgba(0,0,0,0.7)"}}>
+        <div style={{padding:"15px 17px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:19,color:"#fff",letterSpacing:1}}>Posição: {slotLabel}</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
+        </div>
+        <div style={{overflowY:"auto",padding:"10px 13px 20px",display:"flex",flexDirection:"column",gap:7}}>
+          {onClear&&<button onClick={onClear} style={{display:"flex",alignItems:"center",gap:9,padding:"10px 13px",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:11,cursor:"pointer",color:"#f87171",fontFamily:"sans-serif",fontSize:13}}>
+            <Ico.Trash/> Remover jogador desta posição
+          </button>}
+
+          {available.length>0&&(
+            <>
+              <div style={{padding:"4px 2px",color:"#6B7280",fontFamily:"sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Disponíveis</div>
+              {available.map(p=>(
+                <button key={p.id} onClick={()=>onPick(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 13px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:11,cursor:"pointer",transition:"all 0.14s",textAlign:"left"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background="rgba(34,197,94,0.1)";e.currentTarget.style.borderColor="rgba(34,197,94,0.4)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.04)";e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";}}>
+                  <PlayerAvatar player={p} size={42} style={{border:"2px solid rgba(255,255,255,0.18)"}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:"#fff",fontFamily:"sans-serif",fontSize:14,fontWeight:700}}>{p.name}</div>
+                    <div style={{color:"#9CA3AF",fontFamily:"sans-serif",fontSize:11,marginTop:1}}>#{p.number} · {p.position} · {p.foot}</div>
+                    <div style={{marginTop:3}}><StarRating value={p.stars} readonly/></div>
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+
+          {inField.length>0&&(
+            <>
+              <div style={{padding:"4px 2px",color:"#6B7280",fontFamily:"sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginTop:4}}>Já escalados (troca de posição)</div>
+              {inField.map(p=>(
+                <button key={p.id} onClick={()=>onPick(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 13px",background:"rgba(250,204,21,0.04)",border:"1px solid rgba(250,204,21,0.15)",borderRadius:11,cursor:"pointer",transition:"all 0.14s",textAlign:"left"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background="rgba(250,204,21,0.1)";e.currentTarget.style.borderColor="rgba(250,204,21,0.4)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background="rgba(250,204,21,0.04)";e.currentTarget.style.borderColor="rgba(250,204,21,0.15)";}}>
+                  <PlayerAvatar player={p} size={42} style={{border:"2px solid rgba(250,204,21,0.4)"}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:"#fff",fontFamily:"sans-serif",fontSize:14,fontWeight:700}}>{p.name}</div>
+                    <div style={{color:"#9CA3AF",fontFamily:"sans-serif",fontSize:11,marginTop:1}}>#{p.number} · {p.position}</div>
+                  </div>
+                  <div style={{color:"#facc15",fontFamily:"sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>↔ trocar</div>
+                </button>
+              ))}
+            </>
+          )}
+
+          {players.length===0&&<div style={{textAlign:"center",padding:"28px 0",color:"#6B7280",fontFamily:"sans-serif",fontSize:13}}>
+            Nenhum jogador cadastrado.<br/><span style={{color:"#22c55e"}}>Vá em "Elenco" e cadastre jogadores.</span>
+          </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Export Modal (canvas-based image generation) ─────────────────────────────
+function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
+  const canvasRef = useRef();
+  const [generating,setGenerating]=useState(false);
+  const [imgUrl,setImgUrl]=useState(null);
+  const [status,setStatus]=useState("");
+
+  // Draw everything on canvas
+  const draw = useCallback(async()=>{
+    setGenerating(true);
+    setStatus("Gerando imagem...");
+    const canvas=canvasRef.current;
+    const W=540, H=860;
+    canvas.width=W; canvas.height=H;
+    const ctx=canvas.getContext("2d");
+
+    // BG gradient
+    const bgGrad=ctx.createLinearGradient(0,0,0,H);
+    bgGrad.addColorStop(0,"#0a1a0a"); bgGrad.addColorStop(1,"#080e14");
+    ctx.fillStyle=bgGrad; ctx.fillRect(0,0,W,H);
+
+    // Header bar
+    ctx.fillStyle="rgba(34,197,94,0.12)";
+    ctx.roundRect(14,14,W-28,72,12); ctx.fill();
+    ctx.strokeStyle="rgba(34,197,94,0.35)"; ctx.lineWidth=1.5;
+    ctx.roundRect(14,14,W-28,72,12); ctx.stroke();
+
+    // Shield icon (simplified)
+    ctx.fillStyle="#22c55e";
+    ctx.font="bold 28px sans-serif"; ctx.textAlign="left";
+    ctx.fillText("🛡️",26,60);
+
+    // Team name
+    ctx.fillStyle="#ffffff"; ctx.font="bold 28px 'Bebas Neue',sans-serif";
+    ctx.textAlign="left"; ctx.fillText(teamName.toUpperCase(),68,52);
+
+    // Formation badge
+    ctx.fillStyle="rgba(34,197,94,0.2)";
+    ctx.roundRect(W-110,28,96,42,8); ctx.fill();
+    ctx.strokeStyle="rgba(34,197,94,0.5)"; ctx.lineWidth=1.2;
+    ctx.roundRect(W-110,28,96,42,8); ctx.stroke();
+    ctx.fillStyle="#22c55e"; ctx.font="bold 22px 'Bebas Neue',sans-serif";
+    ctx.textAlign="center"; ctx.fillText(formation,W-62,56);
+
+    // Field area
+    const FX=18, FY=96, FW=W-36, FH=FW/0.65;
+    const R=10;
+
+    // Field background stripes
+    ctx.save(); ctx.beginPath(); ctx.roundRect(FX,FY,FW,FH,R); ctx.clip();
+    for(let i=0;i<8;i++){
+      ctx.fillStyle=i%2===0?"#1c7a40":"#18703a";
+      ctx.fillRect(FX,FY+i*(FH/8),FW,FH/8);
+    }
+    // Field lines
+    ctx.strokeStyle="rgba(255,255,255,0.7)"; ctx.lineWidth=1.5;
+    // Border
+    ctx.strokeRect(FX+8,FY+8,FW-16,FH-16);
+    // Center line
+    ctx.beginPath(); ctx.moveTo(FX+8,FY+FH/2); ctx.lineTo(FX+FW-8,FY+FH/2); ctx.stroke();
+    // Center circle
+    ctx.beginPath(); ctx.arc(FX+FW/2,FY+FH/2,FW*0.09,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(FX+FW/2,FY+FH/2,3,0,Math.PI*2); ctx.fillStyle="rgba(255,255,255,0.8)"; ctx.fill();
+    // Penalty areas
+    const PAW=FW*0.52, PAH=FH*0.14;
+    ctx.strokeStyle="rgba(255,255,255,0.7)"; ctx.lineWidth=1;
+    ctx.strokeRect(FX+8+(FW-16-PAW)/2,FY+8,PAW,PAH);
+    ctx.strokeRect(FX+8+(FW-16-PAW)/2,FY+FH-8-PAH,PAW,PAH);
+    const GBW=FW*0.27;
+    ctx.strokeRect(FX+8+(FW-16-GBW)/2,FY+8,GBW,PAH*0.46);
+    ctx.strokeRect(FX+8+(FW-16-GBW)/2,FY+FH-8-PAH*0.46,GBW,PAH*0.46);
+    ctx.restore();
+
+    // Field border
+    ctx.strokeStyle="rgba(255,255,255,0.2)"; ctx.lineWidth=2;
+    ctx.roundRect(FX,FY,FW,FH,R); ctx.stroke();
+
+    // Draw players
+    const AVATAR_COLORS_C = ["#1a6b3a","#c8102e","#003087","#6f2c91","#00539f","#e8650a","#b45309","#0e7490","#7c3aed","#be185d"];
+    const SLOT_R = 24;
+
+    // Load all images first
+    const imageCache = {};
+    const loadImg=(src)=>new Promise(res=>{
+      if(imageCache[src]){res(imageCache[src]);return;}
+      const img=new Image();
+      img.onload=()=>{imageCache[src]=img;res(img);};
+      img.onerror=()=>res(null);
+      img.src=src;
+    });
+    await Promise.all(slots.map(async slot=>{
+      const entry=lineup.find(l=>l.slotId===slot.id);
+      const player=entry?players.find(p=>p.id===entry.playerId):null;
+      if(player?.photo) await loadImg(player.photo);
+    }));
+
+    for(const slot of slots){
+      const entry=lineup.find(l=>l.slotId===slot.id);
+      const player=entry?players.find(p=>p.id===entry.playerId):null;
+      const cx=FX+(slot.x/100)*FW;
+      const cy=FY+(slot.y/100)*FH;
+
+      ctx.save();
+      ctx.beginPath(); ctx.arc(cx,cy,SLOT_R,0,Math.PI*2); ctx.clip();
+
+      if(player?.photo && imageCache[player.photo]){
+        ctx.drawImage(imageCache[player.photo],cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);
+      } else if(player){
+        const col=AVATAR_COLORS_C[(parseInt(player.number)||0)%AVATAR_COLORS_C.length];
+        ctx.fillStyle=col; ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);
+        ctx.fillStyle="#fff"; ctx.font=`bold ${SLOT_R*0.8}px 'Bebas Neue',sans-serif`;
+        ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(player.number||"?",cx,cy);
+      } else {
+        ctx.fillStyle="rgba(0,0,0,0.4)";
+        ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);
+        ctx.strokeStyle="rgba(255,255,255,0.35)"; ctx.lineWidth=2;
+        ctx.setLineDash([4,3]);
+        ctx.arc(cx,cy,SLOT_R-1,0,Math.PI*2);
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.restore();
+
+      // Ring
+      ctx.beginPath(); ctx.arc(cx,cy,SLOT_R,0,Math.PI*2);
+      ctx.strokeStyle=player?"#22c55e":"rgba(255,255,255,0.35)"; ctx.lineWidth=player?2.5:1.5;
+      if(!player) ctx.setLineDash([4,3]);
+      ctx.stroke(); ctx.setLineDash([]);
+
+      // Name tag
+      if(player){
+        const tag=player.name.split(" ")[0].toUpperCase();
+        ctx.font="bold 10px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="top";
+        const tw=ctx.measureText(tag).width;
+        const tx=cx-tw/2-5, ty=cy+SLOT_R+2;
+        ctx.fillStyle="rgba(0,0,0,0.82)";
+        ctx.roundRect(tx,ty,tw+10,15,4); ctx.fill();
+        ctx.fillStyle="#fff"; ctx.fillText(tag,cx,ty+2);
+      } else {
+        ctx.font="bold 9px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="top";
+        const tw=ctx.measureText(slot.label).width;
+        const tx=cx-tw/2-5, ty=cy+SLOT_R+2;
+        ctx.fillStyle="rgba(0,0,0,0.6)";
+        ctx.roundRect(tx,ty,tw+10,14,3); ctx.fill();
+        ctx.fillStyle="rgba(255,255,255,0.7)"; ctx.fillText(slot.label,cx,ty+2);
+      }
+    }
+
+    // Footer
+    const escalados=lineup.filter(l=>l.playerId).length;
+    ctx.fillStyle="rgba(255,255,255,0.06)";
+    ctx.roundRect(14,FY+FH+12,FW,36,8); ctx.fill();
+    ctx.fillStyle="#9CA3AF"; ctx.font="12px sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(`${escalados}/${slots.length} jogadores escalados · ${formation}`,W/2,FY+FH+30);
+
+    // Watermark
+    ctx.fillStyle="rgba(34,197,94,0.4)"; ctx.font="10px sans-serif";
+    ctx.textAlign="right"; ctx.textBaseline="bottom";
+    ctx.fillText("⚽ Escalação App",W-16,H-8);
+
+    const url=canvas.toDataURL("image/png");
+    setImgUrl(url);
+    setGenerating(false);
+    setStatus("");
+  },[slots,lineup,players,teamName,formation]);
+
+  useEffect(()=>{ draw(); },[draw]);
+
+  const download=()=>{
+    const a=document.createElement("a");
+    a.href=imgUrl; a.download=`${teamName.replace(/\s+/g,"_")}_escalacao.png`; a.click();
+  };
+
+  const share=async()=>{
+    if(!imgUrl) return;
+    try{
+      const res=await fetch(imgUrl);
+      const blob=await res.blob();
+      const file=new File([blob],`escalacao_${formation}.png`,{type:"image/png"});
+      if(navigator.canShare&&navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:`Escalação ${teamName}`,text:`Formação ${formation}`});
+      } else {
+        download();
+      }
+    } catch(e){ download(); }
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.88)",backdropFilter:"blur(8px)",padding:"12px"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0f1923",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth:440,maxHeight:"92vh",overflow:"hidden",display:"flex",flexDirection:"column",boxShadow:"0 24px 80px rgba(0,0,0,0.95)"}}>
+        <div style={{padding:"15px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>Exportar Escalação</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
+        </div>
+
+        <div style={{overflowY:"auto",padding:"14px 16px 20px",display:"flex",flexDirection:"column",gap:14,alignItems:"center"}}>
+          {/* Canvas (hidden, used for generation) */}
+          <canvas ref={canvasRef} style={{display:"none"}}/>
+
+          {/* Preview */}
+          {generating?(
+            <div style={{width:"100%",aspectRatio:"0.63",background:"rgba(255,255,255,0.03)",borderRadius:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:"1px solid rgba(255,255,255,0.08)"}}>
+              <div style={{width:36,height:36,border:"3px solid #22c55e",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+              <span style={{color:"#6B7280",fontFamily:"sans-serif",fontSize:13}}>Gerando imagem...</span>
+            </div>
+          ):imgUrl?(
+            <div style={{width:"100%",borderRadius:14,overflow:"hidden",border:"1px solid rgba(255,255,255,0.12)",boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
+              <img src={imgUrl} alt="Escalação" style={{width:"100%",display:"block"}}/>
+            </div>
+          ):null}
+
+          {status&&<p style={{color:"#6B7280",fontFamily:"sans-serif",fontSize:12,margin:0}}>{status}</p>}
+
+          {imgUrl&&!generating&&(
+            <div style={{display:"flex",flexDirection:"column",gap:9,width:"100%"}}>
+              {/* Share button (Web Share API) */}
+              <button onClick={share} style={{
+                display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+                padding:"15px 0",borderRadius:13,border:"none",cursor:"pointer",
+                background:"linear-gradient(135deg,#16a34a,#22c55e)",color:"#fff",
+                fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:1.5,
+                boxShadow:"0 6px 20px rgba(34,197,94,0.4)",transition:"transform 0.15s"
+              }}
+                onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+                <Ico.Share/> COMPARTILHAR
+              </button>
+
+              {/* Download button */}
+              <button onClick={download} style={{
+                display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+                padding:"13px 0",borderRadius:13,border:"1px solid rgba(255,255,255,0.15)",cursor:"pointer",
+                background:"rgba(255,255,255,0.05)",color:"#fff",
+                fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,transition:"all 0.15s"
+              }}
+                onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";}}>
+                <Ico.Download/> BAIXAR IMAGEM
+              </button>
+
+              <p style={{color:"#6B7280",fontFamily:"sans-serif",fontSize:11,textAlign:"center",margin:0,lineHeight:1.5}}>
+                Toque em <b style={{color:"#9CA3AF"}}>Compartilhar</b> para enviar pelo WhatsApp, Instagram ou outros apps.{" "}
+                <b style={{color:"#9CA3AF"}}>Baixar</b> salva direto no dispositivo.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
+    </div>
+  );
+}
+
+// ─── Player Card ──────────────────────────────────────────────────────────────
+function PlayerCard({player,onEdit,onDelete}) {
+  return (
+    <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"12px 13px",display:"flex",alignItems:"center",gap:12}}>
+      <PlayerAvatar player={player} size={52} style={{border:"2px solid rgba(255,255,255,0.14)"}}/>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span style={{color:"#fff",fontFamily:"sans-serif",fontSize:14,fontWeight:700}}>{player.name}</span>
+          <span style={{background:"rgba(34,197,94,0.15)",color:"#22c55e",borderRadius:5,padding:"1px 6px",fontFamily:"sans-serif",fontSize:11,fontWeight:700}}>#{player.number}</span>
+        </div>
+        <div style={{color:"#9CA3AF",fontFamily:"sans-serif",fontSize:11,marginTop:2}}>{player.position} · {player.foot}</div>
+        <div style={{marginTop:3}}><StarRating value={player.stars} readonly/></div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        <button onClick={onEdit} style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:8,padding:"7px 10px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
+        <button onClick={onDelete} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"7px 10px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+function Toast({msg,onDone}) {
+  useEffect(()=>{const t=setTimeout(onDone,2200);return()=>clearTimeout(t);},[onDone]);
+  return (
+    <div style={{position:"fixed",top:22,left:"50%",transform:"translateX(-50%)",
+      background:"rgba(22,163,74,0.97)",color:"#fff",padding:"9px 18px",
+      borderRadius:30,fontFamily:"sans-serif",fontSize:13,fontWeight:700,
+      zIndex:3000,boxShadow:"0 4px 20px rgba(0,0,0,0.5)",animation:"toastIn 0.25s ease",
+      whiteSpace:"nowrap"}}>
+      ✓ {msg}
+      <style>{`@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}`}</style>
+    </div>
+  );
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [loaded,setLoaded]           = useState(false);
+  const [tab,setTab]                 = useState("field");
+  const [teamName,setTeamName]       = useState("Meu Time");
+  const [editingName,setEditingName] = useState(false);
+  const [players,setPlayers]         = useState([]);
+  const [lineup,setLineup]           = useState([]);
+  const [formation,setFormation]     = useState("4-4-2");
+  const [showForm,setShowForm]       = useState(false);
+  const [editingPlayer,setEditingPlayer] = useState(null);
+  const [activeSlot,setActiveSlot]   = useState(null);
+  const [showExport,setShowExport]   = useState(false);
+  const [showFList,setShowFList]     = useState(false);
+  const [toast,setToast]             = useState(null);
+  const nextId = useRef(1);
+  const slots = FORMATIONS[formation].slots;
+
+  useEffect(()=>{
+    const data = loadData();
+    if(data){
+      setTeamName(data.teamName||"Meu Time");
+      setPlayers(data.players||[]);
+      setLineup(data.lineup||[]);
+      setFormation(data.formation||"4-4-2");
+      if(data.players?.length) nextId.current=Math.max(...data.players.map(p=>p.id),0)+1;
+    }
+    setLoaded(true);
+  },[]);
+
+  useEffect(()=>{
+    if(!loaded) return;
+    saveData({teamName,players,lineup,formation});
+  },[teamName,players,lineup,formation,loaded]);
+
+  const savePlayer=(form)=>{
+    if(editingPlayer){ setPlayers(ps=>ps.map(p=>p.id===editingPlayer.id?{...form,id:p.id}:p)); }
+    else { setPlayers(ps=>[...ps,{...form,id:nextId.current++}]); }
+    setShowForm(false); setEditingPlayer(null);
+    setToast("Jogador salvo!");
+  };
+
+  const deletePlayer=(id)=>{
+    setPlayers(ps=>ps.filter(p=>p.id!==id));
+    setLineup(l=>l.filter(e=>e.playerId!==id));
+  };
+
+  // Formation change: migrate players by slot-index, NO reset
+  const handleFormationChange=(f)=>{
+    if(f===formation) return;
+    const oldSlots=FORMATIONS[formation].slots;
+    const newSlots=FORMATIONS[f].slots;
+    setLineup(prev=>migrateLineup(prev,oldSlots,newSlots));
+    setFormation(f);
+    setToast(`Formação ${f}`);
+  };
+
+  const handleSlotTap=(slotId,label)=>setActiveSlot({slotId,label});
+
+  const pickPlayer=(playerId)=>{
+    setLineup(l=>{
+      // If player already in lineup, swap with current slot
+      const existingEntry=l.find(e=>e.playerId===playerId);
+      const currentEntry=l.find(e=>e.slotId===activeSlot.slotId);
+      let next=l.filter(e=>e.slotId!==activeSlot.slotId&&e.playerId!==playerId);
+      next.push({slotId:activeSlot.slotId,playerId});
+      // If there was someone in target slot AND player came from another slot, put the displaced one back
+      if(existingEntry&&currentEntry){
+        next.push({slotId:existingEntry.slotId,playerId:currentEntry.playerId});
+      }
+      return next;
+    });
+    setActiveSlot(null);
+  };
+
+  const clearSlot=()=>{setLineup(l=>l.filter(e=>e.slotId!==activeSlot.slotId));setActiveSlot(null);};
+
+  const escalados=lineup.filter(l=>l.playerId).length;
+
+  if(!loaded) return (
+    <div style={{minHeight:"100vh",background:"#080e14",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <span style={{color:"#22c55e",fontFamily:"'Bebas Neue',sans-serif",fontSize:24,letterSpacing:2}}>CARREGANDO...</span>
+    </div>
+  );
+
+  return (
+    <div style={{minHeight:"100vh",background:"#080e14",fontFamily:"sans-serif",color:"#fff",maxWidth:480,margin:"0 auto",position:"relative"}}>
+      <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet"/>
+      <style>{`
+        *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+        select option{background:#0f1923;}
+        ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.15);border-radius:4px;}
+      `}</style>
+
+      {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
+
+      {/* Header */}
+      <div style={{background:"linear-gradient(180deg,#0d1a0d 0%,#080e14 100%)",borderBottom:"1px solid rgba(255,255,255,0.07)",padding:"13px 16px 11px",position:"sticky",top:0,zIndex:50}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:36,height:36,borderRadius:9,background:"linear-gradient(135deg,#16a34a,#22c55e)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 4px 12px rgba(34,197,94,0.4)",flexShrink:0}}>
+            <Ico.Shield/>
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            {editingName?(
+              <input autoFocus value={teamName} onChange={e=>setTeamName(e.target.value)}
+                onBlur={()=>setEditingName(false)} onKeyDown={e=>e.key==="Enter"&&setEditingName(false)}
+                style={{background:"rgba(255,255,255,0.08)",border:"1px solid #22c55e",borderRadius:7,padding:"4px 9px",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:1,outline:"none",width:"100%"}}/>
+            ):(
+              <button onClick={()=>setEditingName(true)} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center",gap:5,maxWidth:"100%"}}>
+                <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{teamName}</span>
+                <span style={{color:"#4B5563",flexShrink:0}}><Ico.Edit/></span>
+              </button>
+            )}
+            <div style={{color:"#6B7280",fontSize:10,marginTop:-2}}>{escalados}/{slots.length} escalados · Campo (11)</div>
+          </div>
+          {tab==="field"&&(
+            <button onClick={()=>setShowExport(true)} style={{
+              display:"flex",alignItems:"center",gap:6,padding:"8px 12px",
+              background:"rgba(34,197,94,0.15)",border:"1px solid rgba(34,197,94,0.4)",
+              borderRadius:10,color:"#22c55e",cursor:"pointer",fontFamily:"sans-serif",fontSize:11,fontWeight:800,
+              transition:"all 0.15s",flexShrink:0,letterSpacing:0.5
+            }}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(34,197,94,0.25)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(34,197,94,0.15)"}>
+              <Ico.Share/>EXPORTAR
+            </button>
+          )}
+        </div>
+
+        {/* Mode + Formation row */}
+        <div style={{display:"flex",gap:7,marginTop:10,alignItems:"center"}}>
+          <div style={{display:"flex",gap:5,flex:1}}>
+            {MODES.map(m=>(
+              <div key={m.key} style={{flex:1,textAlign:"center",padding:"4px 0",borderRadius:8,border:"1px solid",
+                borderColor:m.key==="campo"?"#22c55e":"rgba(255,255,255,0.07)",
+                background:m.key==="campo"?"rgba(34,197,94,0.1)":"rgba(255,255,255,0.02)",
+                opacity:m.available?1:0.35,cursor:m.available?"pointer":"not-allowed",position:"relative"}}>
+                <div style={{fontSize:12}}>{m.icon}</div>
+                <div style={{fontSize:8,fontWeight:700,color:m.key==="campo"?"#22c55e":"#6B7280"}}>{m.label}</div>
+                {!m.available&&<div style={{position:"absolute",top:1,right:2,background:"#374151",borderRadius:2,padding:"0 3px",fontSize:6,color:"#9CA3AF",fontWeight:700}}>EM BREVE</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Formation picker + list button */}
+          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+            <FormationPicker current={formation} onChange={handleFormationChange}/>
+            <button onClick={()=>setShowFList(true)} style={{
+              background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",
+              borderRadius:9,padding:"7px 9px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center",
+              transition:"all 0.15s"
+            }}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.12)";e.currentTarget.style.color="#fff";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#9CA3AF";}}>
+              <Ico.List/>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",background:"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+        {[{key:"field",label:"Escalação",I:Ico.Tactic},{key:"players",label:`Elenco (${players.length})`,I:Ico.Users}].map(t=>(
+          <button key={t.key} onClick={()=>setTab(t.key)} style={{
+            flex:1,padding:"12px 0",background:"none",border:"none",
+            borderBottom:tab===t.key?"2px solid #22c55e":"2px solid transparent",
+            color:tab===t.key?"#22c55e":"#6B7280",
+            cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+            gap:7,fontFamily:"sans-serif",fontSize:13,fontWeight:700,transition:"all 0.2s"
+          }}>
+            <t.I/>{t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div style={{padding:tab==="field"?"12px 11px 100px":"12px 14px 100px"}}>
+        {tab==="field"&&(
+          <>
+            <div style={{marginBottom:9,padding:"6px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",fontFamily:"sans-serif",fontSize:11,color:"#6B7280",textAlign:"center"}}>
+              💡 <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure e arraste</b> para mover
+            </div>
+            <FootballField slots={slots} lineup={lineup} players={players} onLineupChange={setLineup} onSlotTap={handleSlotTap}/>
+          </>
+        )}
+        {tab==="players"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {players.length===0&&(
+              <div style={{textAlign:"center",padding:"52px 20px",color:"#4B5563"}}>
+                <div style={{fontSize:52,marginBottom:12}}>👥</div>
+                <div style={{fontSize:16,fontWeight:700,color:"#6B7280"}}>Nenhum jogador ainda</div>
+                <div style={{fontSize:13,marginTop:6}}>Toque no <span style={{color:"#22c55e"}}>+</span> para cadastrar</div>
+              </div>
+            )}
+            {players.map(p=>(
+              <PlayerCard key={p.id} player={p}
+                onEdit={()=>{setEditingPlayer(p);setShowForm(true);}}
+                onDelete={()=>deletePlayer(p.id)}/>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* FAB */}
+      {tab==="players"&&(
+        <button onClick={()=>{setEditingPlayer(null);setShowForm(true);}} style={{
+          position:"fixed",bottom:28,right:20,width:56,height:56,borderRadius:"50%",
+          background:"linear-gradient(135deg,#16a34a,#22c55e)",border:"none",cursor:"pointer",
+          display:"flex",alignItems:"center",justifyContent:"center",
+          boxShadow:"0 6px 24px rgba(34,197,94,0.5)",zIndex:100,transition:"transform 0.15s"
+        }}
+          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
+          onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+          <Ico.Plus/>
+        </button>
+      )}
+
+      {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
+      {activeSlot&&<SlotPickerModal
+        slotLabel={activeSlot.label} players={players}
+        lineup={lineup.filter(l=>l.slotId!==activeSlot.slotId)}
+        onPick={pickPlayer}
+        onClear={lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null}
+        onClose={()=>setActiveSlot(null)}/>}
+      {showExport&&<ExportModal slots={slots} lineup={lineup} players={players} teamName={teamName} formation={formation} onClose={()=>setShowExport(false)}/>}
+      {showFList&&<FormationListModal current={formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
+    </div>
+  );
+}
+
+
+    // Mount the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(App));
+    document.getElementById('loading').style.display = 'none';
+  </script>
+</body>
+</html>
