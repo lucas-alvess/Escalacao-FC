@@ -872,10 +872,14 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
     ctx.beginPath();ctx.arc(FX+FW/2,FY+FH/2,FW*0.09,0,Math.PI*2);ctx.stroke();
     ctx.restore();
     const imageCache={};
-    const loadImg=async(src)=>{
-      if(imageCache[src])return imageCache[src];
-      try{const res=await fetch(src);const blob=await res.blob();const bm=await createImageBitmap(blob);imageCache[src]=bm;return bm;}
-      catch{return new Promise(res=>{const img=new Image();img.onload=()=>{imageCache[src]=img;res(img);};img.onerror=()=>res(null);img.crossOrigin="anonymous";img.src=src;});}
+    const loadImg=(src)=>{
+      if(imageCache[src])return Promise.resolve(imageCache[src]);
+      return new Promise(resolve=>{
+        const img=new Image();
+        img.onload=()=>{imageCache[src]=img;resolve(img);};
+        img.onerror=()=>resolve(null);
+        img.src=src;
+      });
     };
     await Promise.all(slots.map(async slot=>{const entry=lineup.find(l=>l.slotId===slot.id);const player=entry?players.find(p=>p.id===entry.playerId):null;if(player?.photo)await loadImg(player.photo);}));
     const SLOT_R=32;
@@ -884,16 +888,10 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
       const player=entry?players.find(p=>p.id===entry.playerId):null;
       const cx=FX+(slot.x/100)*FW,cy=FY+(slot.y/100)*FH;
       ctx.save();ctx.beginPath();ctx.arc(cx,cy,SLOT_R,0,Math.PI*2);ctx.clip();
-      if(player?.photo&&imageCache[player.photo]){
-        const img=imageCache[player.photo];
-        const iw=img.naturalWidth||img.width;
-        const ih=img.naturalHeight||img.height;
-        const scale=Math.max((SLOT_R*2)/iw,(SLOT_R*2)/ih);
-        const sw=iw*scale, sh=ih*scale;
-        ctx.drawImage(img, cx-(sw/2), cy-(sh/2), sw, sh);
-      }
-    else if(player){ctx.fillStyle=AVATAR_COLORS[(parseInt(player.number)||0)%AVATAR_COLORS.length];ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);ctx.fillStyle="#fff";ctx.font=`bold ${SLOT_R*0.8}px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(player.number||"?",cx,cy);}
-    else{ctx.fillStyle="rgba(0,0,0,0.4)";ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);}
+      const cachedImg=player?.photo?imageCache[player.photo]:null;
+      if(cachedImg){const iw=(cachedImg.naturalWidth||cachedImg.width)||SLOT_R*2;const ih=(cachedImg.naturalHeight||cachedImg.height)||SLOT_R*2;const scale=Math.max((SLOT_R*2)/iw,(SLOT_R*2)/ih);const sw=iw*scale,sh=ih*scale;ctx.drawImage(cachedImg,cx-(sw/2),cy-(sh/2),sw,sh);}
+      else if(player){ctx.fillStyle=AVATAR_COLORS[(parseInt(player.number)||0)%AVATAR_COLORS.length];ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);ctx.fillStyle="#fff";ctx.font=`bold ${SLOT_R*0.8}px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(player.number||"?",cx,cy);}
+      else{ctx.fillStyle="rgba(0,0,0,0.35)";ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);}
     ctx.restore();
       ctx.beginPath();ctx.arc(cx,cy,SLOT_R,0,Math.PI*2);ctx.strokeStyle=player?"#34d399":"rgba(255,255,255,0.35)";ctx.lineWidth=player?2.5:1.5;ctx.stroke();
       if(player){const tag=player.name.split(" ")[0].toUpperCase();ctx.font="bold 12px sans-serif";ctx.textAlign="center";ctx.textBaseline="top";const tw=ctx.measureText(tag).width;ctx.fillStyle="rgba(0,0,0,0.85)";ctx.roundRect(cx-tw/2-6,cy+SLOT_R+3,tw+12,17,5);ctx.fill();ctx.fillStyle="#fff";ctx.fillText(tag,cx,cy+SLOT_R+5);}
