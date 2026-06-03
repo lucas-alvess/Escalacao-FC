@@ -884,10 +884,17 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
       const player=entry?players.find(p=>p.id===entry.playerId):null;
       const cx=FX+(slot.x/100)*FW,cy=FY+(slot.y/100)*FH;
       ctx.save();ctx.beginPath();ctx.arc(cx,cy,SLOT_R,0,Math.PI*2);ctx.clip();
-      if(player?.photo&&imageCache[player.photo]){ctx.drawImage(imageCache[player.photo],cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);}
-      else if(player){ctx.fillStyle=AVATAR_COLORS[(parseInt(player.number)||0)%AVATAR_COLORS.length];ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);ctx.fillStyle="#fff";ctx.font=`bold ${SLOT_R*0.8}px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(player.number||"?",cx,cy);}
-      else{ctx.fillStyle="rgba(0,0,0,0.4)";ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);}
-      ctx.restore();
+      if(player?.photo&&imageCache[player.photo]){
+        const img=imageCache[player.photo];
+        const iw=img.naturalWidth||img.width;
+        const ih=img.naturalHeight||img.height;
+        const scale=Math.max((SLOT_R*2)/iw,(SLOT_R*2)/ih);
+        const sw=iw*scale, sh=ih*scale;
+        ctx.drawImage(img, cx-(sw/2), cy-(sh/2), sw, sh);
+      }
+    else if(player){ctx.fillStyle=AVATAR_COLORS[(parseInt(player.number)||0)%AVATAR_COLORS.length];ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);ctx.fillStyle="#fff";ctx.font=`bold ${SLOT_R*0.8}px sans-serif`;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(player.number||"?",cx,cy);}
+    else{ctx.fillStyle="rgba(0,0,0,0.4)";ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);}
+    ctx.restore();
       ctx.beginPath();ctx.arc(cx,cy,SLOT_R,0,Math.PI*2);ctx.strokeStyle=player?"#34d399":"rgba(255,255,255,0.35)";ctx.lineWidth=player?2.5:1.5;ctx.stroke();
       if(player){const tag=player.name.split(" ")[0].toUpperCase();ctx.font="bold 12px sans-serif";ctx.textAlign="center";ctx.textBaseline="top";const tw=ctx.measureText(tag).width;ctx.fillStyle="rgba(0,0,0,0.85)";ctx.roundRect(cx-tw/2-6,cy+SLOT_R+3,tw+12,17,5);ctx.fill();ctx.fillStyle="#fff";ctx.fillText(tag,cx,cy+SLOT_R+5);}
       else{const tw=ctx.measureText(slot.label).width;ctx.font="bold 11px sans-serif";ctx.textAlign="center";ctx.textBaseline="top";ctx.fillStyle="rgba(0,0,0,0.65)";ctx.roundRect(cx-tw/2-5,cy+SLOT_R+3,tw+10,16,4);ctx.fill();ctx.fillStyle="rgba(255,255,255,0.75)";ctx.fillText(slot.label,cx,cy+SLOT_R+5);}
