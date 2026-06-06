@@ -217,11 +217,17 @@ const SHIELD_COLORS = [
   ["#be185d","#f472b6"],["#15803d","#4ade80"],
 ];
 
+// ─── Global unique ID counter (persists across re-renders) ───────────────────
+let _globalIdCounter = Date.now();
+function genUniqueId() {
+  _globalIdCounter++;
+  return _globalIdCounter;
+}
+
 // ─── Default team factory ─────────────────────────────────────────────────────
-let _uid = 1;
 function makeTeam(name="Novo Time", colorIdx=0) {
   return {
-    id: Date.now() + (_uid++),
+    id: genUniqueId(),
     name,
     colorIdx,
     shieldEmoji: "🛡️",
@@ -1047,13 +1053,6 @@ function TeamView({team,onUpdateTeam,onBack}) {
   const [showFList,setShowFList]=useState(false);
   const [toast,setToast]=useState(null);
   const [showEditTeam,setShowEditTeam]=useState(false);
-  const nextId=useRef(null);
-  const genId=()=>{
-    // Usa Date.now + incremento para garantir unicidade mesmo em saves rápidos
-    const base=Date.now();
-    if(!nextId.current||nextId.current<=base){nextId.current=base+1;}else{nextId.current++;}
-    return nextId.current;
-  };
   const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
 
   const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
@@ -1061,7 +1060,7 @@ function TeamView({team,onUpdateTeam,onBack}) {
   const upd=(patch)=>onUpdateTeam({...team,...patch});
 
   const savePlayer=(form)=>{
-    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...form,id:p.id}:p):[...team.players,{...form,id:genId()}];
+    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...form,id:p.id}:p):[...team.players,{...form,id:genUniqueId()}];
     upd({players});setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
   const deletePlayer=(id)=>upd({players:team.players.filter(p=>p.id!==id),lineup:team.lineup.filter(e=>e.playerId!==id)});
@@ -1348,9 +1347,14 @@ function App() {
     pendingSaveRef.current = true;
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
-      await saveTeamsCloud(user.uid, teams);
-      // Após confirmar o save, liberar o snapshot novamente
-      pendingSaveRef.current = false;
+      try {
+        await saveTeamsCloud(user.uid, teams);
+      } catch(e) {
+        console.warn("Cloud save failed:", e);
+      } finally {
+        // Sempre libera o snapshot após tentativa de save
+        pendingSaveRef.current = false;
+      }
     }, 800);
   },[teams, loaded, user]);
 
