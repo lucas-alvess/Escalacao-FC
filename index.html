@@ -1292,7 +1292,11 @@ function App() {
   const [toast,setToast]=useState(null);
   const unsubSnapshotRef = useRef(null);
   const saveTimerRef = useRef(null);
-  const pendingSaveRef = useRef(false);
+  // Contador de versão local: incrementa a cada mudança de estado.
+  // O snapshot do Firestore só substitui o estado local quando não há
+  // alterações pendentes (localVersion === savedVersion).
+  const localVersionRef = useRef(0);
+  const savedVersionRef = useRef(0);
 
   // Wait for Firebase, then listen to auth state
   useEffect(()=>{
@@ -1303,24 +1307,38 @@ function App() {
         if (u) {
           setUser(u);
           setAuthState("loggedIn");
-          // Subscribe to Firestore realtime updates for this user
           if (unsubSnapshotRef.current) unsubSnapshotRef.current();
           const ref = fb.doc(fb.db, "users", u.uid);
+          let isFirstSnapshot = true;
           unsubSnapshotRef.current = fb.onSnapshot(ref, (snap) => {
-            // Se há uma gravação local pendente, ignorar o snapshot do Firestore
-            // para evitar que dados antigos sobrescrevam alterações locais ainda não persistidas
-            if (pendingSaveRef.current) return;
-            if (snap.exists()) {
-              const data = snap.data();
-              if (data.teams) {
-                setTeams(data.teams);
-                saveDataLocal({ teams: data.teams });
+            if (isFirstSnapshot) {
+              // Primeira leitura: carrega dados da nuvem sem restrição
+              isFirstSnapshot = false;
+              if (snap.exists()) {
+                const data = snap.data();
+                if (data.teams) {
+                  setTeams(data.teams);
+                  saveDataLocal({ teams: data.teams });
+                  savedVersionRef.current = localVersionRef.current;
+                }
+              }
+              setLoaded(true);
+              return;
+            }
+            // Snapshots subsequentes = confirmação de write do Firestore.
+            // Só aplica se não houver alterações locais mais novas pendentes.
+            if (localVersionRef.current === savedVersionRef.current) {
+              if (snap.exists()) {
+                const data = snap.data();
+                if (data.teams) {
+                  setTeams(data.teams);
+                  saveDataLocal({ teams: data.teams });
+                }
               }
             }
-            setLoaded(true);
+            // localVersion > savedVersion: alterações locais pendentes, ignora snapshot.
           }, (err) => {
             console.warn("Snapshot error:", err);
-            // Fallback to local
             const local = loadDataLocal();
             if (local?.teams) setTeams(local.teams);
             setLoaded(true);
@@ -1331,6 +1349,8 @@ function App() {
           setAuthState("loggedOut");
           setLoaded(false);
           setTeams([]);
+          localVersionRef.current = 0;
+          savedVersionRef.current = 0;
         }
       });
     };
@@ -1343,17 +1363,18 @@ function App() {
   useEffect(()=>{
     if (!loaded || !user) return;
     saveDataLocal({ teams });
-    // Marcar que há save pendente para o snapshot não sobrescrever
-    pendingSaveRef.current = true;
+    localVersionRef.current += 1;
+    const versionAtChange = localVersionRef.current;
     clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       try {
         await saveTeamsCloud(user.uid, teams);
+        // Marca como salvo apenas se não houve nova alteração durante o debounce
+        if (localVersionRef.current === versionAtChange) {
+          savedVersionRef.current = versionAtChange;
+        }
       } catch(e) {
         console.warn("Cloud save failed:", e);
-      } finally {
-        // Sempre libera o snapshot após tentativa de save
-        pendingSaveRef.current = false;
       }
     }, 800);
   },[teams, loaded, user]);
