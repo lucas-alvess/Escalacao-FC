@@ -1047,14 +1047,21 @@ function TeamView({team,onUpdateTeam,onBack}) {
   const [showFList,setShowFList]=useState(false);
   const [toast,setToast]=useState(null);
   const [showEditTeam,setShowEditTeam]=useState(false);
-  const nextId=useRef(team.players.length?Math.max(...team.players.map(p=>p.id),0)+1:1);
+  const nextId=useRef(null);
+  const genId=()=>{
+    // Usa Date.now + incremento para garantir unicidade mesmo em saves rápidos
+    const base=Date.now();
+    if(!nextId.current||nextId.current<=base){nextId.current=base+1;}else{nextId.current++;}
+    return nextId.current;
+  };
   const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
 
   const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
+  // upd sempre usa o team atual da prop (TeamView recebe team atualizado do pai via setTeams)
   const upd=(patch)=>onUpdateTeam({...team,...patch});
 
   const savePlayer=(form)=>{
-    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...form,id:p.id}:p):[...team.players,{...form,id:nextId.current++}];
+    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...form,id:p.id}:p):[...team.players,{...form,id:genId()}];
     upd({players});setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
   const deletePlayer=(id)=>upd({players:team.players.filter(p=>p.id!==id),lineup:team.lineup.filter(e=>e.playerId!==id)});
@@ -1286,6 +1293,7 @@ function App() {
   const [toast,setToast]=useState(null);
   const unsubSnapshotRef = useRef(null);
   const saveTimerRef = useRef(null);
+  const pendingSaveRef = useRef(false);
 
   // Wait for Firebase, then listen to auth state
   useEffect(()=>{
@@ -1300,6 +1308,9 @@ function App() {
           if (unsubSnapshotRef.current) unsubSnapshotRef.current();
           const ref = fb.doc(fb.db, "users", u.uid);
           unsubSnapshotRef.current = fb.onSnapshot(ref, (snap) => {
+            // Se há uma gravação local pendente, ignorar o snapshot do Firestore
+            // para evitar que dados antigos sobrescrevam alterações locais ainda não persistidas
+            if (pendingSaveRef.current) return;
             if (snap.exists()) {
               const data = snap.data();
               if (data.teams) {
@@ -1333,9 +1344,13 @@ function App() {
   useEffect(()=>{
     if (!loaded || !user) return;
     saveDataLocal({ teams });
+    // Marcar que há save pendente para o snapshot não sobrescrever
+    pendingSaveRef.current = true;
     clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveTeamsCloud(user.uid, teams);
+    saveTimerRef.current = setTimeout(async () => {
+      await saveTeamsCloud(user.uid, teams);
+      // Após confirmar o save, liberar o snapshot novamente
+      pendingSaveRef.current = false;
     }, 800);
   },[teams, loaded, user]);
 
@@ -1366,7 +1381,7 @@ function App() {
     setToast("Time criado!");
   };
 
-  const updateTeam=(updated)=>setTeams(prev=>prev.map(t=>t.id===updated.id?updated:t));
+  const updateTeam=(updated)=>setTeams(prev=>prev.map(t=>t.id===updated.id?{...t,...updated}:t));
 
   const deleteTeam=(id)=>{
     setTeams(prev=>prev.filter(t=>t.id!==id));
