@@ -359,7 +359,7 @@ function TeamFormModal({initial,onSave,onClose}) {
           {/* Nome */}
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             <span style={LT}>Nome do Time</span>
-            <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: Flamengo, Real Madrid..." style={IS}
+            <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: Corinthians, Real Madrid..." style={IS}
               onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
           </div>
 
@@ -1124,6 +1124,155 @@ function Toast({msg,onDone}) {
   );
 }
 
+// ─── Players Tab with Filter/Sort ────────────────────────────────────────────
+const SORT_OPTIONS = [
+  { key: "name",     label: "Nome",    icon: "A→Z" },
+  { key: "number",   label: "Número",  icon: "#" },
+  { key: "position", label: "Posição", icon: "🟢" },
+  { key: "stars",    label: "Nível",   icon: "⭐" },
+];
+
+function PlayersTab({ players, onEdit, onDelete, teamColor }) {
+  const [search, setSearch]     = useState("");
+  const [sortBy, setSortBy]     = useState("name");
+  const [sortAsc, setSortAsc]   = useState(true);
+  const [filterPos, setFilterPos] = useState("Todas");
+  const [c1, c2] = SHIELD_COLORS[teamColor % SHIELD_COLORS.length];
+
+  const allPositions = ["Todas", ...Array.from(new Set(players.map(p => p.position)))];
+
+  const filtered = players
+    .filter(p => {
+      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || String(p.number).includes(search);
+      const matchPos    = filterPos === "Todas" || p.position === filterPos;
+      return matchSearch && matchPos;
+    })
+    .sort((a, b) => {
+      let va, vb;
+      if (sortBy === "name")     { va = a.name.toLowerCase();    vb = b.name.toLowerCase(); }
+      else if (sortBy === "number") { va = parseInt(a.number)||0; vb = parseInt(b.number)||0; }
+      else if (sortBy === "position") { va = a.position;           vb = b.position; }
+      else if (sortBy === "stars")  { va = a.stars||0;             vb = b.stars||0; }
+      if (va < vb) return sortAsc ? -1 : 1;
+      if (va > vb) return sortAsc ? 1 : -1;
+      return 0;
+    });
+
+  const toggleSort = (key) => {
+    if (sortBy === key) setSortAsc(a => !a);
+    else { setSortBy(key); setSortAsc(true); }
+  };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+      {/* Search bar */}
+      <div style={{ position:"relative" }}>
+        <svg style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}
+          width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2.5" strokeLinecap="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Buscar por nome ou número..."
+          style={{ ...IS, paddingLeft:34, background:"rgba(255,255,255,0.05)", fontSize:13 }}
+          onFocus={e => e.target.style.borderColor = c1}
+          onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
+        />
+        {search && (
+          <button onClick={() => setSearch("")} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
+            background:"none", border:"none", color:"#6B7280", cursor:"pointer", padding:2, display:"flex", alignItems:"center" }}>
+            <Ico.Close/>
+          </button>
+        )}
+      </div>
+
+      {/* Sort buttons */}
+      <div style={{ display:"flex", gap:6, alignItems:"center" }}>
+        <span style={{ ...LT, flexShrink:0, fontSize:9 }}>Ordenar:</span>
+        <div style={{ display:"flex", gap:5, flex:1, overflowX:"auto", paddingBottom:2 }}>
+          {SORT_OPTIONS.map(opt => {
+            const active = sortBy === opt.key;
+            return (
+              <button key={opt.key} onClick={() => toggleSort(opt.key)} style={{
+                display:"flex", alignItems:"center", gap:4,
+                padding:"5px 10px", borderRadius:8, border:"1px solid",
+                flexShrink:0, cursor:"pointer",
+                fontFamily:"'DM Sans',sans-serif", fontSize:11, fontWeight:700,
+                transition:"all 0.15s",
+                borderColor: active ? c1 : "rgba(255,255,255,0.1)",
+                background: active ? `${c1}20` : "rgba(255,255,255,0.03)",
+                color: active ? c2 : "#6B7280",
+              }}>
+                <span style={{ fontSize:10 }}>{opt.icon}</span>
+                {opt.label}
+                {active && (
+                  <span style={{ fontSize:9, opacity:0.8 }}>{sortAsc ? "↑" : "↓"}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Position filter pills */}
+      {players.length > 0 && allPositions.length > 2 && (
+        <div style={{ display:"flex", gap:5, overflowX:"auto", paddingBottom:2 }}>
+          {allPositions.map(pos => {
+            const active = filterPos === pos;
+            return (
+              <button key={pos} onClick={() => setFilterPos(pos)} style={{
+                padding:"4px 11px", borderRadius:20, border:"1px solid",
+                flexShrink:0, cursor:"pointer",
+                fontFamily:"'DM Sans',sans-serif", fontSize:11, fontWeight:700,
+                transition:"all 0.15s",
+                borderColor: active ? c1 : "rgba(255,255,255,0.1)",
+                background: active ? `${c1}22` : "rgba(255,255,255,0.03)",
+                color: active ? c2 : "#6B7280",
+              }}>
+                {pos}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Results count */}
+      {players.length > 0 && (
+        <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:"#4B5563", paddingLeft:2 }}>
+          {filtered.length === players.length
+            ? `${players.length} jogador${players.length !== 1 ? "es" : ""}`
+            : `${filtered.length} de ${players.length} jogadores`}
+        </div>
+      )}
+
+      {/* Empty states */}
+      {players.length === 0 && (
+        <div style={{ textAlign:"center", padding:"52px 20px", color:"#4B5563" }}>
+          <div style={{ fontSize:52, marginBottom:12 }}>👥</div>
+          <div style={{ fontSize:16, fontWeight:700, color:"#6B7280" }}>Nenhum jogador ainda</div>
+          <div style={{ fontSize:13, marginTop:6 }}>Toque no <span style={{ color:"#34d399" }}>+</span> para cadastrar</div>
+        </div>
+      )}
+      {players.length > 0 && filtered.length === 0 && (
+        <div style={{ textAlign:"center", padding:"36px 20px", color:"#4B5563" }}>
+          <div style={{ fontSize:40, marginBottom:10 }}>🔍</div>
+          <div style={{ fontSize:14, fontWeight:700, color:"#6B7280" }}>Nenhum resultado</div>
+          <div style={{ fontSize:12, marginTop:5 }}>Tente outro filtro ou termo de busca</div>
+        </div>
+      )}
+
+      {/* Player list */}
+      {filtered.map(p => (
+        <PlayerCard key={p.id} player={p}
+          onEdit={() => onEdit(p)}
+          onDelete={() => onDelete(p.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
 // ─── Team Tactical View (existing app logic) ──────────────────────────────────
 function TeamView({team,onUpdateTeam,onBack}) {
   const [tab,setTab]=useState("field");
@@ -1248,20 +1397,12 @@ function TeamView({team,onUpdateTeam,onBack}) {
           </>
         )}
         {tab==="players"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {team.players.length===0&&(
-              <div style={{textAlign:"center",padding:"52px 20px",color:"#4B5563"}}>
-                <div style={{fontSize:52,marginBottom:12}}>👥</div>
-                <div style={{fontSize:16,fontWeight:700,color:"#6B7280"}}>Nenhum jogador ainda</div>
-                <div style={{fontSize:13,marginTop:6}}>Toque no <span style={{color:"#34d399"}}>+</span> para cadastrar</div>
-              </div>
-            )}
-            {team.players.map(p=>(
-              <PlayerCard key={p.id} player={p}
-                onEdit={()=>{setEditingPlayer(p);setShowForm(true);}}
-                onDelete={()=>deletePlayer(p.id)}/>
-            ))}
-          </div>
+          <PlayersTab
+            players={team.players}
+            onEdit={(p)=>{setEditingPlayer(p);setShowForm(true);}}
+            onDelete={deletePlayer}
+            teamColor={team.colorIdx}
+          />
         )}
       </div>
 
