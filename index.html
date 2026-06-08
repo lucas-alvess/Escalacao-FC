@@ -359,7 +359,7 @@ function TeamFormModal({initial,onSave,onClose}) {
           {/* Nome */}
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             <span style={LT}>Nome do Time</span>
-            <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: Corinthians, Real Madrid..." style={IS}
+            <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: Flamengo, Real Madrid..." style={IS}
               onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
           </div>
 
@@ -931,48 +931,18 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
   const canvasRef=useRef();
   const [generating,setGenerating]=useState(false);
   const [imgUrl,setImgUrl]=useState(null);
+  const [theme,setTheme]=useState("modern"); // "modern" | "clean"
   const drewRef=useRef(false);
-  const draw=async()=>{
-    if(!canvasRef.current)return;
-    setGenerating(true);
-    const canvas=canvasRef.current;
-    const W=540,H=960;
-    canvas.width=W;canvas.height=H;
-    const ctx=canvas.getContext("2d");
-    const bgGrad=ctx.createLinearGradient(0,0,0,H);
-    bgGrad.addColorStop(0,"#0a1a0a");bgGrad.addColorStop(1,"#080e14");
-    ctx.fillStyle=bgGrad;ctx.fillRect(0,0,W,H);
-    ctx.fillStyle="rgba(52,211,153,0.1)";
-    ctx.roundRect(14,14,W-28,72,12);ctx.fill();
-    ctx.strokeStyle="rgba(52,211,153,0.35)";ctx.lineWidth=1.5;
-    ctx.roundRect(14,14,W-28,72,12);ctx.stroke();
-    ctx.fillStyle="#ffffff";ctx.font="bold 28px sans-serif";
-    ctx.textAlign="left";ctx.fillText(teamName.toUpperCase(),68,52);
-    ctx.fillStyle="rgba(52,211,153,0.2)";
-    ctx.roundRect(W-110,28,96,42,8);ctx.fill();
-    ctx.strokeStyle="rgba(52,211,153,0.5)";ctx.lineWidth=1.2;
-    ctx.roundRect(W-110,28,96,42,8);ctx.stroke();
-    ctx.fillStyle="#34d399";ctx.font="bold 22px sans-serif";
-    ctx.textAlign="center";ctx.fillText(formation,W-62,56);
-    const FX=18,FY=96,FW=W-36,FH=FW/0.65;
 
-    // ── 1. Draw field (clipped to rounded rect) ──────────────────────────────
-    ctx.save();
-    ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,10);ctx.clip();
-    for(let i=0;i<8;i++){ctx.fillStyle=i%2===0?"#1c7a40":"#18703a";ctx.fillRect(FX,FY+i*(FH/8),FW,FH/8);}
-    ctx.strokeStyle="rgba(255,255,255,0.7)";ctx.lineWidth=1.5;ctx.strokeRect(FX+8,FY+8,FW-16,FH-16);
-    ctx.beginPath();ctx.moveTo(FX+8,FY+FH/2);ctx.lineTo(FX+FW-8,FY+FH/2);ctx.stroke();
-    ctx.beginPath();ctx.arc(FX+FW/2,FY+FH/2,FW*0.09,0,Math.PI*2);ctx.stroke();
-    ctx.restore();
-
-    // ── 2. Pre-load all player photos ────────────────────────────────────────
-    const imageCache={};
+  // ── Shared: pre-load images ──────────────────────────────────────────────
+  const loadImages=async()=>{
+    const cache={};
     const loadImg=(src)=>{
-      if(imageCache[src])return Promise.resolve(imageCache[src]);
+      if(cache[src])return Promise.resolve(cache[src]);
       return new Promise(resolve=>{
         const img=new Image();
-        img.onload=()=>{imageCache[src]=img;resolve(img);};
-        img.onerror=()=>{imageCache[src]=null;resolve(null);};
+        img.onload=()=>{cache[src]=img;resolve(img);};
+        img.onerror=()=>{cache[src]=null;resolve(null);};
         img.src=src;
       });
     };
@@ -981,87 +951,392 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
       const player=entry?players.find(p=>p.id===entry.playerId):null;
       if(player?.photo) await loadImg(player.photo);
     }));
-
-    // ── 3. Draw player circles ON TOP of field ───────────────────────────────
-    const SLOT_R=32;
-    for(const slot of slots){
-      const entry=lineup.find(l=>l.slotId===slot.id);
-      const player=entry?players.find(p=>p.id===entry.playerId):null;
-      const cx=FX+(slot.x/100)*FW;
-      const cy=FY+(slot.y/100)*FH;
-      const cachedImg=player?.photo?imageCache[player.photo]:null;
-
-      // Clip to circle, draw content, restore — NO dark fill before image
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(cx,cy,SLOT_R,0,Math.PI*2);
-      ctx.clip();
-
-      if(cachedImg){
-        // Fill white first so semi-transparent images look clean
-        ctx.fillStyle="#fff";
-        ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);
-        const iw=cachedImg.naturalWidth||cachedImg.width||1;
-        const ih=cachedImg.naturalHeight||cachedImg.height||1;
-        const scale=Math.max((SLOT_R*2)/iw,(SLOT_R*2)/ih);
-        const sw=iw*scale,sh=ih*scale;
-        ctx.drawImage(cachedImg,cx-(sw/2),cy-(sh/2),sw,sh);
-      } else if(player){
-        ctx.fillStyle=AVATAR_COLORS[(parseInt(player.number)||0)%AVATAR_COLORS.length];
-        ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);
-        ctx.fillStyle="#fff";
-        ctx.font=`bold ${SLOT_R*0.8}px sans-serif`;
-        ctx.textAlign="center";
-        ctx.textBaseline="middle";
-        ctx.fillText(player.number||"?",cx,cy);
-      } else {
-        ctx.fillStyle="rgba(0,0,0,0.35)";
-        ctx.fillRect(cx-SLOT_R,cy-SLOT_R,SLOT_R*2,SLOT_R*2);
-      }
-      ctx.restore();
-
-      // Border ring
-      ctx.beginPath();
-      ctx.arc(cx,cy,SLOT_R,0,Math.PI*2);
-      ctx.strokeStyle=player?"#34d399":"rgba(255,255,255,0.35)";
-      ctx.lineWidth=player?2.5:1.5;
-      ctx.stroke();
-
-      // Name / label tag below circle
-      ctx.textAlign="center";
-      ctx.textBaseline="top";
-      if(player){
-        const tag=player.name.split(" ")[0].toUpperCase();
-        ctx.font="bold 12px sans-serif";
-        const tw=ctx.measureText(tag).width;
-        ctx.fillStyle="rgba(0,0,0,0.85)";
-        ctx.beginPath();ctx.roundRect(cx-tw/2-6,cy+SLOT_R+3,tw+12,17,5);ctx.fill();
-        ctx.fillStyle="#fff";
-        ctx.fillText(tag,cx,cy+SLOT_R+5);
-      } else {
-        const lbl=slot.label;
-        ctx.font="bold 11px sans-serif";
-        const tw=ctx.measureText(lbl).width;
-        ctx.fillStyle="rgba(0,0,0,0.65)";
-        ctx.beginPath();ctx.roundRect(cx-tw/2-5,cy+SLOT_R+3,tw+10,16,4);ctx.fill();
-        ctx.fillStyle="rgba(255,255,255,0.75)";
-        ctx.fillText(lbl,cx,cy+SLOT_R+5);
-      }
-    }
-    const url=canvas.toDataURL("image/png");setImgUrl(url);setGenerating(false);
+    return cache;
   };
-  useEffect(()=>{if(!drewRef.current){drewRef.current=true;draw();}},[]);
-  const download=()=>{const a=document.createElement("a");a.href=imgUrl;a.download=`${teamName.replace(/\s+/g,"_")}_escalacao.png`;a.click();};
+
+  // ── Shared: draw one player avatar circle ────────────────────────────────
+  const drawPlayerCircle=(ctx,slot,imageCache,R,isModern)=>{
+    const entry=lineup.find(l=>l.slotId===slot.id);
+    const player=entry?players.find(p=>p.id===entry.playerId):null;
+    const FX=isModern?16:16, FY=isModern?104:90;
+    const FW=isModern?508:508, FH=FW/0.65;
+    const cx=FX+(slot.x/100)*FW;
+    const cy=FY+(slot.y/100)*FH;
+    const cachedImg=player?.photo?imageCache[player.photo]:null;
+
+    if(isModern){
+      // Outer glow halo
+      ctx.save();
+      const halo=ctx.createRadialGradient(cx,cy,R*0.8,cx,cy,R*1.9);
+      halo.addColorStop(0,player?"rgba(52,211,153,0.22)":"rgba(255,255,255,0.05)");
+      halo.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle=halo;
+      ctx.beginPath();ctx.arc(cx,cy,R*2,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+      // Glowing ring
+      ctx.save();
+      ctx.strokeStyle=player?"#34d399":"rgba(255,255,255,0.25)";
+      ctx.lineWidth=player?3:1.5;
+      ctx.shadowColor=player?"rgba(52,211,153,0.7)":"transparent";
+      ctx.shadowBlur=player?10:0;
+      ctx.beginPath();ctx.arc(cx,cy,R+2,0,Math.PI*2);ctx.stroke();
+      ctx.restore();
+    } else {
+      // Clean: subtle shadow behind circle
+      ctx.save();
+      ctx.shadowColor="rgba(0,0,0,0.25)";ctx.shadowBlur=10;ctx.shadowOffsetY=3;
+      ctx.fillStyle=player?AVATAR_COLORS[(parseInt(player?.number)||0)%AVATAR_COLORS.length]:"#d1d5db";
+      ctx.beginPath();ctx.arc(cx,cy,R+3,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+      // White border
+      ctx.save();
+      ctx.strokeStyle="#ffffff";ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(cx,cy,R+2,0,Math.PI*2);ctx.stroke();
+      ctx.restore();
+    }
+
+    // Avatar fill (clipped circle)
+    ctx.save();
+    ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.clip();
+    if(cachedImg){
+      ctx.fillStyle="#fff";ctx.fillRect(cx-R,cy-R,R*2,R*2);
+      const iw=cachedImg.naturalWidth||cachedImg.width||1;
+      const ih=cachedImg.naturalHeight||cachedImg.height||1;
+      const scale=Math.max((R*2)/iw,(R*2)/ih);
+      const sw=iw*scale,sh=ih*scale;
+      ctx.drawImage(cachedImg,cx-(sw/2),cy-(sh/2),sw,sh);
+    } else if(player){
+      const col=AVATAR_COLORS[(parseInt(player.number)||0)%AVATAR_COLORS.length];
+      ctx.fillStyle=col;ctx.fillRect(cx-R,cy-R,R*2,R*2);
+      if(isModern){
+        // Subtle gradient sheen
+        const sheen=ctx.createRadialGradient(cx-R*0.3,cy-R*0.3,R*0.05,cx,cy,R);
+        sheen.addColorStop(0,"rgba(255,255,255,0.22)");sheen.addColorStop(1,"rgba(0,0,0,0.15)");
+        ctx.fillStyle=sheen;ctx.fillRect(cx-R,cy-R,R*2,R*2);
+      }
+      ctx.fillStyle="#fff";
+      ctx.font=`bold ${R*0.75}px 'Bebas Neue',sans-serif`;
+      ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(player.number||"?",cx,cy+1);
+    } else {
+      ctx.fillStyle=isModern?"rgba(0,0,0,0.4)":"rgba(209,213,219,0.7)";
+      ctx.fillRect(cx-R,cy-R,R*2,R*2);
+      // Plus icon for empty slot
+      ctx.strokeStyle=isModern?"rgba(255,255,255,0.3)":"rgba(107,114,128,0.6)";
+      ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.moveTo(cx-6,cy);ctx.lineTo(cx+6,cy);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(cx,cy-6);ctx.lineTo(cx,cy+6);ctx.stroke();
+    }
+    ctx.restore();
+
+    // Name tag below
+    ctx.textAlign="center";ctx.textBaseline="top";
+    if(player){
+      const tag=player.name.split(" ")[0].toUpperCase();
+      ctx.font=`bold 13px 'Bebas Neue',sans-serif`;
+      const tw=ctx.measureText(tag).width;
+      if(isModern){
+        ctx.fillStyle="rgba(3,12,8,0.88)";
+        ctx.strokeStyle="rgba(52,211,153,0.35)";ctx.lineWidth=1;
+        ctx.beginPath();ctx.roundRect(cx-tw/2-8,cy+R+5,tw+16,20,6);ctx.fill();ctx.stroke();
+        ctx.fillStyle="#34d399";
+      } else {
+        ctx.fillStyle="rgba(26,47,36,0.88)";
+        ctx.beginPath();ctx.roundRect(cx-tw/2-7,cy+R+4,tw+14,20,5);ctx.fill();
+        ctx.fillStyle="#ffffff";
+      }
+      ctx.fillText(tag,cx,cy+R+7);
+    } else {
+      const lbl=slot.label;
+      ctx.font="bold 11px sans-serif";
+      const tw=ctx.measureText(lbl).width;
+      ctx.fillStyle=isModern?"rgba(0,0,0,0.6)":"rgba(0,0,0,0.25)";
+      ctx.beginPath();ctx.roundRect(cx-tw/2-5,cy+R+4,tw+10,17,4);ctx.fill();
+      ctx.fillStyle=isModern?"rgba(255,255,255,0.65)":"rgba(107,114,128,0.9)";
+      ctx.fillText(lbl,cx,cy+R+6);
+    }
+  };
+
+  // ── Theme A: Modern / Dark ───────────────────────────────────────────────
+  const drawModern=async(canvas,imageCache)=>{
+    const W=540,H=1000;
+    canvas.width=W;canvas.height=H;
+    const ctx=canvas.getContext("2d");
+
+    // Background
+    const bg=ctx.createLinearGradient(0,0,W,H);
+    bg.addColorStop(0,"#060e0a");bg.addColorStop(0.45,"#091509");bg.addColorStop(1,"#060c0f");
+    ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+
+    // Subtle radial field glow
+    const glow=ctx.createRadialGradient(W/2,H*0.52,0,W/2,H*0.52,W*0.58);
+    glow.addColorStop(0,"rgba(52,211,153,0.07)");glow.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
+
+    // Top accent bar (gradient line)
+    const topBar=ctx.createLinearGradient(0,0,W,0);
+    topBar.addColorStop(0,"transparent");topBar.addColorStop(0.2,"#34d399");
+    topBar.addColorStop(0.8,"#6ee7b7");topBar.addColorStop(1,"transparent");
+    ctx.fillStyle=topBar;ctx.fillRect(0,0,W,3);
+
+    // Header card
+    ctx.save();
+    ctx.fillStyle="rgba(255,255,255,0.035)";
+    ctx.strokeStyle="rgba(52,211,153,0.18)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(14,12,W-28,84,14);ctx.fill();ctx.stroke();
+    ctx.restore();
+
+    // Shield gradient blob
+    const sg=ctx.createLinearGradient(26,20,26+56,20+56);
+    sg.addColorStop(0,"#166534");sg.addColorStop(1,"#34d399");
+    ctx.fillStyle=sg;
+    ctx.beginPath();ctx.roundRect(26,20,56,56,11);ctx.fill();
+    ctx.fillStyle="#fff";ctx.font="28px serif";
+    ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("⚽",54,48);
+
+    // Team name
+    ctx.fillStyle="#ffffff";
+    ctx.font="bold 30px 'Bebas Neue',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="middle";
+    ctx.fillText(teamName.toUpperCase(),94,38);
+
+    // Sub info
+    const escalados=lineup.filter(l=>l.playerId).length;
+    ctx.fillStyle="#4B5563";
+    ctx.font="bold 11px 'DM Sans',sans-serif";
+    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,94,61);
+
+    // Formation pill
+    const fpg=ctx.createLinearGradient(W-122,26,W-18,26);
+    fpg.addColorStop(0,"rgba(52,211,153,0.22)");fpg.addColorStop(1,"rgba(52,211,153,0.08)");
+    ctx.fillStyle=fpg;
+    ctx.strokeStyle="rgba(52,211,153,0.55)";ctx.lineWidth=1.2;
+    ctx.beginPath();ctx.roundRect(W-122,26,102,46,11);ctx.fill();ctx.stroke();
+    ctx.fillStyle="#34d399";
+    ctx.font="bold 24px 'Bebas Neue',sans-serif";
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(formation,W-71,49);
+
+    // Field
+    const FX=16,FY=104,FW=W-32,FH=FW/0.65;
+    ctx.save();
+    ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,14);ctx.clip();
+    for(let i=0;i<8;i++){
+      ctx.fillStyle=i%2===0?"#1c7a40":"#18703a";
+      ctx.fillRect(FX,FY+i*(FH/8),FW,FH/8);
+    }
+    ctx.strokeStyle="rgba(255,255,255,0.65)";ctx.lineWidth=1.4;
+    ctx.strokeRect(FX+7,FY+7,FW-14,FH-14);
+    ctx.beginPath();ctx.moveTo(FX+7,FY+FH/2);ctx.lineTo(FX+FW-7,FY+FH/2);ctx.stroke();
+    ctx.beginPath();ctx.arc(FX+FW/2,FY+FH/2,FW*0.09,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.arc(FX+FW/2,FY+FH/2,0.9,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,0.8)";ctx.fill();
+    // Penalty areas
+    ctx.strokeStyle="rgba(255,255,255,0.55)";ctx.lineWidth=1;
+    ctx.strokeRect(FX+FW*0.22,FY+7,FW*0.56,FH*0.14);
+    ctx.strokeRect(FX+FW*0.22,FY+FH-7-FH*0.14,FW*0.56,FH*0.14);
+    ctx.restore();
+
+    // Field border glow
+    ctx.save();
+    ctx.strokeStyle="rgba(52,211,153,0.3)";ctx.lineWidth=2;
+    ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,14);ctx.stroke();
+    ctx.restore();
+
+    // Players — R=38
+    const R=38;
+    for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,true);
+
+    // Bottom stats bar
+    const BY=FY+FH+16;
+    ctx.fillStyle="rgba(255,255,255,0.035)";
+    ctx.strokeStyle="rgba(255,255,255,0.07)";ctx.lineWidth=1;
+    ctx.beginPath();ctx.roundRect(14,BY,W-28,60,12);ctx.fill();ctx.stroke();
+    const counts=[
+      {l:"Goleiro",v:slots.filter(s=>s.label==="GOL").length},
+      {l:"Defensores",v:slots.filter(s=>["ZAG","LE","LD"].includes(s.label)).length},
+      {l:"Meio-campo",v:slots.filter(s=>["MC","ME","MD","VOL","MAT"].includes(s.label)).length},
+      {l:"Atacantes",v:slots.filter(s=>["CA","PE","PD","MA"].includes(s.label)).length},
+    ];
+    counts.forEach((c,i)=>{
+      const sx=14+((W-28)/4)*(i+0.5);
+      ctx.fillStyle="#34d399";ctx.font="bold 24px 'Bebas Neue',sans-serif";
+      ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(String(c.v),sx,BY+9);
+      ctx.fillStyle="#6B7280";ctx.font="bold 9px 'DM Sans',sans-serif";
+      ctx.textBaseline="bottom";ctx.fillText(c.l.toUpperCase(),sx,BY+58);
+    });
+    // Dividers between stats
+    for(let i=1;i<4;i++){
+      const dx=14+((W-28)/4)*i;
+      ctx.strokeStyle="rgba(255,255,255,0.07)";ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(dx,BY+10);ctx.lineTo(dx,BY+50);ctx.stroke();
+    }
+
+    // Watermark
+    ctx.fillStyle="rgba(52,211,153,0.25)";ctx.font="bold 13px 'DM Sans',sans-serif";
+    ctx.textAlign="center";ctx.textBaseline="bottom";
+    ctx.fillText("⚽ ESCALAÇÃO FC",W/2,H-8);
+
+    return canvas.toDataURL("image/png");
+  };
+
+  // ── Theme B: Clean / Light ───────────────────────────────────────────────
+  const drawClean=async(canvas,imageCache)=>{
+    const W=540,H=940;
+    canvas.width=W;canvas.height=H;
+    const ctx=canvas.getContext("2d");
+
+    // White background with very subtle texture
+    ctx.fillStyle="#f5f7f5";ctx.fillRect(0,0,W,H);
+    // Faint diagonal pattern
+    ctx.save();ctx.strokeStyle="rgba(22,101,52,0.04)";ctx.lineWidth=1;
+    for(let i=-H;i<W+H;i+=18){ctx.beginPath();ctx.moveTo(i,0);ctx.lineTo(i+H,H);ctx.stroke();}
+    ctx.restore();
+
+    // Top solid accent bar
+    ctx.fillStyle="#166534";ctx.fillRect(0,0,W,5);
+
+    // Header row
+    ctx.fillStyle="#0f1f16";
+    ctx.font="bold 32px 'Bebas Neue',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="top";
+    ctx.fillText(teamName.toUpperCase(),20,16);
+
+    // Formation badge
+    ctx.fillStyle="#166534";
+    ctx.beginPath();ctx.roundRect(20,56,90,28,7);ctx.fill();
+    ctx.fillStyle="#fff";ctx.font="bold 18px 'Bebas Neue',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(formation,30,70);
+
+    // Player count
+    const escalados=lineup.filter(l=>l.playerId).length;
+    ctx.fillStyle="#6B7280";ctx.font="12px 'DM Sans',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="middle";
+    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,120,70);
+
+    // Thin separator
+    ctx.strokeStyle="#e5e7eb";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(16,92);ctx.lineTo(W-16,92);ctx.stroke();
+
+    // Field
+    const FX=16,FY=98,FW=W-32,FH=FW/0.65;
+    ctx.save();
+    ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,10);ctx.clip();
+    for(let i=0;i<8;i++){
+      ctx.fillStyle=i%2===0?"#1c7a40":"#18703a";
+      ctx.fillRect(FX,FY+i*(FH/8),FW,FH/8);
+    }
+    ctx.strokeStyle="rgba(255,255,255,0.7)";ctx.lineWidth=1.4;
+    ctx.strokeRect(FX+7,FY+7,FW-14,FH-14);
+    ctx.beginPath();ctx.moveTo(FX+7,FY+FH/2);ctx.lineTo(FX+FW-7,FY+FH/2);ctx.stroke();
+    ctx.beginPath();ctx.arc(FX+FW/2,FY+FH/2,FW*0.09,0,Math.PI*2);ctx.stroke();
+    ctx.strokeStyle="rgba(255,255,255,0.5)";ctx.lineWidth=1;
+    ctx.strokeRect(FX+FW*0.22,FY+7,FW*0.56,FH*0.14);
+    ctx.strokeRect(FX+FW*0.22,FY+FH-7-FH*0.14,FW*0.56,FH*0.14);
+    ctx.restore();
+
+    // Field border
+    ctx.save();ctx.strokeStyle="#166534";ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,10);ctx.stroke();
+    ctx.restore();
+
+    // Players — R=36
+    const R=36;
+    for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,false);
+
+    // Bottom list
+    const LY=FY+FH+16;
+    ctx.strokeStyle="#e5e7eb";ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(16,LY);ctx.lineTo(W-16,LY);ctx.stroke();
+
+    const posGroups=[
+      {label:"Goleiro",    filter:s=>s.label==="GOL"},
+      {label:"Defensores", filter:s=>["ZAG","LE","LD","LIB"].includes(s.label)},
+      {label:"Meio-campo", filter:s=>["MC","ME","MD","VOL","MAT","VOL"].includes(s.label)},
+      {label:"Atacantes",  filter:s=>["CA","PE","PD","MA","AT"].includes(s.label)},
+    ];
+    posGroups.forEach((g,i)=>{
+      const ry=LY+14+i*34;
+      // Position label
+      ctx.fillStyle="#166534";ctx.font="bold 13px 'DM Sans',sans-serif";
+      ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(g.label,20,ry);
+      // Player numbers in those slots
+      const nums=slots.filter(g.filter).map(s=>{
+        const e=lineup.find(l=>l.slotId===s.id);
+        const p=e?players.find(pl=>pl.id===e.playerId):null;
+        return p?`#${p.number}`:"–";
+      }).join("   ");
+      ctx.fillStyle="#6B7280";ctx.font="12px 'DM Sans',sans-serif";
+      ctx.textAlign="right";ctx.fillText(nums,W-20,ry);
+      if(i<3){
+        ctx.strokeStyle="#f0f0f0";ctx.lineWidth=0.5;
+        ctx.beginPath();ctx.moveTo(16,ry+20);ctx.lineTo(W-16,ry+20);ctx.stroke();
+      }
+    });
+
+    // Watermark
+    ctx.fillStyle="rgba(22,101,52,0.2)";ctx.font="11px 'DM Sans',sans-serif";
+    ctx.textAlign="center";ctx.textBaseline="bottom";
+    ctx.fillText("Escalação FC",W/2,H-8);
+
+    return canvas.toDataURL("image/png");
+  };
+
+  // ── Main draw dispatcher ─────────────────────────────────────────────────
+  const draw=async(selectedTheme)=>{
+    if(!canvasRef.current)return;
+    setGenerating(true);setImgUrl(null);
+    const imageCache=await loadImages();
+    const url=selectedTheme==="modern"
+      ?await drawModern(canvasRef.current,imageCache)
+      :await drawClean(canvasRef.current,imageCache);
+    setImgUrl(url);setGenerating(false);
+  };
+
+  useEffect(()=>{if(!drewRef.current){drewRef.current=true;draw(theme);}},[]);
+
+  const handleThemeChange=(t)=>{
+    setTheme(t);
+    drewRef.current=false;
+    draw(t);
+    drewRef.current=true;
+  };
+
+  const download=()=>{const a=document.createElement("a");a.href=imgUrl;a.download=`${teamName.replace(/\s+/g,"_")}_escalacao_${theme}.png`;a.click();};
   const share=async()=>{if(!imgUrl)return;try{const res=await fetch(imgUrl);const blob=await res.blob();const file=new File([blob],`escalacao.png`,{type:"image/png"});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:`Escalação ${teamName}`,text:`Formação ${formation}`});}else{download();}}catch(e){download();}};
+
   return (
     <div style={{position:"fixed",inset:0,zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.88)",backdropFilter:"blur(8px)",padding:"12px"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth:440,maxHeight:"92vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+
+        {/* Header */}
         <div style={{padding:"15px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>Exportar Escalação</span>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
         </div>
+
         <div style={{overflowY:"auto",padding:"14px 16px 20px",display:"flex",flexDirection:"column",gap:14,alignItems:"center"}}>
+
+          {/* Theme selector */}
+          <div style={{width:"100%",display:"flex",gap:8}}>
+            {[
+              {key:"modern",label:"🌙 Moderno",desc:"Fundo escuro"},
+              {key:"clean", label:"☀️ Simples", desc:"Fundo claro"},
+            ].map(opt=>(
+              <button key={opt.key} onClick={()=>handleThemeChange(opt.key)} style={{
+                flex:1,padding:"10px 8px",borderRadius:12,cursor:"pointer",transition:"all 0.18s",
+                border:theme===opt.key?"1.5px solid #34d399":"1px solid rgba(255,255,255,0.1)",
+                background:theme===opt.key?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
+                display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+              }}>
+                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,color:theme===opt.key?"#34d399":"#9CA3AF"}}>{opt.label}</span>
+                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,color:"#6B7280"}}>{opt.desc}</span>
+              </button>
+            ))}
+          </div>
+
           <canvas ref={canvasRef} style={{display:"none"}}/>
+
+          {/* Preview */}
           {generating?(
             <div style={{width:"100%",aspectRatio:"0.63",background:"rgba(255,255,255,0.03)",borderRadius:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:"1px solid rgba(255,255,255,0.08)"}}>
               <div style={{width:36,height:36,border:"3px solid #34d399",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
@@ -1072,6 +1347,8 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
               <img src={imgUrl} alt="Escalação" style={{width:"100%",display:"block"}}/>
             </div>
           ):null}
+
+          {/* Action buttons */}
           {imgUrl&&!generating&&(
             <div style={{display:"flex",flexDirection:"column",gap:9,width:"100%"}}>
               <button onClick={share} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"15px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:1.5,boxShadow:"0 6px 20px rgba(52,211,153,0.4)"}}>
