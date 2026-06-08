@@ -732,6 +732,20 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
   const [ghost,setGhost]=useState(null);
   const [highlight,setHighlight]=useState(null);
   const getFieldRect=()=>fieldRef.current?.getBoundingClientRect();
+
+  // Raio de detecção de slot em % do campo — slots têm ~8% de raio de toque
+  const SLOT_HIT_RADIUS = 8;
+
+  const getNearestSlot=useCallback((cx,cy)=>{
+    const rect=getFieldRect();if(!rect)return null;
+    const px=((cx-rect.left)/rect.width)*100;
+    const py=((cy-rect.top)/rect.height)*100;
+    let best=null,bestDist=SLOT_HIT_RADIUS;
+    for(const s of slots){const d=Math.hypot(s.x-px,s.y-py);if(d<bestDist){bestDist=d;best=s.id;}}
+    return best;
+  },[slots]);
+
+  // Versão mais ampla para detectar slot alvo durante drag (snap zone maior)
   const getSlotUnder=useCallback((cx,cy)=>{
     const rect=getFieldRect();if(!rect)return null;
     const px=((cx-rect.left)/rect.width)*100;
@@ -740,8 +754,15 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
     for(const s of slots){const d=Math.hypot(s.x-px,s.y-py);if(d<bestDist){bestDist=d;best=s.id;}}
     return best;
   },[slots]);
+
   const clientXY=e=>e.touches?{cx:e.touches[0].clientX,cy:e.touches[0].clientY}:{cx:e.clientX,cy:e.clientY};
-  const onPointerDown=(e,slotId)=>{const{cx,cy}=clientXY(e);dragState.current={slotId,startX:cx,startY:cy,curX:cx,curY:cy,isDragging:false};};
+
+  // onPointerDown chamado pelos slots individualmente
+  const onPointerDown=(e,slotId)=>{
+    const{cx,cy}=clientXY(e);
+    dragState.current={slotId,startX:cx,startY:cy,curX:cx,curY:cy,isDragging:false,isScroll:false};
+  };
+
   const onMouseMove=useCallback(e=>{
     if(!dragState.current)return;
     const{cx,cy}=clientXY(e);
@@ -754,6 +775,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
     setGhost({slotId:dragState.current.slotId,x:cx-rect.left,y:cy-rect.top,player});
     setHighlight(getSlotUnder(cx,cy));
   },[lineup,players,getSlotUnder]);
+
   const finishDrag=useCallback((cx,cy)=>{
     if(!dragState.current)return;
     const{slotId,isDragging}=dragState.current;
@@ -770,16 +792,54 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
       return next;
     });
   },[slots,getSlotUnder,onLineupChange,onSlotTap]);
+
   const onMouseUp=useCallback(e=>{const{cx,cy}=clientXY(e);finishDrag(cx,cy);},[finishDrag]);
+
   useEffect(()=>{
-    const tm=e=>{if(!dragState.current)return;e.preventDefault();onMouseMove(e);};
-    const tu=e=>{const t=e.changedTouches[0];finishDrag(t.clientX,t.clientY);};
-    window.addEventListener("mousemove",onMouseMove);window.addEventListener("mouseup",onMouseUp);
-    window.addEventListener("touchmove",tm,{passive:false});window.addEventListener("touchend",tu);
-    return()=>{window.removeEventListener("mousemove",onMouseMove);window.removeEventListener("mouseup",onMouseUp);window.removeEventListener("touchmove",tm);window.removeEventListener("touchend",tu);};
+    // touchmove: só bloqueia scroll nativo se estiver arrastando um jogador
+    const tm=e=>{
+      if(!dragState.current)return;
+      if(dragState.current.isScroll)return; // deixa o browser rolar
+      e.preventDefault(); // bloqueia scroll apenas durante drag de jogador
+      onMouseMove(e);
+    };
+    const tu=e=>{
+      if(!dragState.current)return;
+      if(dragState.current.isScroll){dragState.current=null;return;}
+      const t=e.changedTouches[0];
+      finishDrag(t.clientX,t.clientY);
+    };
+    window.addEventListener("mousemove",onMouseMove);
+    window.addEventListener("mouseup",onMouseUp);
+    window.addEventListener("touchmove",tm,{passive:false});
+    window.addEventListener("touchend",tu);
+    return()=>{
+      window.removeEventListener("mousemove",onMouseMove);
+      window.removeEventListener("mouseup",onMouseUp);
+      window.removeEventListener("touchmove",tm);
+      window.removeEventListener("touchend",tu);
+    };
   },[onMouseMove,onMouseUp,finishDrag]);
+
+  // Touch direto no campo (área vazia) — inicia scroll manual via scrollBy
+  const onFieldTouchStart=useCallback(e=>{
+    // Se o toque começou sobre um slot, o slot já chamou onPointerDown — ignorar aqui
+    if(dragState.current)return;
+    const{cx,cy}=clientXY(e);
+    // Verificar se está perto de algum slot; se sim, não interferir
+    if(getNearestSlot(cx,cy)!==null)return;
+    // Área vazia: preparar scroll nativo liberando touchAction
+    // Não precisa fazer nada — o campo tem touchAction:"pan-y" por padrão
+    // quando dragState é null, o touchmove não chama preventDefault
+  },[getNearestSlot]);
+
   return (
-    <div ref={fieldRef} style={{position:"relative",width:"100%",aspectRatio:"0.65",borderRadius:12,overflow:"hidden",userSelect:"none",touchAction:"none"}}>
+    <div ref={fieldRef}
+      onTouchStart={onFieldTouchStart}
+      style={{position:"relative",width:"100%",aspectRatio:"0.65",borderRadius:12,overflow:"hidden",userSelect:"none",
+        // pan-y permite scroll vertical quando não há drag ativo;
+        // os slots individuais chamam e.stopPropagation no touchstart para assumir o controle
+        touchAction:"pan-y"}}>
       <svg width="100%" height="100%" viewBox="0 0 100 154" preserveAspectRatio="none" style={{position:"absolute",inset:0,display:"block"}}>
         {[...Array(8)].map((_,i)=><rect key={i} x={0} y={i*19.25} width={100} height={9.625} fill={i%2===0?"#1c7a40":"#18703a"}/>)}
         <rect x="3" y="3" width="94" height="148" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.65"/>
@@ -803,8 +863,36 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
         const player=entry?players.find(p=>p.id===entry.playerId):null;
         const isHL=highlight===slot.id;
         const isDragged=ghost?.slotId===slot.id;
+        // Long-press de 180ms para iniciar drag; toque rápido = tap; scroll vertical livre enquanto não confirma drag
+        const handleSlotTouchStart=e=>{
+          const touch=e.touches[0];
+          const startX=touch.clientX,startY=touch.clientY;
+          let longPressTimer=null;
+          let moved=false;
+          const onMove=ev=>{
+            const t=ev.touches[0];
+            const dx=Math.abs(t.clientX-startX),dy=Math.abs(t.clientY-startY);
+            // Se moveu muito antes do long-press confirmar, é scroll — cancela
+            if(dx>8||dy>8){moved=true;clearTimeout(longPressTimer);cleanup();}
+          };
+          const onEnd=()=>{clearTimeout(longPressTimer);cleanup();};
+          const cleanup=()=>{
+            window.removeEventListener("touchmove",onMove);
+            window.removeEventListener("touchend",onEnd);
+          };
+          longPressTimer=setTimeout(()=>{
+            cleanup();
+            if(moved)return;
+            // Confirmar drag: registrar no dragState e bloquear scroll daqui em diante
+            onPointerDown(e,slot.id);
+          },180);
+          window.addEventListener("touchmove",onMove,{passive:true});
+          window.addEventListener("touchend",onEnd,{once:true});
+        };
         return (
-          <div key={slot.id} onMouseDown={e=>onPointerDown(e,slot.id)} onTouchStart={e=>onPointerDown(e,slot.id)}
+          <div key={slot.id}
+            onMouseDown={e=>onPointerDown(e,slot.id)}
+            onTouchStart={handleSlotTouchStart}
             style={{position:"absolute",left:`${slot.x}%`,top:`${slot.y}%`,transform:"translate(-50%,-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"grab",zIndex:10,padding:4,opacity:isDragged?0.25:1,transition:"opacity 0.12s"}}>
             {player?(
               <>
@@ -1154,7 +1242,7 @@ function TeamView({team,onUpdateTeam,onBack}) {
         {tab==="field"&&(
           <>
             <div style={{marginBottom:9,padding:"6px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#6B7280",textAlign:"center"}}>
-              💡 <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure e arraste</b> para mover
+              💡 <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar · <b style={{color:"#9CA3AF"}}>Deslize</b> para rolar
             </div>
             <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={handleSlotTap}/>
           </>
