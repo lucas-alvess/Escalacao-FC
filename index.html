@@ -217,17 +217,11 @@ const SHIELD_COLORS = [
   ["#be185d","#f472b6"],["#15803d","#4ade80"],
 ];
 
-// ─── Global unique ID counter (persists across re-renders) ───────────────────
-let _globalIdCounter = Date.now();
-function genUniqueId() {
-  _globalIdCounter++;
-  return _globalIdCounter;
-}
-
 // ─── Default team factory ─────────────────────────────────────────────────────
+let _uid = 1;
 function makeTeam(name="Novo Time", colorIdx=0) {
   return {
-    id: genUniqueId(),
+    id: Date.now() + (_uid++),
     name,
     colorIdx,
     shieldEmoji: "🛡️",
@@ -1053,6 +1047,13 @@ function TeamView({team,onUpdateTeam,onBack}) {
   const [showFList,setShowFList]=useState(false);
   const [toast,setToast]=useState(null);
   const [showEditTeam,setShowEditTeam]=useState(false);
+  const nextId=useRef(null);
+  const genId=()=>{
+    // Usa Date.now + incremento para garantir unicidade mesmo em saves rápidos
+    const base=Date.now();
+    if(!nextId.current||nextId.current<=base){nextId.current=base+1;}else{nextId.current++;}
+    return nextId.current;
+  };
   const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
 
   const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
@@ -1060,7 +1061,7 @@ function TeamView({team,onUpdateTeam,onBack}) {
   const upd=(patch)=>onUpdateTeam({...team,...patch});
 
   const savePlayer=(form)=>{
-    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...form,id:p.id}:p):[...team.players,{...form,id:genUniqueId()}];
+    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...form,id:p.id}:p):[...team.players,{...form,id:genId()}];
     upd({players});setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
   const deletePlayer=(id)=>upd({players:team.players.filter(p=>p.id!==id),lineup:team.lineup.filter(e=>e.playerId!==id)});
@@ -1292,11 +1293,10 @@ function App() {
   const [toast,setToast]=useState(null);
   const unsubSnapshotRef = useRef(null);
   const saveTimerRef = useRef(null);
-  // Contador de versão local: incrementa a cada mudança de estado.
-  // O snapshot do Firestore só substitui o estado local quando não há
-  // alterações pendentes (localVersion === savedVersion).
-  const localVersionRef = useRef(0);
-  const savedVersionRef = useRef(0);
+  // Controla se o carregamento inicial já foi feito.
+  // Após isso, o onSnapshot NÃO deve sobrescrever o estado local —
+  // ele só é útil para carregar dados na abertura do app.
+  const initialLoadDoneRef = useRef(false);
 
   // Wait for Firebase, then listen to auth state
   useEffect(()=>{
@@ -1307,38 +1307,28 @@ function App() {
         if (u) {
           setUser(u);
           setAuthState("loggedIn");
+          // Subscribe to Firestore apenas para carga inicial dos dados
           if (unsubSnapshotRef.current) unsubSnapshotRef.current();
+          initialLoadDoneRef.current = false;
           const ref = fb.doc(fb.db, "users", u.uid);
-          let isFirstSnapshot = true;
           unsubSnapshotRef.current = fb.onSnapshot(ref, (snap) => {
-            if (isFirstSnapshot) {
-              // Primeira leitura: carrega dados da nuvem sem restrição
-              isFirstSnapshot = false;
-              if (snap.exists()) {
-                const data = snap.data();
-                if (data.teams) {
-                  setTeams(data.teams);
-                  saveDataLocal({ teams: data.teams });
-                  savedVersionRef.current = localVersionRef.current;
-                }
-              }
-              setLoaded(true);
-              return;
-            }
-            // Snapshots subsequentes = confirmação de write do Firestore.
-            // Só aplica se não houver alterações locais mais novas pendentes.
-            if (localVersionRef.current === savedVersionRef.current) {
-              if (snap.exists()) {
-                const data = snap.data();
-                if (data.teams) {
-                  setTeams(data.teams);
-                  saveDataLocal({ teams: data.teams });
-                }
+            // Após a carga inicial, ignorar todos os snapshots subsequentes.
+            // O app é a fonte de verdade; o Firestore é apenas destino de escrita.
+            // Snapshots posteriores são o eco do que o próprio app salvou —
+            // deixá-los passar sobrescreveria o estado local com dados potencialmente defasados.
+            if (initialLoadDoneRef.current) return;
+            initialLoadDoneRef.current = true;
+            if (snap.exists()) {
+              const data = snap.data();
+              if (data.teams) {
+                setTeams(data.teams);
+                saveDataLocal({ teams: data.teams });
               }
             }
-            // localVersion > savedVersion: alterações locais pendentes, ignora snapshot.
+            setLoaded(true);
           }, (err) => {
             console.warn("Snapshot error:", err);
+            // Fallback to local
             const local = loadDataLocal();
             if (local?.teams) setTeams(local.teams);
             setLoaded(true);
@@ -1349,8 +1339,6 @@ function App() {
           setAuthState("loggedOut");
           setLoaded(false);
           setTeams([]);
-          localVersionRef.current = 0;
-          savedVersionRef.current = 0;
         }
       });
     };
@@ -1363,19 +1351,9 @@ function App() {
   useEffect(()=>{
     if (!loaded || !user) return;
     saveDataLocal({ teams });
-    localVersionRef.current += 1;
-    const versionAtChange = localVersionRef.current;
     clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(async () => {
-      try {
-        await saveTeamsCloud(user.uid, teams);
-        // Marca como salvo apenas se não houve nova alteração durante o debounce
-        if (localVersionRef.current === versionAtChange) {
-          savedVersionRef.current = versionAtChange;
-        }
-      } catch(e) {
-        console.warn("Cloud save failed:", e);
-      }
+    saveTimerRef.current = setTimeout(() => {
+      saveTeamsCloud(user.uid, teams);
     }, 800);
   },[teams, loaded, user]);
 
