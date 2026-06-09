@@ -39,8 +39,11 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-    import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp }
-      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import {
+      getFirestore, doc, setDoc, getDoc, deleteDoc,
+      collection, getDocs, writeBatch,
+      onSnapshot, query, orderBy, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
@@ -64,7 +67,9 @@
     window.__firebase = {
       auth, db, storage, provider,
       signInWithPopup, signOut, onAuthStateChanged,
-      doc, setDoc, onSnapshot, serverTimestamp,
+      doc, setDoc, getDoc, deleteDoc,
+      collection, getDocs, writeBatch,
+      onSnapshot, query, orderBy, serverTimestamp,
       storageRef, uploadBytes, getDownloadURL, deleteObject
     };
     window.dispatchEvent(new Event("firebase-ready"));
@@ -126,35 +131,146 @@ async function resolveImageUrl(uid, value, path) {
 }
 
 /**
- * Migrates all base64 images inside the teams array to Storage URLs.
- * Called inside saveTeamsCloud before persisting to Firestore.
- * @param {string} uid
- * @param {Array}  teams
- * @returns {Promise<Array>} New teams array with all photos as URLs
+ * Migrates base64 images inside a single team object to Storage URLs.
  */
-async function migrateBase64InTeams(uid, teams) {
-  return Promise.all(teams.map(async (team) => {
-    // Resolve team shield photo
-    const teamPhoto = await resolveImageUrl(uid, team.photo || "", `shields/team_${team.id}`);
-    // Resolve each player photo
-    const players = await Promise.all((team.players || []).map(async (p) => {
-      const photo = await resolveImageUrl(uid, p.photo || "", `players/player_${p.id}`);
-      return { ...p, photo };
-    }));
-    return { ...team, photo: teamPhoto, players };
+async function migrateBase64InTeam(uid, team) {
+  const teamPhoto = await resolveImageUrl(uid, team.photo || "", `shields/team_${team.id}`);
+  const players = await Promise.all((team.players || []).map(async (p) => {
+    const photo = await resolveImageUrl(uid, p.photo || "", `players/player_${p.id}`);
+    return { ...p, photo };
   }));
+  return { ...team, photo: teamPhoto, players };
 }
 
-// Save teams to Firestore for a given uid (migrates any base64 → Storage URL first)
-async function saveTeamsCloud(uid, teams) {
+// ─── New subcollection-based cloud persistence ────────────────────────────────
+// Structure: users/{uid}/teams/{teamId}
+// Metadata:  users/{uid}  → { schemaVersion: 2, updatedAt }
+
+const SCHEMA_VERSION = 2;
+
+/**
+ * Save (upsert) a single team document.
+ * Migrates any remaining base64 images to Storage first.
+ */
+async function saveTeamCloud(uid, team) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const resolved = await migrateBase64InTeam(uid, team);
+    const ref = fb.doc(fb.db, "users", uid, "teams", String(team.id));
+    await fb.setDoc(ref, { ...resolved, updatedAt: fb.serverTimestamp() });
+    return true;
+  } catch(e) { console.warn("saveTeamCloud error:", e); return false; }
+}
+
+/**
+ * Delete a single team document.
+ */
+async function deleteTeamCloud(uid, teamId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(fb.doc(fb.db, "users", uid, "teams", String(teamId)));
+    return true;
+  } catch(e) { console.warn("deleteTeamCloud error:", e); return false; }
+}
+
+/**
+ * Load all teams from the subcollection (v2 schema).
+ * Returns an array sorted by createdOrder (id ascending).
+ */
+async function loadTeamsCloud(uid) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams");
+    const snap = await fb.getDocs(col);
+    if (snap.empty) return [];
+    const teams = snap.docs.map(d => d.data());
+    // Sort by numeric id ascending to preserve creation order
+    teams.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    return teams;
+  } catch(e) { console.warn("loadTeamsCloud error:", e); return null; }
+}
+
+/**
+ * Read schema version from users/{uid}.
+ * Returns 1 (legacy) if doc doesn't exist or has no schemaVersion field.
+ */
+async function getSchemaVersion(uid) {
+  const fb = getFirebase(); if (!fb) return 1;
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, "users", uid));
+    if (!snap.exists()) return 1;
+    return snap.data().schemaVersion || 1;
+  } catch(e) { return 1; }
+}
+
+/**
+ * Mark schema version on users/{uid}.
+ */
+async function setSchemaVersion(uid, version) {
   const fb = getFirebase(); if (!fb) return;
   try {
-    // Migrate any remaining base64 images to Firebase Storage
-    const resolvedTeams = await migrateBase64InTeams(uid, teams);
-    const ref = fb.doc(fb.db, "users", uid);
-    await fb.setDoc(ref, { teams: resolvedTeams, updatedAt: fb.serverTimestamp() }, { merge: true });
-    return true;
-  } catch(e) { console.warn("Firestore save error:", e); return false; }
+    await fb.setDoc(fb.doc(fb.db, "users", uid),
+      { schemaVersion: version, migratedAt: fb.serverTimestamp() },
+      { merge: true });
+  } catch(e) { console.warn("setSchemaVersion error:", e); }
+}
+
+/**
+ * Migration: read legacy teams array from users/{uid}.teams,
+ * write each team as an individual document in the subcollection,
+ * then update schemaVersion to 2.
+ * Safe to call multiple times (idempotent via schemaVersion check).
+ */
+async function migrateLegacyToSubcollection(uid) {
+  const fb = getFirebase(); if (!fb) return [];
+  try {
+    const userSnap = await fb.getDoc(fb.doc(fb.db, "users", uid));
+    if (!userSnap.exists()) return [];
+    const data = userSnap.data();
+    const legacyTeams = data.teams || [];
+    if (legacyTeams.length === 0) return [];
+
+    // Write each team to subcollection individually
+    await Promise.all(legacyTeams.map(team =>
+      fb.setDoc(
+        fb.doc(fb.db, "users", uid, "teams", String(team.id)),
+        { ...team, updatedAt: fb.serverTimestamp() }
+      )
+    ));
+
+    // Update schema version (keep legacy field for safety, just in case)
+    await setSchemaVersion(uid, SCHEMA_VERSION);
+    console.log(`[Migration] Migrated ${legacyTeams.length} teams to subcollection for uid=${uid}`);
+    return legacyTeams;
+  } catch(e) {
+    console.warn("migrateLegacyToSubcollection error:", e);
+    return [];
+  }
+}
+
+/**
+ * Full init routine: check schema, migrate if needed, load all teams.
+ * Returns { teams: Array, migrated: boolean }
+ */
+async function initTeamsFromCloud(uid) {
+  const version = await getSchemaVersion(uid);
+  let migrated = false;
+  if (version < SCHEMA_VERSION) {
+    // Attempt migration from legacy single-doc format
+    await migrateLegacyToSubcollection(uid);
+    migrated = true;
+  }
+  const teams = await loadTeamsCloud(uid);
+  return { teams: teams || [], migrated };
+}
+
+// ─── Batch save (used for force-save of all teams at once) ────────────────────
+async function saveAllTeamsCloud(uid, teams) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const results = await Promise.all(teams.map(t => saveTeamCloud(uid, t)));
+    return results.every(Boolean);
+  } catch(e) { console.warn("saveAllTeamsCloud error:", e); return false; }
 }
 
 // Local fallback (used while offline / before auth)
@@ -2028,100 +2144,108 @@ function App() {
   const [authState, setAuthState] = useState("loading"); // "loading" | "loggedOut" | "loggedIn"
   const [user, setUser] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
-  const [loaded,setLoaded]=useState(false);
-  const [teams,setTeams]=useState([]);
-  const [activeTeamId,setActiveTeamId]=useState(null);
-  const [showNewTeam,setShowNewTeam]=useState(false);
-  const [editingTeam,setEditingTeam]=useState(null);
-  const [toast,setToast]=useState(null);
-  const unsubSnapshotRef = useRef(null);
-  const saveTimerRef = useRef(null);
-  // Controla se o carregamento inicial já foi feito.
-  // Após isso, o onSnapshot NÃO deve sobrescrever o estado local —
-  // ele só é útil para carregar dados na abertura do app.
-  const initialLoadDoneRef = useRef(false);
+  const [loaded, setLoaded] = useState(false);
+  const [migrating, setMigrating] = useState(false);
+  const [teams, setTeams] = useState([]);
+  const [activeTeamId, setActiveTeamId] = useState(null);
+  const [showNewTeam, setShowNewTeam] = useState(false);
+  const [editingTeam, setEditingTeam] = useState(null);
+  const [toast, setToast] = useState(null);
+  // Track which teamIds have pending saves to debounce individually
+  const saveTimersRef = useRef({}); // { [teamId]: timeoutId }
+  const unsubAuthRef = useRef(null);
 
-  // Wait for Firebase, then listen to auth state
-  useEffect(()=>{
+  // ── Auth listener + initial data load ──────────────────────────────────────
+  useEffect(() => {
     const setup = () => {
       const fb = getFirebase();
       if (!fb) return;
-      fb.onAuthStateChanged(fb.auth, async (u) => {
+      unsubAuthRef.current = fb.onAuthStateChanged(fb.auth, async (u) => {
         if (u) {
           setUser(u);
           setAuthState("loggedIn");
-          // Subscribe to Firestore apenas para carga inicial dos dados
-          if (unsubSnapshotRef.current) unsubSnapshotRef.current();
-          initialLoadDoneRef.current = false;
-          const ref = fb.doc(fb.db, "users", u.uid);
-          unsubSnapshotRef.current = fb.onSnapshot(ref, (snap) => {
-            // Após a carga inicial, ignorar todos os snapshots subsequentes.
-            // O app é a fonte de verdade; o Firestore é apenas destino de escrita.
-            // Snapshots posteriores são o eco do que o próprio app salvou —
-            // deixá-los passar sobrescreveria o estado local com dados potencialmente defasados.
-            if (initialLoadDoneRef.current) return;
-            initialLoadDoneRef.current = true;
-            if (snap.exists()) {
-              const data = snap.data();
-              if (data.teams) {
-                setTeams(data.teams);
-                saveDataLocal({ teams: data.teams });
+          setMigrating(true);
+          try {
+            const { teams: cloudTeams, migrated } = await initTeamsFromCloud(u.uid);
+            if (cloudTeams.length > 0) {
+              setTeams(cloudTeams);
+              saveDataLocal({ teams: cloudTeams });
+            } else {
+              // Fallback to localStorage if cloud is empty (first offline use)
+              const local = loadDataLocal();
+              if (local?.teams?.length > 0) {
+                setTeams(local.teams);
+                // Push local data up to cloud immediately
+                await Promise.all(local.teams.map(t => saveTeamCloud(u.uid, t)));
+                await setSchemaVersion(u.uid, SCHEMA_VERSION);
               }
             }
-            setLoaded(true);
-          }, (err) => {
-            console.warn("Snapshot error:", err);
-            // Fallback to local
+            if (migrated) {
+              setToast("✅ Dados migrados para a nova estrutura!");
+            }
+          } catch(e) {
+            console.warn("initTeamsFromCloud failed, using localStorage:", e);
             const local = loadDataLocal();
             if (local?.teams) setTeams(local.teams);
+          } finally {
+            setMigrating(false);
             setLoaded(true);
-          });
+          }
         } else {
-          if (unsubSnapshotRef.current) { unsubSnapshotRef.current(); unsubSnapshotRef.current = null; }
           setUser(null);
           setAuthState("loggedOut");
           setLoaded(false);
+          setMigrating(false);
           setTeams([]);
+          setActiveTeamId(null);
+          // Clear all pending save timers
+          Object.values(saveTimersRef.current).forEach(clearTimeout);
+          saveTimersRef.current = {};
         }
       });
     };
     if (window.__firebase) { setup(); }
     else { window.addEventListener("firebase-ready", setup, { once: true }); }
-    return () => { if (unsubSnapshotRef.current) unsubSnapshotRef.current(); };
+    return () => { if (unsubAuthRef.current) unsubAuthRef.current(); };
   }, []);
 
-  // Save immediately to localStorage; debounce cloud save
-  useEffect(()=>{
-    if (!loaded || !user) return;
+  // ── Persist to localStorage whenever teams change ──────────────────────────
+  useEffect(() => {
+    if (!loaded) return;
     saveDataLocal({ teams });
-    clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      saveTeamsCloud(user.uid, teams);
-    }, 500);
-  },[teams, loaded, user]);
+  }, [teams, loaded]);
 
-  // Save on page/tab close to avoid losing data
-  useEffect(()=>{
+  // ── Save a single team to cloud (debounced 600ms) ─────────────────────────
+  const scheduleSaveTeam = useCallback((team) => {
+    if (!user) return;
+    const key = String(team.id);
+    clearTimeout(saveTimersRef.current[key]);
+    saveTimersRef.current[key] = setTimeout(() => {
+      saveTeamCloud(user.uid, team);
+      delete saveTimersRef.current[key];
+    }, 600);
+  }, [user]);
+
+  // ── Save on tab close ──────────────────────────────────────────────────────
+  useEffect(() => {
     const handleUnload = () => {
       if (!loaded || !user) return;
       saveDataLocal({ teams });
-      // Best-effort sync save via sendBeacon isn't available for Firestore,
-      // so we at least persist locally and do a final async attempt
-      saveTeamsCloud(user.uid, teams);
+      teams.forEach(t => saveTeamCloud(user.uid, t));
     };
     window.addEventListener("beforeunload", handleUnload);
     return () => window.removeEventListener("beforeunload", handleUnload);
-  },[teams, loaded, user]);
+  }, [teams, loaded, user]);
 
-  // Exposed to TeamView: force immediate save to both stores
+  // ── Force-save (called from TeamView save button) ─────────────────────────
   const handleForceSave = useCallback(async () => {
     if (!user || !loaded) return false;
-    clearTimeout(saveTimerRef.current);
     saveDataLocal({ teams });
-    const ok = await saveTeamsCloud(user.uid, teams);
+    const ok = await saveAllTeamsCloud(user.uid, teams);
     return ok;
   }, [user, loaded, teams]);
 
+  // ── Auth helpers ───────────────────────────────────────────────────────────
   const handleLogin = async () => {
     const fb = getFirebase(); if (!fb) return;
     setLoginLoading(true);
@@ -2139,41 +2263,59 @@ function App() {
     setActiveTeamId(null);
   };
 
-  const createTeam=async(form)=>{
-    const t=makeTeam(form.name,form.colorIdx);
-    t.shieldEmoji=form.shieldEmoji||"🛡️";
-    // Resolve shield photo: upload base64 to Storage if needed
-    const fb=getFirebase();
-    const uid=fb?.auth?.currentUser?.uid;
-    t.photo=uid?await resolveImageUrl(uid,form.photo||"",`shields/team_${t.id}`):(form.photo||"");
-    setTeams(prev=>[...prev,t]);
+  // ── CRUD helpers ───────────────────────────────────────────────────────────
+  const createTeam = async (form) => {
+    const t = makeTeam(form.name, form.colorIdx);
+    t.shieldEmoji = form.shieldEmoji || "🛡️";
+    const fb = getFirebase();
+    const uid = fb?.auth?.currentUser?.uid;
+    t.photo = uid ? await resolveImageUrl(uid, form.photo || "", `shields/team_${t.id}`) : (form.photo || "");
+    setTeams(prev => [...prev, t]);
     setShowNewTeam(false);
     setActiveTeamId(t.id);
     setToast("Time criado!");
+    if (uid) saveTeamCloud(uid, t); // immediate save for new team
   };
 
-  const updateTeam=(updated)=>setTeams(prev=>prev.map(t=>t.id===updated.id?{...t,...updated}:t));
+  const updateTeam = useCallback((updated) => {
+    setTeams(prev => {
+      const next = prev.map(t => t.id === updated.id ? { ...t, ...updated } : t);
+      const fresh = next.find(t => t.id === updated.id);
+      if (fresh) scheduleSaveTeam(fresh);
+      return next;
+    });
+  }, [scheduleSaveTeam]);
 
-  const deleteTeam=(id)=>{
-    setTeams(prev=>prev.filter(t=>t.id!==id));
-    if(activeTeamId===id)setActiveTeamId(null);
+  const deleteTeam = async (id) => {
+    setTeams(prev => prev.filter(t => t.id !== id));
+    if (activeTeamId === id) setActiveTeamId(null);
     setToast("Time excluído");
+    const fb = getFirebase();
+    const uid = fb?.auth?.currentUser?.uid;
+    if (uid) {
+      clearTimeout(saveTimersRef.current[String(id)]);
+      delete saveTimersRef.current[String(id)];
+      await deleteTeamCloud(uid, id);
+    }
   };
 
-  const editTeam=async(form)=>{
-    const fb=getFirebase();
-    const uid=fb?.auth?.currentUser?.uid;
-    let resolved=form;
-    if(uid){
-      const photo=await resolveImageUrl(uid,form.photo||"",`shields/team_${editingTeam.id}`);
-      resolved={...form,photo};
+  const editTeam = async (form) => {
+    const fb = getFirebase();
+    const uid = fb?.auth?.currentUser?.uid;
+    let resolved = form;
+    if (uid) {
+      const photo = await resolveImageUrl(uid, form.photo || "", `shields/team_${editingTeam.id}`);
+      resolved = { ...form, photo };
     }
-    setTeams(prev=>prev.map(t=>t.id===editingTeam.id?{...t,...resolved}:t));
+    const updated = { ...editingTeam, ...resolved };
+    setTeams(prev => prev.map(t => t.id === editingTeam.id ? updated : t));
     setEditingTeam(null);
     setToast("Time atualizado!");
+    if (uid) saveTeamCloud(uid, updated);
   };
 
-  if(authState==="loading") return (
+  // ── Render ─────────────────────────────────────────────────────────────────
+  if (authState === "loading") return (
     <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
       <div style={{width:40,height:40,border:"3px solid rgba(52,211,153,0.3)",borderTopColor:"#34d399",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
       <span style={{color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:2}}>CARREGANDO...</span>
@@ -2181,22 +2323,29 @@ function App() {
     </div>
   );
 
-  if(authState==="loggedOut") return (
+  if (authState === "loggedOut") return (
     <>
       <LoginScreen onLogin={handleLogin} loading={loginLoading}/>
       <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
     </>
   );
 
-  if(!loaded) return (
+  if (!loaded) return (
     <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16}}>
       <div style={{width:40,height:40,border:"3px solid rgba(52,211,153,0.3)",borderTopColor:"#34d399",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-      <span style={{color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:2}}>SINCRONIZANDO...</span>
+      <span style={{color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:2}}>
+        {migrating ? "MIGRANDO DADOS..." : "SINCRONIZANDO..."}
+      </span>
+      {migrating && (
+        <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12,letterSpacing:1,maxWidth:260,textAlign:"center",lineHeight:1.6}}>
+          Atualizando para a nova estrutura de dados.<br/>Isso acontece apenas uma vez.
+        </span>
+      )}
       <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
     </div>
   );
 
-  const activeTeam=teams.find(t=>t.id===activeTeamId);
+  const activeTeam = teams.find(t => t.id === activeTeamId);
 
   return (
     <div style={{minHeight:"100vh",background:"#050c0a"}}>
@@ -2210,24 +2359,24 @@ function App() {
         @keyframes spin{to{transform:rotate(360deg);}}
       `}</style>
 
-      {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
+      {toast && <Toast msg={toast} onDone={() => setToast(null)}/>}
 
-      {activeTeam?(
-        <TeamView team={activeTeam} onUpdateTeam={updateTeam} onBack={()=>setActiveTeamId(null)} onForceSave={handleForceSave}/>
-      ):(
+      {activeTeam ? (
+        <TeamView team={activeTeam} onUpdateTeam={updateTeam} onBack={() => setActiveTeamId(null)} onForceSave={handleForceSave}/>
+      ) : (
         <HomePage
           teams={teams}
           user={user}
-          onSelectTeam={(t)=>setActiveTeamId(t.id)}
-          onNewTeam={()=>setShowNewTeam(true)}
+          onSelectTeam={(t) => setActiveTeamId(t.id)}
+          onNewTeam={() => setShowNewTeam(true)}
           onDeleteTeam={deleteTeam}
-          onEditTeam={(t)=>setEditingTeam(t)}
+          onEditTeam={(t) => setEditingTeam(t)}
           onLogout={handleLogout}
         />
       )}
 
-      {showNewTeam&&<TeamFormModal onSave={createTeam} onClose={()=>setShowNewTeam(false)}/>}
-      {editingTeam&&<TeamFormModal initial={editingTeam} onSave={editTeam} onClose={()=>setEditingTeam(null)}/>}
+      {showNewTeam && <TeamFormModal onSave={createTeam} onClose={() => setShowNewTeam(false)}/>}
+      {editingTeam && <TeamFormModal initial={editingTeam} onSave={editTeam} onClose={() => setEditingTeam(null)}/>}
     </div>
   );
 }
