@@ -42,7 +42,7 @@
     import {
       getFirestore, doc, setDoc, getDoc, deleteDoc,
       collection, getDocs, writeBatch,
-      onSnapshot, query, orderBy, serverTimestamp
+      onSnapshot, query, orderBy, serverTimestamp, limit
     } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
     import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
@@ -69,7 +69,7 @@
       signInWithPopup, signOut, onAuthStateChanged,
       doc, setDoc, getDoc, deleteDoc,
       collection, getDocs, writeBatch,
-      onSnapshot, query, orderBy, serverTimestamp,
+      onSnapshot, query, orderBy, serverTimestamp, limit,
       storageRef, uploadBytes, getDownloadURL, deleteObject
     };
     window.dispatchEvent(new Event("firebase-ready"));
@@ -132,50 +132,114 @@ async function resolveImageUrl(uid, value, path) {
 
 /**
  * Migrates base64 images inside a single team object to Storage URLs.
+ * Does NOT touch players array — players are handled separately in v3.
  */
 async function migrateBase64InTeam(uid, team) {
   const teamPhoto = await resolveImageUrl(uid, team.photo || "", `shields/team_${team.id}`);
-  const players = await Promise.all((team.players || []).map(async (p) => {
-    const photo = await resolveImageUrl(uid, p.photo || "", `players/player_${p.id}`);
-    return { ...p, photo };
-  }));
-  return { ...team, photo: teamPhoto, players };
+  return { ...team, photo: teamPhoto };
 }
 
-// ─── New subcollection-based cloud persistence ────────────────────────────────
-// Structure: users/{uid}/teams/{teamId}
-// Metadata:  users/{uid}  → { schemaVersion: 2, updatedAt }
+// ─── v3: players as subcollection ─────────────────────────────────────────────
+// Structure:
+//   users/{uid}                          → { schemaVersion: 3, ... }
+//   users/{uid}/teams/{teamId}           → team metadata (no players array)
+//   users/{uid}/teams/{teamId}/players/{playerId} → individual player docs
+//
+// Fields stored per player: id, name, number, position, foot, stars, photo, updatedAt
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
+
+// ── Player cloud CRUD ─────────────────────────────────────────────────────────
+
+/** Save (upsert) a single player document under a team. */
+async function savePlayerCloud(uid, teamId, player) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    // Resolve photo: upload base64 → Storage URL if needed
+    const photo = await resolveImageUrl(uid, player.photo || "", `players/player_${player.id}`);
+    const resolved = { ...player, photo };
+    const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "players", String(player.id));
+    await fb.setDoc(ref, { ...resolved, updatedAt: fb.serverTimestamp() });
+    return true;
+  } catch(e) { console.warn("savePlayerCloud error:", e); return false; }
+}
+
+/** Delete a single player document. */
+async function deletePlayerCloud(uid, teamId, playerId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(
+      fb.doc(fb.db, "users", uid, "teams", String(teamId), "players", String(playerId))
+    );
+    return true;
+  } catch(e) { console.warn("deletePlayerCloud error:", e); return false; }
+}
+
+/** Load all players for a team from the players subcollection. */
+async function loadPlayersCloud(uid, teamId) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "players");
+    const snap = await fb.getDocs(col);
+    if (snap.empty) return [];
+    const players = snap.docs.map(d => d.data());
+    players.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    return players;
+  } catch(e) { console.warn("loadPlayersCloud error:", e); return null; }
+}
+
+/** Delete all players in a team's subcollection (used when deleting a team). */
+async function deleteAllPlayersCloud(uid, teamId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "players");
+    const snap = await fb.getDocs(col);
+    if (snap.empty) return true;
+    // Firestore batch supports up to 500 ops; chunked for safety
+    const CHUNK = 400;
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += CHUNK) {
+      const batch = fb.writeBatch(fb.db);
+      docs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    return true;
+  } catch(e) { console.warn("deleteAllPlayersCloud error:", e); return false; }
+}
+
+// ── Team cloud CRUD (v3 — no players array in team doc) ───────────────────────
 
 /**
- * Save (upsert) a single team document.
- * Migrates any remaining base64 images to Storage first.
+ * Save (upsert) team metadata only (no players array).
+ * Migrates shield base64 → Storage URL.
  */
 async function saveTeamCloud(uid, team) {
   const fb = getFirebase(); if (!fb) return false;
   try {
     const resolved = await migrateBase64InTeam(uid, team);
+    // Strip players array — stored in subcollection
+    const { players: _p, ...teamMeta } = resolved;
     const ref = fb.doc(fb.db, "users", uid, "teams", String(team.id));
-    await fb.setDoc(ref, { ...resolved, updatedAt: fb.serverTimestamp() });
+    await fb.setDoc(ref, { ...teamMeta, updatedAt: fb.serverTimestamp() });
     return true;
   } catch(e) { console.warn("saveTeamCloud error:", e); return false; }
 }
 
 /**
- * Delete a single team document.
+ * Delete a team document AND all its player subcollection docs.
  */
 async function deleteTeamCloud(uid, teamId) {
   const fb = getFirebase(); if (!fb) return false;
   try {
+    await deleteAllPlayersCloud(uid, teamId);
     await fb.deleteDoc(fb.doc(fb.db, "users", uid, "teams", String(teamId)));
     return true;
   } catch(e) { console.warn("deleteTeamCloud error:", e); return false; }
 }
 
 /**
- * Load all teams from the subcollection (v2 schema).
- * Returns an array sorted by createdOrder (id ascending).
+ * Load all teams (metadata only) from the teams subcollection.
+ * Players are loaded separately and merged in.
  */
 async function loadTeamsCloud(uid) {
   const fb = getFirebase(); if (!fb) return null;
@@ -184,16 +248,19 @@ async function loadTeamsCloud(uid) {
     const snap = await fb.getDocs(col);
     if (snap.empty) return [];
     const teams = snap.docs.map(d => d.data());
-    // Sort by numeric id ascending to preserve creation order
     teams.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-    return teams;
+
+    // Load players for each team in parallel
+    const teamsWithPlayers = await Promise.all(teams.map(async team => {
+      const players = await loadPlayersCloud(uid, team.id);
+      return { ...team, players: players || [] };
+    }));
+    return teamsWithPlayers;
   } catch(e) { console.warn("loadTeamsCloud error:", e); return null; }
 }
 
-/**
- * Read schema version from users/{uid}.
- * Returns 1 (legacy) if doc doesn't exist or has no schemaVersion field.
- */
+// ── Schema versioning ─────────────────────────────────────────────────────────
+
 async function getSchemaVersion(uid) {
   const fb = getFirebase(); if (!fb) return 1;
   try {
@@ -203,9 +270,6 @@ async function getSchemaVersion(uid) {
   } catch(e) { return 1; }
 }
 
-/**
- * Mark schema version on users/{uid}.
- */
 async function setSchemaVersion(uid, version) {
   const fb = getFirebase(); if (!fb) return;
   try {
@@ -215,13 +279,14 @@ async function setSchemaVersion(uid, version) {
   } catch(e) { console.warn("setSchemaVersion error:", e); }
 }
 
+// ── Migrations ────────────────────────────────────────────────────────────────
+
 /**
- * Migration: read legacy teams array from users/{uid}.teams,
- * write each team as an individual document in the subcollection,
- * then update schemaVersion to 2.
- * Safe to call multiple times (idempotent via schemaVersion check).
+ * v1 → v2: Migrate legacy teams array from users/{uid}.teams
+ *          into individual team documents (users/{uid}/teams/{teamId}).
+ *          Players remain embedded in team docs at this stage.
  */
-async function migrateLegacyToSubcollection(uid) {
+async function migrateV1toV2(uid) {
   const fb = getFirebase(); if (!fb) return [];
   try {
     const userSnap = await fb.getDoc(fb.doc(fb.db, "users", uid));
@@ -229,46 +294,101 @@ async function migrateLegacyToSubcollection(uid) {
     const data = userSnap.data();
     const legacyTeams = data.teams || [];
     if (legacyTeams.length === 0) return [];
-
-    // Write each team to subcollection individually
     await Promise.all(legacyTeams.map(team =>
       fb.setDoc(
         fb.doc(fb.db, "users", uid, "teams", String(team.id)),
         { ...team, updatedAt: fb.serverTimestamp() }
       )
     ));
-
-    // Update schema version (keep legacy field for safety, just in case)
-    await setSchemaVersion(uid, SCHEMA_VERSION);
-    console.log(`[Migration] Migrated ${legacyTeams.length} teams to subcollection for uid=${uid}`);
+    console.log(`[v1→v2] Migrated ${legacyTeams.length} teams for uid=${uid}`);
     return legacyTeams;
-  } catch(e) {
-    console.warn("migrateLegacyToSubcollection error:", e);
-    return [];
-  }
+  } catch(e) { console.warn("migrateV1toV2 error:", e); return []; }
 }
 
 /**
- * Full init routine: check schema, migrate if needed, load all teams.
+ * v2 → v3: For each team doc that still has an embedded players array,
+ *          write each player as an individual document in the players subcollection,
+ *          then remove the players array from the team doc.
+ *          Idempotent: safe to call multiple times.
+ */
+async function migrateV2toV3(uid) {
+  const fb = getFirebase(); if (!fb) return;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams");
+    const snap = await fb.getDocs(col);
+    if (snap.empty) return;
+
+    await Promise.all(snap.docs.map(async teamDoc => {
+      const teamData = teamDoc.data();
+      const embeddedPlayers = teamData.players;
+      if (!Array.isArray(embeddedPlayers) || embeddedPlayers.length === 0) return;
+
+      // Write each player to subcollection
+      await Promise.all(embeddedPlayers.map(p =>
+        fb.setDoc(
+          fb.doc(fb.db, "users", uid, "teams", String(teamData.id), "players", String(p.id)),
+          { ...p, updatedAt: fb.serverTimestamp() }
+        )
+      ));
+
+      // Remove embedded players array from team doc (keep all other fields)
+      const { players: _p, ...teamMeta } = teamData;
+      await fb.setDoc(
+        fb.doc(fb.db, "users", uid, "teams", String(teamData.id)),
+        { ...teamMeta, updatedAt: fb.serverTimestamp() }
+      );
+      console.log(`[v2→v3] Migrated ${embeddedPlayers.length} players for team ${teamData.id}`);
+    }));
+  } catch(e) { console.warn("migrateV2toV3 error:", e); }
+}
+
+/**
+ * Full init routine: check schema, run any pending migrations, load all teams+players.
  * Returns { teams: Array, migrated: boolean }
  */
 async function initTeamsFromCloud(uid) {
   const version = await getSchemaVersion(uid);
   let migrated = false;
-  if (version < SCHEMA_VERSION) {
-    // Attempt migration from legacy single-doc format
-    await migrateLegacyToSubcollection(uid);
+
+  if (version < 2) {
+    await migrateV1toV2(uid);
     migrated = true;
   }
+  if (version < 3) {
+    await migrateV2toV3(uid);
+    await setSchemaVersion(uid, SCHEMA_VERSION);
+    migrated = true;
+  }
+
   const teams = await loadTeamsCloud(uid);
   return { teams: teams || [], migrated };
 }
 
-// ─── Batch save (used for force-save of all teams at once) ────────────────────
+// ── Batch save helpers ────────────────────────────────────────────────────────
+
+/**
+ * Save team metadata + all its players to cloud.
+ * Used for force-save and initial push from localStorage.
+ */
+async function saveTeamWithPlayersCloud(uid, team) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    // Save team metadata (no players array)
+    const teamOk = await saveTeamCloud(uid, team);
+    if (!teamOk) return false;
+    // Save each player individually
+    const results = await Promise.all(
+      (team.players || []).map(p => savePlayerCloud(uid, team.id, p))
+    );
+    return results.every(Boolean);
+  } catch(e) { console.warn("saveTeamWithPlayersCloud error:", e); return false; }
+}
+
+/** Force-save all teams and all their players. */
 async function saveAllTeamsCloud(uid, teams) {
   const fb = getFirebase(); if (!fb) return false;
   try {
-    const results = await Promise.all(teams.map(t => saveTeamCloud(uid, t)));
+    const results = await Promise.all(teams.map(t => saveTeamWithPlayersCloud(uid, t)));
     return results.every(Boolean);
   } catch(e) { console.warn("saveAllTeamsCloud error:", e); return false; }
 }
@@ -1847,7 +1967,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
 }
 
 // ─── Team Tactical View (existing app logic) ──────────────────────────────────
-function TeamView({team,onUpdateTeam,onBack,onForceSave}) {
+function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud}) {
   const [tab,setTab]=useState("field");
   const [editingName,setEditingName]=useState(false);
   const [showForm,setShowForm]=useState(false);
@@ -1880,10 +2000,25 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave}) {
       const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${playerId}`);
       resolvedForm={...form,photo};
     }
-    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...resolvedForm,id:p.id}:p):[...team.players,{...resolvedForm,id:genId()}];
-    upd({players});setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
+    let savedPlayer;
+    if(editingPlayer){
+      savedPlayer={...resolvedForm,id:editingPlayer.id};
+      const players=team.players.map(p=>p.id===editingPlayer.id?savedPlayer:p);
+      upd({players});
+    } else {
+      savedPlayer={...resolvedForm,id:genId()};
+      const players=[...team.players,savedPlayer];
+      upd({players});
+    }
+    // Save player to its own subcollection doc (debounced)
+    if(onSavePlayer) onSavePlayer(team.id, savedPlayer);
+    setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
-  const deletePlayer=(id)=>upd({players:team.players.filter(p=>p.id!==id),lineup:team.lineup.filter(e=>e.playerId!==id)});
+  const deletePlayer=(id)=>{
+    upd({players:team.players.filter(p=>p.id!==id),lineup:team.lineup.filter(e=>e.playerId!==id)});
+    // Remove player doc from subcollection
+    if(onDeletePlayerCloud) onDeletePlayerCloud(team.id, id);
+  };
   const handleFormationChange=(f)=>{
     const oldSlots=FORMATIONS[team.formation].slots;
     const newSlots=FORMATIONS[f].slots;
@@ -2175,8 +2310,8 @@ function App() {
               const local = loadDataLocal();
               if (local?.teams?.length > 0) {
                 setTeams(local.teams);
-                // Push local data up to cloud immediately
-                await Promise.all(local.teams.map(t => saveTeamCloud(u.uid, t)));
+                // Push local data up to cloud immediately (teams + players in subcollection)
+                await Promise.all(local.teams.map(t => saveTeamWithPlayersCloud(u.uid, t)));
                 await setSchemaVersion(u.uid, SCHEMA_VERSION);
               }
             }
@@ -2215,15 +2350,26 @@ function App() {
     saveDataLocal({ teams });
   }, [teams, loaded]);
 
-  // ── Save a single team to cloud (debounced 600ms) ─────────────────────────
+  // ── Save a single team metadata to cloud (debounced 600ms) ──────────────────
   const scheduleSaveTeam = useCallback((team) => {
     if (!user) return;
-    const key = String(team.id);
+    const key = `team_${team.id}`;
     clearTimeout(saveTimersRef.current[key]);
     saveTimersRef.current[key] = setTimeout(() => {
-      saveTeamCloud(user.uid, team);
+      saveTeamCloud(user.uid, team); // metadata only (no players array)
       delete saveTimersRef.current[key];
     }, 600);
+  }, [user]);
+
+  // ── Save a single player to cloud (debounced 800ms) ───────────────────────
+  const scheduleSavePlayer = useCallback((teamId, player) => {
+    if (!user) return;
+    const key = `player_${teamId}_${player.id}`;
+    clearTimeout(saveTimersRef.current[key]);
+    saveTimersRef.current[key] = setTimeout(() => {
+      savePlayerCloud(user.uid, teamId, player);
+      delete saveTimersRef.current[key];
+    }, 800);
   }, [user]);
 
   // ── Save on tab close ──────────────────────────────────────────────────────
@@ -2274,7 +2420,7 @@ function App() {
     setShowNewTeam(false);
     setActiveTeamId(t.id);
     setToast("Time criado!");
-    if (uid) saveTeamCloud(uid, t); // immediate save for new team
+    if (uid) saveTeamCloud(uid, t); // immediate save for new team (no players yet)
   };
 
   const updateTeam = useCallback((updated) => {
@@ -2293,9 +2439,14 @@ function App() {
     const fb = getFirebase();
     const uid = fb?.auth?.currentUser?.uid;
     if (uid) {
-      clearTimeout(saveTimersRef.current[String(id)]);
-      delete saveTimersRef.current[String(id)];
-      await deleteTeamCloud(uid, id);
+      // Cancel all pending saves for this team and its players
+      Object.keys(saveTimersRef.current).forEach(key => {
+        if (key === `team_${id}` || key.startsWith(`player_${id}_`)) {
+          clearTimeout(saveTimersRef.current[key]);
+          delete saveTimersRef.current[key];
+        }
+      });
+      await deleteTeamCloud(uid, id); // deletes team doc + all player subcollection docs
     }
   };
 
@@ -2338,7 +2489,7 @@ function App() {
       </span>
       {migrating && (
         <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12,letterSpacing:1,maxWidth:260,textAlign:"center",lineHeight:1.6}}>
-          Atualizando para a nova estrutura de dados.<br/>Isso acontece apenas uma vez.
+          Migrando jogadores para documentos independentes.<br/>Isso acontece apenas uma vez.
         </span>
       )}
       <style>{`@keyframes spin{to{transform:rotate(360deg);}}`}</style>
@@ -2362,7 +2513,22 @@ function App() {
       {toast && <Toast msg={toast} onDone={() => setToast(null)}/>}
 
       {activeTeam ? (
-        <TeamView team={activeTeam} onUpdateTeam={updateTeam} onBack={() => setActiveTeamId(null)} onForceSave={handleForceSave}/>
+        <TeamView
+          team={activeTeam}
+          onUpdateTeam={updateTeam}
+          onBack={() => setActiveTeamId(null)}
+          onForceSave={handleForceSave}
+          onSavePlayer={scheduleSavePlayer}
+          onDeletePlayerCloud={(teamId, playerId) => {
+            const uid = user?.uid;
+            if (uid) {
+              const key = `player_${teamId}_${playerId}`;
+              clearTimeout(saveTimersRef.current[key]);
+              delete saveTimersRef.current[key];
+              deletePlayerCloud(uid, teamId, playerId);
+            }
+          }}
+        />
       ) : (
         <HomePage
           teams={teams}
