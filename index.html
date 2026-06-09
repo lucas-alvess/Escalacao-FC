@@ -969,7 +969,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
 }
 
 // ─── Export Modal ─────────────────────────────────────────────────────────────
-function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
+function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
   const canvasRef=useRef();
   const [generating,setGenerating]=useState(false);
   const [imgUrl,setImgUrl]=useState(null);
@@ -1001,7 +1001,44 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
       const player=entry?players.find(p=>p.id===entry.playerId):null;
       if(player?.photo) await loadImg(player.photo);
     }));
+    // Also preload team shield photo if present
+    if(team?.photo) await loadImg(team.photo);
     return cache;
+  };
+
+  // ── Shared: draw team shield in header ───────────────────────────────────
+  const drawShieldInHeader=(ctx,imageCache,x,y,size,isModern)=>{
+    const [c1s,c2s]=SHIELD_COLORS[(team?.colorIdx||0)%SHIELD_COLORS.length];
+    const r=size*0.18;
+    const cachedShield=team?.photo?imageCache[team.photo]:null;
+    ctx.save();
+    ctx.beginPath();ctx.roundRect(x,y,size,size,r);ctx.clip();
+    if(cachedShield){
+      ctx.fillStyle="#fff";ctx.fillRect(x,y,size,size);
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+      const iw=cachedShield.naturalWidth||cachedShield.width||1;
+      const ih=cachedShield.naturalHeight||cachedShield.height||1;
+      const scale=Math.max(size/iw,size/ih);
+      const sw=iw*scale,sh=ih*scale;
+      ctx.drawImage(cachedShield,x+(size-sw)/2,y+(size-sh)/2,sw,sh);
+    } else {
+      const sg=ctx.createLinearGradient(x,y,x+size,y+size);
+      sg.addColorStop(0,c1s);sg.addColorStop(1,c2s);
+      ctx.fillStyle=sg;ctx.fillRect(x,y,size,size);
+      // Emoji shield
+      ctx.restore();ctx.save();
+      ctx.font=`${size*0.52}px serif`;
+      ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle="#fff";
+      ctx.fillText(team?.shieldEmoji||"🛡️",x+size/2,y+size/2+size*0.04);
+    }
+    ctx.restore();
+    // Border glow
+    ctx.save();
+    ctx.strokeStyle=isModern?"rgba(52,211,153,0.5)":"rgba(22,101,52,0.3)";
+    ctx.lineWidth=isModern?2:2.5;
+    if(isModern){ctx.shadowColor="rgba(52,211,153,0.4)";ctx.shadowBlur=8;}
+    ctx.beginPath();ctx.roundRect(x,y,size,size,r);ctx.stroke();
+    ctx.restore();
   };
 
   // ── Shared: draw one player avatar circle ────────────────────────────────
@@ -1147,13 +1184,8 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
     ctx.beginPath();ctx.roundRect(14,12,W-28,84,14);ctx.fill();ctx.stroke();
     ctx.restore();
 
-    // Shield gradient blob
-    const sg=ctx.createLinearGradient(26,20,26+56,20+56);
-    sg.addColorStop(0,"#166534");sg.addColorStop(1,"#34d399");
-    ctx.fillStyle=sg;
-    ctx.beginPath();ctx.roundRect(26,20,56,56,11);ctx.fill();
-    ctx.fillStyle="#fff";ctx.font="28px serif";
-    ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText("⚽",54,48);
+    // Shield — real team photo/emoji/color
+    drawShieldInHeader(ctx,imageCache,26,18,60,true);
 
     // Team name
     ctx.fillStyle="#ffffff";
@@ -1262,23 +1294,26 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
     // Top solid accent bar
     ctx.fillStyle="#166534";ctx.fillRect(0,0,W,5);
 
-    // Header row
+    // Shield — real team photo/emoji/color (left side, aligned with content)
+    drawShieldInHeader(ctx,imageCache,16,12,62,false);
+
+    // Header row — name and info offset to the right of the shield
     ctx.fillStyle="#0f1f16";
     ctx.font="bold 32px 'Bebas Neue',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="top";
-    ctx.fillText(teamName.toUpperCase(),20,16);
+    ctx.fillText(teamName.toUpperCase(),90,16);
 
     // Formation badge
     ctx.fillStyle="#166534";
-    ctx.beginPath();ctx.roundRect(20,56,90,28,7);ctx.fill();
+    ctx.beginPath();ctx.roundRect(90,56,90,28,7);ctx.fill();
     ctx.fillStyle="#fff";ctx.font="bold 18px 'Bebas Neue',sans-serif";
-    ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(formation,30,70);
+    ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(formation,100,70);
 
     // Player count
     const escalados=lineup.filter(l=>l.playerId).length;
     ctx.fillStyle="#6B7280";ctx.font="12px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="middle";
-    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,120,70);
+    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,190,70);
 
     // Thin separator
     ctx.strokeStyle="#e5e7eb";ctx.lineWidth=1;
@@ -1291,6 +1326,7 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
     for(let i=0;i<8;i++){
       ctx.fillStyle=i%2===0?"#1c7a40":"#18703a";
       ctx.fillRect(FX,FY+i*(FH/8),FW,FH/8);
+
     }
     ctx.strokeStyle="rgba(255,255,255,0.7)";ctx.lineWidth=1.4;
     ctx.strokeRect(FX+7,FY+7,FW-14,FH-14);
@@ -1766,7 +1802,7 @@ function TeamView({team,onUpdateTeam,onBack}) {
 
       {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)}/>}
-      {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} onClose={()=>setShowExport(false)}/>}
+      {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
       {showEditTeam&&<TeamFormModal initial={team} onSave={(f)=>{upd(f);setShowEditTeam(false);setToast("Time atualizado!");}} onClose={()=>setShowEditTeam(false)}/>}
     </div>
