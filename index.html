@@ -41,6 +41,8 @@
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
     import { getFirestore, doc, setDoc, onSnapshot, serverTimestamp }
       from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+    import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject }
+      from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyAMu4ViHLd0FnDb37RJcokY0ZRL9o5Y13s",
@@ -55,13 +57,15 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
+    const storage = getStorage(app);
     const provider = new GoogleAuthProvider();
 
     // Expose to global scope for Babel script
     window.__firebase = {
-      auth, db, provider,
+      auth, db, storage, provider,
       signInWithPopup, signOut, onAuthStateChanged,
-      doc, setDoc, onSnapshot, serverTimestamp
+      doc, setDoc, onSnapshot, serverTimestamp,
+      storageRef, uploadBytes, getDownloadURL, deleteObject
     };
     window.dispatchEvent(new Event("firebase-ready"));
   </script>
@@ -72,12 +76,83 @@
 let FB = null;
 function getFirebase() { return window.__firebase || null; }
 
-// Save teams to Firestore for a given uid
+// ─── Firebase Storage helpers ─────────────────────────────────────────────────
+
+/** Returns true if the string is a base64 data URL (e.g. "data:image/png;base64,...") */
+function isBase64Image(str) {
+  return typeof str === "string" && str.startsWith("data:");
+}
+
+/**
+ * Uploads a base64 data URL to Firebase Storage.
+ * @param {string} uid      - Authenticated user UID
+ * @param {string} base64   - data URL string (data:image/...;base64,...)
+ * @param {string} path     - Storage path, e.g. "players/uid_123" or "shields/uid_team1"
+ * @returns {Promise<string>} Public download URL
+ */
+async function uploadImageToStorage(uid, base64, path) {
+  const fb = getFirebase();
+  if (!fb) throw new Error("Firebase not ready");
+  // Convert base64 data URL → Blob
+  const res = await fetch(base64);
+  const blob = await res.blob();
+  const ext = blob.type.split("/")[1] || "jpg";
+  const fullPath = `users/${uid}/${path}.${ext}`;
+  const ref = fb.storageRef(fb.storage, fullPath);
+  await fb.uploadBytes(ref, blob);
+  const url = await fb.getDownloadURL(ref);
+  return url;
+}
+
+/**
+ * If `value` is already an https URL, returns it as-is.
+ * If it's a base64 data URL, uploads to Storage and returns the download URL.
+ * If empty/null, returns "".
+ * Guarantees backward-compat with legacy base64 data stored in Firestore.
+ * @param {string} uid   - Authenticated user UID
+ * @param {string} value - Either a URL, base64 data URL, or empty string
+ * @param {string} path  - Storage path used when uploading
+ * @returns {Promise<string>} Resolved URL or ""
+ */
+async function resolveImageUrl(uid, value, path) {
+  if (!value) return "";
+  if (!isBase64Image(value)) return value; // already a URL
+  try {
+    return await uploadImageToStorage(uid, value, path);
+  } catch (e) {
+    console.warn("resolveImageUrl upload failed, keeping base64:", e);
+    return value; // fallback: keep base64 so UI doesn't break
+  }
+}
+
+/**
+ * Migrates all base64 images inside the teams array to Storage URLs.
+ * Called inside saveTeamsCloud before persisting to Firestore.
+ * @param {string} uid
+ * @param {Array}  teams
+ * @returns {Promise<Array>} New teams array with all photos as URLs
+ */
+async function migrateBase64InTeams(uid, teams) {
+  return Promise.all(teams.map(async (team) => {
+    // Resolve team shield photo
+    const teamPhoto = await resolveImageUrl(uid, team.photo || "", `shields/team_${team.id}`);
+    // Resolve each player photo
+    const players = await Promise.all((team.players || []).map(async (p) => {
+      const photo = await resolveImageUrl(uid, p.photo || "", `players/player_${p.id}`);
+      return { ...p, photo };
+    }));
+    return { ...team, photo: teamPhoto, players };
+  }));
+}
+
+// Save teams to Firestore for a given uid (migrates any base64 → Storage URL first)
 async function saveTeamsCloud(uid, teams) {
   const fb = getFirebase(); if (!fb) return;
   try {
+    // Migrate any remaining base64 images to Firebase Storage
+    const resolvedTeams = await migrateBase64InTeams(uid, teams);
     const ref = fb.doc(fb.db, "users", uid);
-    await fb.setDoc(ref, { teams, updatedAt: fb.serverTimestamp() }, { merge: true });
+    await fb.setDoc(ref, { teams: resolvedTeams, updatedAt: fb.serverTimestamp() }, { merge: true });
     return true;
   } catch(e) { console.warn("Firestore save error:", e); return false; }
 }
@@ -1680,8 +1755,16 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave}) {
   // upd sempre usa o team atual da prop (TeamView recebe team atualizado do pai via setTeams)
   const upd=(patch)=>onUpdateTeam({...team,...patch});
 
-  const savePlayer=(form)=>{
-    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...form,id:p.id}:p):[...team.players,{...form,id:genId()}];
+  const savePlayer=async(form)=>{
+    const fb=getFirebase();
+    const uid=fb?.auth?.currentUser?.uid;
+    let resolvedForm=form;
+    if(uid){
+      const playerId=editingPlayer?editingPlayer.id:`tmp_${Date.now()}`;
+      const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${playerId}`);
+      resolvedForm={...form,photo};
+    }
+    const players=editingPlayer?team.players.map(p=>p.id===editingPlayer.id?{...resolvedForm,id:p.id}:p):[...team.players,{...resolvedForm,id:genId()}];
     upd({players});setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
   const deletePlayer=(id)=>upd({players:team.players.filter(p=>p.id!==id),lineup:team.lineup.filter(e=>e.playerId!==id)});
@@ -1846,7 +1929,16 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave}) {
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)}/>}
       {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
-      {showEditTeam&&<TeamFormModal initial={team} onSave={(f)=>{upd(f);setShowEditTeam(false);setToast("Time atualizado!");}} onClose={()=>setShowEditTeam(false)}/>}
+      {showEditTeam&&<TeamFormModal initial={team} onSave={async(f)=>{
+        const fb=getFirebase();
+        const uid=fb?.auth?.currentUser?.uid;
+        let resolved=f;
+        if(uid){
+          const photo=await resolveImageUrl(uid,f.photo||"",`shields/team_${team.id}`);
+          resolved={...f,photo};
+        }
+        upd(resolved);setShowEditTeam(false);setToast("Time atualizado!");
+      }} onClose={()=>setShowEditTeam(false)}/>}
     </div>
   );
 }
@@ -2047,10 +2139,13 @@ function App() {
     setActiveTeamId(null);
   };
 
-  const createTeam=(form)=>{
+  const createTeam=async(form)=>{
     const t=makeTeam(form.name,form.colorIdx);
     t.shieldEmoji=form.shieldEmoji||"🛡️";
-    t.photo=form.photo||"";
+    // Resolve shield photo: upload base64 to Storage if needed
+    const fb=getFirebase();
+    const uid=fb?.auth?.currentUser?.uid;
+    t.photo=uid?await resolveImageUrl(uid,form.photo||"",`shields/team_${t.id}`):(form.photo||"");
     setTeams(prev=>[...prev,t]);
     setShowNewTeam(false);
     setActiveTeamId(t.id);
@@ -2065,8 +2160,15 @@ function App() {
     setToast("Time excluído");
   };
 
-  const editTeam=(form)=>{
-    setTeams(prev=>prev.map(t=>t.id===editingTeam.id?{...t,...form}:t));
+  const editTeam=async(form)=>{
+    const fb=getFirebase();
+    const uid=fb?.auth?.currentUser?.uid;
+    let resolved=form;
+    if(uid){
+      const photo=await resolveImageUrl(uid,form.photo||"",`shields/team_${editingTeam.id}`);
+      resolved={...form,photo};
+    }
+    setTeams(prev=>prev.map(t=>t.id===editingTeam.id?{...t,...resolved}:t));
     setEditingTeam(null);
     setToast("Time atualizado!");
   };
