@@ -941,8 +941,16 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
       if(cache[src])return Promise.resolve(cache[src]);
       return new Promise(resolve=>{
         const img=new Image();
+        // Allow cross-origin data URIs (base64 photos) to draw without tainting the canvas
+        img.crossOrigin="anonymous";
         img.onload=()=>{cache[src]=img;resolve(img);};
-        img.onerror=()=>{cache[src]=null;resolve(null);};
+        img.onerror=()=>{
+          // Retry without crossOrigin for data URIs that reject the attribute
+          const img2=new Image();
+          img2.onload=()=>{cache[src]=img2;resolve(img2);};
+          img2.onerror=()=>{cache[src]=null;resolve(null);};
+          img2.src=src;
+        };
         img.src=src;
       });
     };
@@ -955,11 +963,12 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
   };
 
   // ── Shared: draw one player avatar circle ────────────────────────────────
-  const drawPlayerCircle=(ctx,slot,imageCache,R,isModern)=>{
+  // DPR=2 canvas: all coordinates passed in are LOGICAL (pre-scale) pixels.
+  // ctx has already been scaled by DPR before this is called.
+  const drawPlayerCircle=(ctx,slot,imageCache,R,isModern,FX,FY,FW)=>{
     const entry=lineup.find(l=>l.slotId===slot.id);
     const player=entry?players.find(p=>p.id===entry.playerId):null;
-    const FX=isModern?16:16, FY=isModern?104:90;
-    const FW=isModern?508:508, FH=FW/0.65;
+    const FH=FW/0.65;
     const cx=FX+(slot.x/100)*FW;
     const cy=FY+(slot.y/100)*FH;
     const cachedImg=player?.photo?imageCache[player.photo]:null;
@@ -1000,8 +1009,12 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
     ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.clip();
     if(cachedImg){
       ctx.fillStyle="#fff";ctx.fillRect(cx-R,cy-R,R*2,R*2);
+      // High-quality image rendering — critical for sharp player photos
+      ctx.imageSmoothingEnabled=true;
+      ctx.imageSmoothingQuality="high";
       const iw=cachedImg.naturalWidth||cachedImg.width||1;
       const ih=cachedImg.naturalHeight||cachedImg.height||1;
+      // Cover crop: scale so the shortest side fills the circle diameter
       const scale=Math.max((R*2)/iw,(R*2)/ih);
       const sw=iw*scale,sh=ih*scale;
       ctx.drawImage(cachedImg,cx-(sw/2),cy-(sh/2),sw,sh);
@@ -1060,8 +1073,14 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
   // ── Theme A: Modern / Dark ───────────────────────────────────────────────
   const drawModern=async(canvas,imageCache)=>{
     const W=540,H=1000;
-    canvas.width=W;canvas.height=H;
+    // Render at 2× for crisp output on all screens (retina-quality export)
+    const DPR=2;
+    canvas.width=W*DPR;canvas.height=H*DPR;
+    canvas.style.width=W+"px";canvas.style.height=H+"px";
     const ctx=canvas.getContext("2d");
+    ctx.scale(DPR,DPR);
+    ctx.imageSmoothingEnabled=true;
+    ctx.imageSmoothingQuality="high";
 
     // Background
     const bg=ctx.createLinearGradient(0,0,W,H);
@@ -1142,9 +1161,9 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
     ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,14);ctx.stroke();
     ctx.restore();
 
-    // Players — R=38
+    // Players — R=38 (logical pixels; ctx is pre-scaled by DPR)
     const R=38;
-    for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,true);
+    for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,true,FX,FY,FW);
 
     // Bottom stats bar
     const BY=FY+FH+16;
@@ -1182,8 +1201,14 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
   // ── Theme B: Clean / Light ───────────────────────────────────────────────
   const drawClean=async(canvas,imageCache)=>{
     const W=540,H=940;
-    canvas.width=W;canvas.height=H;
+    // Render at 2× for crisp output on all screens (retina-quality export)
+    const DPR=2;
+    canvas.width=W*DPR;canvas.height=H*DPR;
+    canvas.style.width=W+"px";canvas.style.height=H+"px";
     const ctx=canvas.getContext("2d");
+    ctx.scale(DPR,DPR);
+    ctx.imageSmoothingEnabled=true;
+    ctx.imageSmoothingQuality="high";
 
     // White background with very subtle texture
     ctx.fillStyle="#f5f7f5";ctx.fillRect(0,0,W,H);
@@ -1239,9 +1264,9 @@ function ExportModal({slots,lineup,players,teamName,formation,onClose}) {
     ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,10);ctx.stroke();
     ctx.restore();
 
-    // Players — R=36
+    // Players — R=36 (logical pixels; ctx is pre-scaled by DPR)
     const R=36;
-    for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,false);
+    for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,false,FX,FY,FW);
 
     // Bottom list
     const LY=FY+FH+16;
