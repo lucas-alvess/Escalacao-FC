@@ -2448,26 +2448,23 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const savePlayer=async(form)=>{
     const fb=getFirebase();
     const uid=fb?.auth?.currentUser?.uid;
-    let resolvedForm=form;
+    const isEditing=editingPlayer;
+    const newId=isEditing?isEditing.id:genId();
+    let resolvedForm={...form};
     if(uid){
-      const playerId=editingPlayer?editingPlayer.id:`tmp_${Date.now()}`;
       try{
-        const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${playerId}`);
+        const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${newId}`);
         resolvedForm={...form,photo};
       }catch(e){
         console.warn("resolveImageUrl failed, using original:",e);
       }
     }
-    const isEditing=editingPlayer;
-    const savedPlayer={...resolvedForm,id:isEditing?isEditing.id:genId()};
-    // Use functional updater to avoid stale closure
-    onUpdateTeam(prev=>{
-      const curPlayers=prev.players||[];
-      const players=isEditing
-        ?curPlayers.map(p=>p.id===isEditing.id?savedPlayer:p)
-        :[...curPlayers,savedPlayer];
-      return{...prev,players};
-    });
+    const savedPlayer={...resolvedForm,id:newId};
+    const curPlayers=team.players||[];
+    const updatedPlayers=isEditing
+      ?curPlayers.map(p=>p.id===isEditing.id?savedPlayer:p)
+      :[...curPlayers,savedPlayer];
+    upd({players:updatedPlayers});
     if(onSavePlayer) onSavePlayer(team.id, savedPlayer);
     setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
