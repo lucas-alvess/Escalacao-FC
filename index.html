@@ -136,7 +136,7 @@ const _memCache = {
   }
 };
 
-// ─── Firebase Storage helpers ─────────────────────────────────────────────────
+// ─── Image helpers ────────────────────────────────────────────────────────────
 
 /** Returns true if the string is a base64 data URL (e.g. "data:image/png;base64,...") */
 function isBase64Image(str) {
@@ -144,57 +144,27 @@ function isBase64Image(str) {
 }
 
 /**
- * Uploads a base64 data URL to Firebase Storage.
- * @param {string} uid      - Authenticated user UID
- * @param {string} base64   - data URL string (data:image/...;base64,...)
- * @param {string} path     - Storage path, e.g. "players/uid_123" or "shields/uid_team1"
- * @returns {Promise<string>} Public download URL
- */
-async function uploadImageToStorage(uid, base64, path) {
-  const fb = getFirebase();
-  if (!fb) throw new Error("Firebase not ready");
-  // Convert base64 data URL → Blob using atob (avoids fetch() Content-Security-Policy issues with data: URLs)
-  const [header, data] = base64.split(",");
-  const mimeMatch = header.match(/:(.*?);/);
-  const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
-  const blob = new Blob([bytes], { type: mime });
-  const ext = mime.split("/")[1] || "jpg";
-  const fullPath = `users/${uid}/${path}.${ext}`;
-  const ref = fb.storageRef(fb.storage, fullPath);
-  await fb.uploadBytes(ref, blob);
-  const url = await fb.getDownloadURL(ref);
-  return url;
-}
-
-/**
- * If `value` is already an https URL, returns it as-is.
- * If it's a base64 data URL, uploads to Storage and returns the download URL.
- * If empty/null, returns "".
- * Guarantees backward-compat with legacy base64 data stored in Firestore.
- * @param {string} uid   - Authenticated user UID
- * @param {string} value - Either a URL, base64 data URL, or empty string
- * @param {string} path  - Storage path used when uploading
- * @returns {Promise<string>} Resolved URL or ""
+ * Prepares an image value for Firestore storage.
+ * - https URL  → returned as-is (legacy compat with old Storage URLs).
+ * - base64     → compressed to ≤200×200px / 65% JPEG (~8-15 KB) and returned as base64.
+ *               Stored directly in the Firestore document — no Firebase Storage needed.
+ *               This avoids CORS issues, Storage security-rule setup, and upload failures.
+ * - empty/null → returns "".
  */
 async function resolveImageUrl(uid, value, path) {
   if (!value) return "";
-  if (!isBase64Image(value)) return value; // already a URL
+  if (!isBase64Image(value)) return value; // already an https URL
   try {
-    // Compress before uploading — reduces Storage cost and upload time
-    const compressed = await compressImage(value, 300, 0.75);
-    return await uploadImageToStorage(uid, compressed, path);
+    return await compressImage(value, 200, 0.65);
   } catch (e) {
-    console.warn("resolveImageUrl upload failed, keeping base64:", e);
-    return value; // fallback: keep base64 so UI doesn't break
+    console.warn("resolveImageUrl compress failed, using original:", e);
+    return value;
   }
 }
 
 /**
- * Migrates base64 images inside a single team object to Storage URLs.
- * Does NOT touch players array — players are handled separately in v3.
+ * Ensures team photo is compressed before saving to Firestore.
+ * (resolveImageUrl now stores base64 directly — no Storage upload.)
  */
 async function migrateBase64InTeam(uid, team) {
   const teamPhoto = await resolveImageUrl(uid, team.photo || "", `shields/team_${team.id}`);
@@ -217,17 +187,15 @@ const SCHEMA_VERSION = 4;
 async function savePlayerCloud(uid, teamId, player) {
   const fb = getFirebase(); if (!fb) return false;
   try {
-    // Resolve photo: compress + upload base64 → Storage URL if needed
-    const photo = await resolveImageUrl(uid, player.photo || "", `players/player_${player.id}`);
-    const resolved = { ...player, photo };
+    // Photo is already resolved (compressed base64) by the time it reaches here
     const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "players", String(player.id));
-    await fb.setDoc(ref, { ...resolved, updatedAt: fb.serverTimestamp() });
+    await fb.setDoc(ref, { ...player, updatedAt: fb.serverTimestamp() });
     // Update cache entry in-place instead of invalidating (avoids next full re-read)
     const cacheKey = `${uid}_${teamId}`;
     if (_memCache.players.has(cacheKey)) {
       const cached = _memCache.players.get(cacheKey);
       const idx = cached.findIndex(p => String(p.id) === String(player.id));
-      if (idx >= 0) cached[idx] = resolved; else cached.push(resolved);
+      if (idx >= 0) cached[idx] = player; else cached.push(player);
     }
     return true;
   } catch(e) { console.warn("savePlayerCloud error:", e); return false; }
@@ -1180,7 +1148,8 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
-    try{ await onSave(form); }catch(e){ console.error("PlayerFormModal save error:",e); setSaving(false); }
+    try{ await onSave(form); }catch(e){ console.error("PlayerFormModal save error:",e); }
+    setSaving(false);
   };
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.82)",backdropFilter:"blur(6px)",padding:"12px"}}>
