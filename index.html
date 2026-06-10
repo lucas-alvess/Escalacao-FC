@@ -81,6 +81,61 @@
 let FB = null;
 function getFirebase() { return window.__firebase || null; }
 
+// ─── Image Compression ───────────────────────────────────────────────────────
+/**
+ * Compresses a base64 data URL to ~300×300px at 75% JPEG quality.
+ * Falls back to original if Canvas API is unavailable.
+ * @param {string} dataUrl  - Original data URL (any format)
+ * @param {number} maxDim   - Max width/height in pixels (default 300)
+ * @param {number} quality  - JPEG quality 0-1 (default 0.75)
+ * @returns {Promise<string>} Compressed JPEG data URL
+ */
+function compressImage(dataUrl, maxDim = 300, quality = 0.75) {
+  return new Promise((resolve) => {
+    if (!dataUrl || !dataUrl.startsWith("data:")) { resolve(dataUrl); return; }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const { naturalWidth: w, naturalHeight: h } = img;
+        const scale = Math.min(1, maxDim / Math.max(w, h));
+        const nw = Math.round(w * scale);
+        const nh = Math.round(h * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = nw; canvas.height = nh;
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, nw, nh);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      } catch (e) { resolve(dataUrl); }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+// ─── In-memory cache ─────────────────────────────────────────────────────────
+// Avoids redundant Firestore reads within the same session.
+// Structure: { teams: Map<uid, teamMeta[]>, players: Map<uid_teamId, player[]>, lineups: Map<uid_teamId, lineup[]> }
+const _memCache = {
+  teams: new Map(),      // uid → team[] (metadata only)
+  players: new Map(),    // `${uid}_${teamId}` → player[]
+  lineups: new Map(),    // `${uid}_${teamId}` → lineup[]
+  invalidateTeam(uid, teamId) {
+    const key = `${uid}_${teamId}`;
+    this.players.delete(key);
+    this.lineups.delete(key);
+    // Invalidate team list so next full load picks up changes
+    this.teams.delete(uid);
+  },
+  invalidateAll(uid) {
+    this.teams.delete(uid);
+    // Remove all player/lineup keys for this uid
+    for (const k of [...this.players.keys()]) { if (k.startsWith(uid + "_")) this.players.delete(k); }
+    for (const k of [...this.lineups.keys()]) { if (k.startsWith(uid + "_")) this.lineups.delete(k); }
+  }
+};
+
 // ─── Firebase Storage helpers ─────────────────────────────────────────────────
 
 /** Returns true if the string is a base64 data URL (e.g. "data:image/png;base64,...") */
@@ -123,7 +178,9 @@ async function resolveImageUrl(uid, value, path) {
   if (!value) return "";
   if (!isBase64Image(value)) return value; // already a URL
   try {
-    return await uploadImageToStorage(uid, value, path);
+    // Compress before uploading — reduces Storage cost and upload time
+    const compressed = await compressImage(value, 300, 0.75);
+    return await uploadImageToStorage(uid, compressed, path);
   } catch (e) {
     console.warn("resolveImageUrl upload failed, keeping base64:", e);
     return value; // fallback: keep base64 so UI doesn't break
@@ -155,35 +212,50 @@ const SCHEMA_VERSION = 4;
 async function savePlayerCloud(uid, teamId, player) {
   const fb = getFirebase(); if (!fb) return false;
   try {
-    // Resolve photo: upload base64 → Storage URL if needed
+    // Resolve photo: compress + upload base64 → Storage URL if needed
     const photo = await resolveImageUrl(uid, player.photo || "", `players/player_${player.id}`);
     const resolved = { ...player, photo };
     const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "players", String(player.id));
     await fb.setDoc(ref, { ...resolved, updatedAt: fb.serverTimestamp() });
+    // Update cache entry in-place instead of invalidating (avoids next full re-read)
+    const cacheKey = `${uid}_${teamId}`;
+    if (_memCache.players.has(cacheKey)) {
+      const cached = _memCache.players.get(cacheKey);
+      const idx = cached.findIndex(p => String(p.id) === String(player.id));
+      if (idx >= 0) cached[idx] = resolved; else cached.push(resolved);
+    }
     return true;
   } catch(e) { console.warn("savePlayerCloud error:", e); return false; }
 }
 
-/** Delete a single player document. */
+/** Delete a single player document and update cache. */
 async function deletePlayerCloud(uid, teamId, playerId) {
   const fb = getFirebase(); if (!fb) return false;
   try {
     await fb.deleteDoc(
       fb.doc(fb.db, "users", uid, "teams", String(teamId), "players", String(playerId))
     );
+    // Remove from cache without full re-read
+    const cacheKey = `${uid}_${teamId}`;
+    if (_memCache.players.has(cacheKey)) {
+      const updated = _memCache.players.get(cacheKey).filter(p => String(p.id) !== String(playerId));
+      _memCache.players.set(cacheKey, updated);
+    }
     return true;
   } catch(e) { console.warn("deletePlayerCloud error:", e); return false; }
 }
 
-/** Load all players for a team from the players subcollection. */
-async function loadPlayersCloud(uid, teamId) {
+/** Load all players for a team from the players subcollection (cached). */
+async function loadPlayersCloud(uid, teamId, { force = false } = {}) {
+  const cacheKey = `${uid}_${teamId}`;
+  if (!force && _memCache.players.has(cacheKey)) return _memCache.players.get(cacheKey);
   const fb = getFirebase(); if (!fb) return null;
   try {
     const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "players");
     const snap = await fb.getDocs(col);
-    if (snap.empty) return [];
-    const players = snap.docs.map(d => d.data());
+    const players = snap.empty ? [] : snap.docs.map(d => d.data());
     players.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    _memCache.players.set(cacheKey, players);
     return players;
   } catch(e) { console.warn("loadPlayersCloud error:", e); return null; }
 }
@@ -217,10 +289,15 @@ async function saveTeamCloud(uid, team) {
   const fb = getFirebase(); if (!fb) return false;
   try {
     const resolved = await migrateBase64InTeam(uid, team);
-    // Strip subcollection fields — stored separately
     const { players: _p, lineup: _l, lineups: _ls, ...teamMeta } = resolved;
     const ref = fb.doc(fb.db, "users", uid, "teams", String(team.id));
     await fb.setDoc(ref, { ...teamMeta, updatedAt: fb.serverTimestamp() });
+    // Update teams metadata cache in-place
+    if (_memCache.teams.has(uid)) {
+      const cached = _memCache.teams.get(uid);
+      const idx = cached.findIndex(t => String(t.id) === String(team.id));
+      if (idx >= 0) cached[idx] = { ...cached[idx], ...teamMeta }; else cached.push(teamMeta);
+    }
     return true;
   } catch(e) { console.warn("saveTeamCloud error:", e); return false; }
 }
@@ -236,42 +313,58 @@ async function deleteTeamCloud(uid, teamId) {
       deleteAllLineupsCloud(uid, teamId),
     ]);
     await fb.deleteDoc(fb.doc(fb.db, "users", uid, "teams", String(teamId)));
+    _memCache.invalidateTeam(uid, teamId);
+    _memCache.teams.delete(uid); // force team list refresh
     return true;
   } catch(e) { console.warn("deleteTeamCloud error:", e); return false; }
 }
 
 /**
- * Load all teams (metadata only) from the teams subcollection.
- * Players and lineups are loaded separately and merged in.
+ * Load all teams metadata from the teams subcollection.
+ * By default uses cache; pass force=true to bypass.
+ * Players/lineups are NOT loaded here — use loadTeamFull() for that.
  */
-async function loadTeamsCloud(uid) {
+async function loadTeamsCloud(uid, { force = false } = {}) {
+  if (!force && _memCache.teams.has(uid)) return _memCache.teams.get(uid);
   const fb = getFirebase(); if (!fb) return null;
   try {
     const col = fb.collection(fb.db, "users", uid, "teams");
     const snap = await fb.getDocs(col);
-    if (snap.empty) return [];
+    if (snap.empty) { _memCache.teams.set(uid, []); return []; }
     const teams = snap.docs.map(d => d.data());
     teams.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-
-    // Load players AND lineups for each team in parallel
-    const teamsWithData = await Promise.all(teams.map(async team => {
-      const [players, lineups] = await Promise.all([
-        loadPlayersCloud(uid, team.id),
-        loadLineupsCloud(uid, team.id),
-      ]);
-      // Derive active lineup for backward-compat fields (formation, lineup)
-      const activeLineup = getActiveLineup(team, lineups || []);
-      return {
-        ...team,
-        players: players || [],
-        lineups: lineups || [],
-        // backward-compat: expose active lineup fields at team level
-        formation: activeLineup?.formation || team.formation || "4-4-2",
-        lineup: activeLineup?.entries || [],
-      };
-    }));
-    return teamsWithData;
+    _memCache.teams.set(uid, teams);
+    return teams;
   } catch(e) { console.warn("loadTeamsCloud error:", e); return null; }
+}
+
+/**
+ * Load a single team fully (metadata + players + lineups).
+ * This is the lazy-load entry point called when a team is opened.
+ */
+async function loadTeamFull(uid, teamMeta, { force = false } = {}) {
+  const [players, lineups] = await Promise.all([
+    loadPlayersCloud(uid, teamMeta.id, { force }),
+    loadLineupsCloud(uid, teamMeta.id, { force }),
+  ]);
+  const activeLineup = getActiveLineup(teamMeta, lineups || []);
+  return {
+    ...teamMeta,
+    players: players || [],
+    lineups: lineups || [],
+    formation: activeLineup?.formation || teamMeta.formation || "4-4-2",
+    lineup: activeLineup?.entries || [],
+  };
+}
+
+/**
+ * Full init: loads ALL teams with players+lineups (used after migrations and first login).
+ * Subsequent navigations use loadTeamFull() per team instead.
+ */
+async function loadAllTeamsFull(uid) {
+  const teams = await loadTeamsCloud(uid, { force: true });
+  if (!teams) return null;
+  return Promise.all(teams.map(t => loadTeamFull(uid, t, { force: false })));
 }
 
 
@@ -305,35 +398,50 @@ function getActiveLineup(team, lineups) {
   return lineups.find(l => l.isActive) || lineups[0];
 }
 
-/** Save (upsert) a single lineup document under a team. */
+/** Save (upsert) a single lineup document under a team; updates cache. */
 async function saveLineupCloud(uid, teamId, lineup) {
   const fb = getFirebase(); if (!fb) return false;
   try {
     const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "lineups", String(lineup.id));
     await fb.setDoc(ref, { ...lineup, updatedAt: fb.serverTimestamp() });
+    // Update in-place in lineup cache
+    const cacheKey = `${uid}_${teamId}`;
+    if (_memCache.lineups.has(cacheKey)) {
+      const cached = _memCache.lineups.get(cacheKey);
+      const idx = cached.findIndex(l => String(l.id) === String(lineup.id));
+      if (idx >= 0) cached[idx] = lineup; else cached.push(lineup);
+    }
     return true;
   } catch(e) { console.warn("saveLineupCloud error:", e); return false; }
 }
 
-/** Delete a single lineup document. */
+/** Delete a single lineup document and update cache. */
 async function deleteLineupCloud(uid, teamId, lineupId) {
   const fb = getFirebase(); if (!fb) return false;
   try {
     await fb.deleteDoc(
       fb.doc(fb.db, "users", uid, "teams", String(teamId), "lineups", String(lineupId))
     );
+    const cacheKey = `${uid}_${teamId}`;
+    if (_memCache.lineups.has(cacheKey)) {
+      const updated = _memCache.lineups.get(cacheKey).filter(l => String(l.id) !== String(lineupId));
+      _memCache.lineups.set(cacheKey, updated);
+    }
     return true;
   } catch(e) { console.warn("deleteLineupCloud error:", e); return false; }
 }
 
-/** Load all lineups for a team from the lineups subcollection. */
-async function loadLineupsCloud(uid, teamId) {
+/** Load all lineups for a team from the lineups subcollection (cached). */
+async function loadLineupsCloud(uid, teamId, { force = false } = {}) {
+  const cacheKey = `${uid}_${teamId}`;
+  if (!force && _memCache.lineups.has(cacheKey)) return _memCache.lineups.get(cacheKey);
   const fb = getFirebase(); if (!fb) return null;
   try {
     const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "lineups");
     const snap = await fb.getDocs(col);
-    if (snap.empty) return [];
-    return snap.docs.map(d => d.data());
+    const lineups = snap.empty ? [] : snap.docs.map(d => d.data());
+    _memCache.lineups.set(cacheKey, lineups);
+    return lineups;
   } catch(e) { console.warn("loadLineupsCloud error:", e); return null; }
 }
 
@@ -510,7 +618,7 @@ async function initTeamsFromCloud(uid) {
     migrated = true;
   }
 
-  const teams = await loadTeamsCloud(uid);
+  const teams = await loadAllTeamsFull(uid);
   return { teams: teams || [], migrated };
 }
 
@@ -769,7 +877,16 @@ function PlayerAvatar({player,size=44,style:ex={}}) {
 
 function PhotoPicker({photo,onChange}) {
   const gRef=useRef(), cRef=useRef();
-  const handle=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onChange(ev.target.result);r.readAsDataURL(f);};
+  const handle=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=async ev=>{
+      // Compress immediately on pick so previews and local storage are lean
+      const compressed=await compressImage(ev.target.result,300,0.75);
+      onChange(compressed);
+    };
+    r.readAsDataURL(f);
+  };
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
       <div style={{width:84,height:84,borderRadius:16,overflow:"hidden",border:"2px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1986,16 +2103,21 @@ const SORT_OPTIONS = [
   { key: "stars",    label: "Nível",   icon: "⭐" },
 ];
 
+const PLAYERS_PAGE_SIZE = 20;
+
 function PlayersTab({ players, onEdit, onDelete, teamColor }) {
   const [search, setSearch]     = useState("");
   const [sortBy, setSortBy]     = useState("name");
   const [sortAsc, setSortAsc]   = useState(true);
   const [filterPos, setFilterPos] = useState("Todas");
+  const [page, setPage]         = useState(1);
   const [c1, c2] = SHIELD_COLORS[teamColor % SHIELD_COLORS.length];
+  // Reset to page 1 whenever filter/sort changes
+  useEffect(() => { setPage(1); }, [search, sortBy, sortAsc, filterPos]);
 
   const allPositions = ["Todas", ...Array.from(new Set(players.map(p => p.position)))];
 
-  const filtered = players
+  const allFiltered = players
     .filter(p => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || String(p.number).includes(search);
       const matchPos    = filterPos === "Todas" || p.position === filterPos;
@@ -2011,6 +2133,9 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
       if (va > vb) return sortAsc ? 1 : -1;
       return 0;
     });
+  const totalPages = Math.ceil(allFiltered.length / PLAYERS_PAGE_SIZE);
+  const filtered = allFiltered.slice(0, page * PLAYERS_PAGE_SIZE);
+  const hasMore = filtered.length < allFiltered.length;
 
   const toggleSort = (key) => {
     if (sortBy === key) setSortAsc(a => !a);
@@ -2094,9 +2219,10 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
       {/* Results count */}
       {players.length > 0 && (
         <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:"#4B5563", paddingLeft:2 }}>
-          {filtered.length === players.length
+          {allFiltered.length === players.length
             ? `${players.length} jogador${players.length !== 1 ? "es" : ""}`
-            : `${filtered.length} de ${players.length} jogadores`}
+            : `${allFiltered.length} de ${players.length} jogadores`}
+          {hasMore && <span style={{color:"#34d399",marginLeft:6}}>· mostrando {filtered.length}</span>}
         </div>
       )}
 
@@ -2123,6 +2249,21 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
           onDelete={() => onDelete(p.id)}
         />
       ))}
+
+      {/* Load more button */}
+      {hasMore && (
+        <button onClick={() => setPage(p => p + 1)} style={{
+          width:"100%", padding:"12px 0", borderRadius:12,
+          border:"1px solid rgba(52,211,153,0.3)",
+          background:"rgba(52,211,153,0.06)", color:"#34d399",
+          cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontSize:13, fontWeight:700,
+          transition:"all 0.18s"
+        }}
+          onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.14)";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.06)";}}>
+          Carregar mais ({allFiltered.length - filtered.length} restantes)
+        </button>
+      )}
     </div>
   );
 }
@@ -2730,6 +2871,8 @@ function App() {
           // Clear all pending save timers
           Object.values(saveTimersRef.current).forEach(clearTimeout);
           saveTimersRef.current = {};
+          // Wipe memory cache to prevent data leaking between accounts
+          _memCache.invalidateAll(user?.uid || "");
         }
       });
     };
@@ -2952,7 +3095,20 @@ function App() {
         <HomePage
           teams={teams}
           user={user}
-          onSelectTeam={(t) => setActiveTeamId(t.id)}
+          onSelectTeam={async (t) => {
+            // Lazy-load players + lineups if not yet in memory
+            const fb = getFirebase();
+            const uid = fb?.auth?.currentUser?.uid;
+            if (uid) {
+              const cacheKey = `${uid}_${t.id}`;
+              const needsLoad = !_memCache.players.has(cacheKey) || !_memCache.lineups.has(cacheKey);
+              if (needsLoad) {
+                const full = await loadTeamFull(uid, t);
+                setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
+              }
+            }
+            setActiveTeamId(t.id);
+          }}
           onNewTeam={() => setShowNewTeam(true)}
           onDeleteTeam={deleteTeam}
           onEditTeam={(t) => setEditingTeam(t)}
