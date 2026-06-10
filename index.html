@@ -171,11 +171,34 @@ function compareIds(a, b) {
 
 // ─── In-memory cache ─────────────────────────────────────────────────────────
 // Avoids redundant Firestore reads within the same session.
-// Structure: { teams: Map<uid, teamMeta[]>, players: Map<uid_teamId, player[]>, lineups: Map<uid_teamId, lineup[]> }
+// Structure: { teams: Map<uid, {value, ts}>, players: Map<uid_teamId, {value, ts}>, lineups: Map<uid_teamId, {value, ts}> }
+// Each entry carries a timestamp (ts) and expires after CACHE_TTL_MS — this
+// prevents unbounded memory growth in long-lived sessions (e.g. an app left
+// open for hours while browsing many teams). Expired entries are simply
+// re-fetched from Firestore on next access, same as a cache miss.
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
 const _memCache = {
-  teams: new Map(),      // uid → team[] (metadata only)
-  players: new Map(),    // `${uid}_${teamId}` → player[]
-  lineups: new Map(),    // `${uid}_${teamId}` → lineup[]
+  teams: new Map(),      // uid → {value: team[], ts}
+  players: new Map(),    // `${uid}_${teamId}` → {value: player[], ts}
+  lineups: new Map(),    // `${uid}_${teamId}` → {value: lineup[], ts}
+
+  _fresh(map, key) {
+    const entry = map.get(key);
+    if (!entry) return undefined;
+    if (Date.now() - entry.ts >= CACHE_TTL_MS) { map.delete(key); return undefined; }
+    return entry;
+  },
+  has(map, key) {
+    return this._fresh(map, key) !== undefined;
+  },
+  get(map, key) {
+    const entry = this._fresh(map, key);
+    return entry ? entry.value : undefined;
+  },
+  set(map, key, value) {
+    map.set(key, { value, ts: Date.now() });
+  },
   invalidateTeam(uid, teamId) {
     const key = `${uid}_${teamId}`;
     this.players.delete(key);
@@ -188,6 +211,15 @@ const _memCache = {
     // Remove all player/lineup keys for this uid
     for (const k of [...this.players.keys()]) { if (k.startsWith(uid + "_")) this.players.delete(k); }
     for (const k of [...this.lineups.keys()]) { if (k.startsWith(uid + "_")) this.lineups.delete(k); }
+  },
+  /** Removes all expired entries across every map. Call periodically (e.g. every few minutes). */
+  purgeExpired() {
+    const now = Date.now();
+    for (const map of [this.teams, this.players, this.lineups]) {
+      for (const [k, entry] of map) {
+        if (now - entry.ts >= CACHE_TTL_MS) map.delete(k);
+      }
+    }
   }
 };
 
@@ -247,10 +279,11 @@ async function savePlayerCloud(uid, teamId, player) {
     await fb.setDoc(ref, { ...player, updatedAt: fb.serverTimestamp() });
     // Update cache entry in-place instead of invalidating (avoids next full re-read)
     const cacheKey = `${uid}_${teamId}`;
-    if (_memCache.players.has(cacheKey)) {
-      const cached = _memCache.players.get(cacheKey);
+    const cached = _memCache.get(_memCache.players, cacheKey);
+    if (cached) {
       const idx = cached.findIndex(p => String(p.id) === String(player.id));
       if (idx >= 0) cached[idx] = player; else cached.push(player);
+      _memCache.set(_memCache.players, cacheKey, cached); // refresh TTL
     }
     return true;
   } catch(e) { console.warn("savePlayerCloud error:", e); return false; }
@@ -265,9 +298,9 @@ async function deletePlayerCloud(uid, teamId, playerId) {
     );
     // Remove from cache without full re-read
     const cacheKey = `${uid}_${teamId}`;
-    if (_memCache.players.has(cacheKey)) {
-      const updated = _memCache.players.get(cacheKey).filter(p => String(p.id) !== String(playerId));
-      _memCache.players.set(cacheKey, updated);
+    const cached = _memCache.get(_memCache.players, cacheKey);
+    if (cached) {
+      _memCache.set(_memCache.players, cacheKey, cached.filter(p => String(p.id) !== String(playerId)));
     }
     return true;
   } catch(e) { console.warn("deletePlayerCloud error:", e); return false; }
@@ -276,14 +309,14 @@ async function deletePlayerCloud(uid, teamId, playerId) {
 /** Load all players for a team from the players subcollection (cached). */
 async function loadPlayersCloud(uid, teamId, { force = false } = {}) {
   const cacheKey = `${uid}_${teamId}`;
-  if (!force && _memCache.players.has(cacheKey)) return _memCache.players.get(cacheKey);
+  if (!force && _memCache.has(_memCache.players, cacheKey)) return _memCache.get(_memCache.players, cacheKey);
   const fb = getFirebase(); if (!fb) return null;
   try {
     const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "players");
     const snap = await fb.getDocs(col);
     const players = snap.empty ? [] : snap.docs.map(d => d.data());
     players.sort((a, b) => compareIds(a.id, b.id));
-    _memCache.players.set(cacheKey, players);
+    _memCache.set(_memCache.players, cacheKey, players);
     return players;
   } catch(e) { console.warn("loadPlayersCloud error:", e); return null; }
 }
@@ -321,10 +354,11 @@ async function saveTeamCloud(uid, team) {
     const ref = fb.doc(fb.db, "users", uid, "teams", String(team.id));
     await fb.setDoc(ref, { ...teamMeta, updatedAt: fb.serverTimestamp() });
     // Update teams metadata cache in-place
-    if (_memCache.teams.has(uid)) {
-      const cached = _memCache.teams.get(uid);
+    const cached = _memCache.get(_memCache.teams, uid);
+    if (cached) {
       const idx = cached.findIndex(t => String(t.id) === String(team.id));
       if (idx >= 0) cached[idx] = { ...cached[idx], ...teamMeta }; else cached.push(teamMeta);
+      _memCache.set(_memCache.teams, uid, cached); // refresh TTL
     }
     return true;
   } catch(e) { console.warn("saveTeamCloud error:", e); return false; }
@@ -353,15 +387,15 @@ async function deleteTeamCloud(uid, teamId) {
  * Players/lineups are NOT loaded here — use loadTeamFull() for that.
  */
 async function loadTeamsCloud(uid, { force = false } = {}) {
-  if (!force && _memCache.teams.has(uid)) return _memCache.teams.get(uid);
+  if (!force && _memCache.has(_memCache.teams, uid)) return _memCache.get(_memCache.teams, uid);
   const fb = getFirebase(); if (!fb) return null;
   try {
     const col = fb.collection(fb.db, "users", uid, "teams");
     const snap = await fb.getDocs(col);
-    if (snap.empty) { _memCache.teams.set(uid, []); return []; }
+    if (snap.empty) { _memCache.set(_memCache.teams, uid, []); return []; }
     const teams = snap.docs.map(d => d.data());
     teams.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
-    _memCache.teams.set(uid, teams);
+    _memCache.set(_memCache.teams, uid, teams);
     return teams;
   } catch(e) { console.warn("loadTeamsCloud error:", e); return null; }
 }
@@ -434,10 +468,11 @@ async function saveLineupCloud(uid, teamId, lineup) {
     await fb.setDoc(ref, { ...lineup, updatedAt: fb.serverTimestamp() });
     // Update in-place in lineup cache
     const cacheKey = `${uid}_${teamId}`;
-    if (_memCache.lineups.has(cacheKey)) {
-      const cached = _memCache.lineups.get(cacheKey);
+    const cached = _memCache.get(_memCache.lineups, cacheKey);
+    if (cached) {
       const idx = cached.findIndex(l => String(l.id) === String(lineup.id));
       if (idx >= 0) cached[idx] = lineup; else cached.push(lineup);
+      _memCache.set(_memCache.lineups, cacheKey, cached); // refresh TTL
     }
     return true;
   } catch(e) { console.warn("saveLineupCloud error:", e); return false; }
@@ -451,9 +486,9 @@ async function deleteLineupCloud(uid, teamId, lineupId) {
       fb.doc(fb.db, "users", uid, "teams", String(teamId), "lineups", String(lineupId))
     );
     const cacheKey = `${uid}_${teamId}`;
-    if (_memCache.lineups.has(cacheKey)) {
-      const updated = _memCache.lineups.get(cacheKey).filter(l => String(l.id) !== String(lineupId));
-      _memCache.lineups.set(cacheKey, updated);
+    const cached = _memCache.get(_memCache.lineups, cacheKey);
+    if (cached) {
+      _memCache.set(_memCache.lineups, cacheKey, cached.filter(l => String(l.id) !== String(lineupId)));
     }
     return true;
   } catch(e) { console.warn("deleteLineupCloud error:", e); return false; }
@@ -462,13 +497,13 @@ async function deleteLineupCloud(uid, teamId, lineupId) {
 /** Load all lineups for a team from the lineups subcollection (cached). */
 async function loadLineupsCloud(uid, teamId, { force = false } = {}) {
   const cacheKey = `${uid}_${teamId}`;
-  if (!force && _memCache.lineups.has(cacheKey)) return _memCache.lineups.get(cacheKey);
+  if (!force && _memCache.has(_memCache.lineups, cacheKey)) return _memCache.get(_memCache.lineups, cacheKey);
   const fb = getFirebase(); if (!fb) return null;
   try {
     const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "lineups");
     const snap = await fb.getDocs(col);
     const lineups = snap.empty ? [] : snap.docs.map(d => d.data());
-    _memCache.lineups.set(cacheKey, lineups);
+    _memCache.set(_memCache.lineups, cacheKey, lineups);
     return lineups;
   } catch(e) { console.warn("loadLineupsCloud error:", e); return null; }
 }
@@ -2961,6 +2996,18 @@ function App() {
   // Track which teamIds have pending saves to debounce individually
   const saveTimersRef = useRef({}); // { [teamId]: timeoutId }
   const unsubAuthRef = useRef(null);
+  // Tracks the latest `teams` state without retriggering effects — used to
+  // detect whether the user edited data during a background cloud sync.
+  const teamsRef = useRef(teams);
+  useEffect(() => { teamsRef.current = teams; }, [teams]);
+
+  // ── Periodic cache purge ────────────────────────────────────────────────────
+  // Frees memory from expired in-memory cache entries during long sessions
+  // (e.g. the app left open for hours). Runs independently of any user action.
+  useEffect(() => {
+    const interval = setInterval(() => _memCache.purgeExpired(), 5 * 60 * 1000); // every 5 min
+    return () => clearInterval(interval);
+  }, []);
 
   // ── Auth listener + initial data load ──────────────────────────────────────
   useEffect(() => {
@@ -2971,38 +3018,76 @@ function App() {
         if (u) {
           setUser(u);
           setAuthState("loggedIn");
-          setMigrating(true);
-          try {
-            const { teams: cloudTeams, migrated } = await initTeamsFromCloud(u.uid);
-            if (cloudTeams.length > 0) {
+
+          const local = loadDataLocal();
+          const hasLocalData = local?.teams?.length > 0;
+
+          // Helper: push local-only data to the cloud (first-time sync) and
+          // run the v1→v4 schema migrations + bring back the authoritative
+          // cloud copy. Used both in the foreground (no local data) and
+          // background (local data present) paths below.
+          const syncWithCloud = async ({ applyTeams } = {}) => {
+            const apply = applyTeams || ((cloudTeams) => {
               setTeams(cloudTeams);
               saveDataLocal({ teams: cloudTeams });
-            } else {
-              // Fallback to localStorage if cloud is empty (first offline use)
-              const local = loadDataLocal();
-              if (local?.teams?.length > 0) {
-                setTeams(local.teams);
-                // Push local data up to cloud immediately (teams + players + lineups in subcollection)
-                // Ensure old local data has lineups structure before pushing
-                const teamsWithLineups = local.teams.map(t => {
-                  if (t.lineups && t.lineups.length > 0) return t;
-                  const defL = makeLineup({ id: String(Date.now() + Math.random()), name: "Titular", type: "titular", formation: t.formation || "4-4-2", entries: t.lineup || [], isActive: true });
-                  return { ...t, lineups: [defL], activeLineupId: defL.id };
-                });
-                await Promise.all(teamsWithLineups.map(t => saveTeamWithPlayersCloud(u.uid, t)));
-                await setSchemaVersion(u.uid, SCHEMA_VERSION);
-              }
+            });
+            const { teams: cloudTeams, migrated } = await initTeamsFromCloud(u.uid);
+            if (cloudTeams.length > 0) {
+              apply(cloudTeams);
+            } else if (local?.teams?.length > 0) {
+              // Cloud empty but we have local data — push it up
+              const teamsWithLineups = local.teams.map(t => {
+                if (t.lineups && t.lineups.length > 0) return t;
+                const defL = makeLineup({ id: genUUID(), name: "Titular", type: "titular", formation: t.formation || "4-4-2", entries: t.lineup || [], isActive: true });
+                return { ...t, lineups: [defL], activeLineupId: defL.id };
+              });
+              await Promise.all(teamsWithLineups.map(t => saveTeamWithPlayersCloud(u.uid, t)));
+              await setSchemaVersion(u.uid, SCHEMA_VERSION);
             }
             if (migrated) {
               setToast("✅ Dados migrados para a nova estrutura!");
             }
-          } catch(e) {
-            console.warn("initTeamsFromCloud failed, using localStorage:", e);
-            const local = loadDataLocal();
-            if (local?.teams) setTeams(local.teams);
-          } finally {
+          };
+
+          if (hasLocalData) {
+            // Show the app immediately using cached local data — schema
+            // migrations and cloud sync happen silently in the background,
+            // so the user never sees a blocking "MIGRANDO DADOS..." screen
+            // on routine opens.
+            setTeams(local.teams);
             setMigrating(false);
             setLoaded(true);
+            const teamsAtLoad = local.teams;
+            syncWithCloud({
+              // Avoid clobbering edits the user makes during the background
+              // sync window: only apply the cloud snapshot if `teams` hasn't
+              // changed since we displayed the local copy.
+              applyTeams: (cloudTeams) => {
+                if (teamsRef.current === teamsAtLoad) {
+                  setTeams(cloudTeams);
+                  saveDataLocal({ teams: cloudTeams });
+                } else {
+                  console.log("Skipping background cloud sync overwrite — local edits detected.");
+                }
+              }
+            }).catch(e => {
+              console.warn("Background cloud sync failed, keeping local data:", e);
+            });
+          } else {
+            // No local cache (first login on this device) — nothing to show
+            // yet, so we must wait for the cloud load (which may include a
+            // one-time schema migration).
+            setMigrating(true);
+            try {
+              await syncWithCloud();
+            } catch(e) {
+              console.warn("initTeamsFromCloud failed, using localStorage:", e);
+              const fallback = loadDataLocal();
+              if (fallback?.teams) setTeams(fallback.teams);
+            } finally {
+              setMigrating(false);
+              setLoaded(true);
+            }
           }
         } else {
           setUser(null);
@@ -3281,7 +3366,7 @@ function App() {
             const uid = fb?.auth?.currentUser?.uid;
             if (uid) {
               const cacheKey = `${uid}_${t.id}`;
-              const needsLoad = !_memCache.players.has(cacheKey) || !_memCache.lineups.has(cacheKey);
+              const needsLoad = !_memCache.has(_memCache.players, cacheKey) || !_memCache.has(_memCache.lineups, cacheKey);
               if (needsLoad) {
                 const full = await loadTeamFull(uid, t);
                 setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
