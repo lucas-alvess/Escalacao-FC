@@ -1001,7 +1001,7 @@ function TeamFormModal({initial,onSave,onClose}) {
       <div style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:22,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
         <div style={{padding:"18px 20px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>{initial?"Editar Time":"Novo Time"}</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
+          <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
         </div>
         <div style={{padding:"18px 20px 22px",display:"flex",flexDirection:"column",gap:16}}>
 
@@ -1017,8 +1017,8 @@ function TeamFormModal({initial,onSave,onClose}) {
 
           {/* Nome */}
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
-            <span style={LT}>Nome do Time</span>
-            <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: Flamengo, Real Madrid..." style={IS}
+            <label htmlFor="team-name" style={LT}>Nome do Time</label>
+            <input id="team-name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: Flamengo, Real Madrid..." style={IS}
               onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
           </div>
 
@@ -1188,11 +1188,11 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                 </div>
 
                 <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-                  <button onClick={e=>{e.stopPropagation();onEditTeam(team);}} style={{
+                  <button onClick={e=>{e.stopPropagation();onEditTeam(team);}} aria-label={`Editar ${team.name}`} style={{
                     background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",
                     borderRadius:9,padding:"8px 10px",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
                   }}><Ico.Edit/></button>
-                  <button onClick={e=>{e.stopPropagation();setConfirmDel(team.id);}} style={{
+                  <button onClick={e=>{e.stopPropagation();setConfirmDel(team.id);}} aria-label={`Excluir ${team.name}`} style={{
                     background:"rgba(239,68,68,0.10)",border:"1px solid rgba(239,68,68,0.22)",
                     borderRadius:9,padding:"8px 10px",color:"#f87171",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
                   }}><Ico.Trash/></button>
@@ -1248,24 +1248,24 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
       <div style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
         <div style={{padding:"16px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>{initial?"Editar Jogador":"Novo Jogador"}</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
+          <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
         </div>
         <div style={{padding:"16px 18px 20px",display:"flex",flexDirection:"column",gap:15}}>
           <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
-            <span style={LT}>Nome</span>
-            <input value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Nome do jogador" style={IS}
+            <label htmlFor="player-name" style={LT}>Nome</label>
+            <input id="player-name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Nome do jogador" style={IS}
               onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
           </div>
           <div style={{display:"flex",gap:10}}>
             <div style={{display:"flex",flexDirection:"column",gap:5,flex:"0 0 80px"}}>
-              <span style={LT}>Número</span>
-              <input type="number" min={1} max={99} value={form.number} onChange={e=>set("number",e.target.value)} placeholder="10" style={IS}
+              <label htmlFor="player-number" style={LT}>Número</label>
+              <input id="player-number" type="number" min={1} max={99} value={form.number} onChange={e=>set("number",e.target.value)} placeholder="10" style={IS}
                 onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:5,flex:1}}>
-              <span style={LT}>Posição</span>
-              <select value={form.position} onChange={e=>set("position",e.target.value)} style={{...IS,appearance:"none"}}>
+              <label htmlFor="player-position" style={LT}>Posição</label>
+              <select id="player-position" value={form.position} onChange={e=>set("position",e.target.value)} style={{...IS,appearance:"none"}}>
                 {POSITIONS.map(p=><option key={p} value={p}>{p}</option>)}
               </select>
             </div>
@@ -1313,9 +1313,9 @@ function FormationPicker({current,onChange}) {
   const next=()=>onChange(FKEYS[(idx+1)%FKEYS.length]);
   return (
     <div style={{display:"flex",alignItems:"center",gap:0,background:"rgba(0,0,0,0.45)",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",overflow:"hidden",flexShrink:0}}>
-      <button onClick={prev} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:"6px 10px",display:"flex",alignItems:"center"}}><Ico.ChevL/></button>
+      <button onClick={prev} aria-label="Formação anterior" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:"6px 10px",display:"flex",alignItems:"center"}}><Ico.ChevL/></button>
       <div style={{padding:"5px 8px",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,color:"#34d399",letterSpacing:1.5,minWidth:76,textAlign:"center"}}>{current}</div>
-      <button onClick={next} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:"6px 10px",display:"flex",alignItems:"center"}}><Ico.ChevR/></button>
+      <button onClick={next} aria-label="Próxima formação" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:"6px 10px",display:"flex",alignItems:"center"}}><Ico.ChevR/></button>
     </div>
   );
 }
@@ -1327,7 +1327,7 @@ function FormationListModal({current,onSelect,onClose}) {
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,maxHeight:"75vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"16px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>Escolher Formação</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
+          <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
         </div>
         <div style={{overflowY:"auto",padding:"10px 14px 20px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
           {FKEYS.map(k=>(
@@ -1376,7 +1376,7 @@ function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose}) {
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,maxHeight:"72vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <div style={{padding:"15px 17px 11px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:19,color:"#fff",letterSpacing:1}}>Posição: {slotLabel}</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
+          <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
         </div>
         {/* Sort bar */}
         <div style={{display:"flex",alignItems:"center",gap:5,padding:"8px 13px 6px",borderBottom:"1px solid rgba(255,255,255,0.06)",flexShrink:0,overflowX:"auto"}}>
@@ -1651,24 +1651,36 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
   const canvasRef=useRef();
   const [generating,setGenerating]=useState(false);
   const [imgUrl,setImgUrl]=useState(null);
+  const [exportError,setExportError]=useState(false);
   const [theme,setTheme]=useState("modern"); // "modern" | "clean"
   const drewRef=useRef(false);
 
   // ── Shared: pre-load images ──────────────────────────────────────────────
+  // Each image load is guarded by a timeout so a single broken/slow URL
+  // (e.g. an old, now-inaccessible Storage link) can never hang the whole
+  // export — it just falls back to the placeholder avatar/shield for that item.
+  const IMAGE_LOAD_TIMEOUT = 6000;
   const loadImages=async()=>{
     const cache={};
     const loadImg=(src)=>{
       if(cache[src])return Promise.resolve(cache[src]);
       return new Promise(resolve=>{
+        let settled=false;
+        const finish=(val)=>{ if(!settled){ settled=true; cache[src]=val; resolve(val); } };
+        const timer=setTimeout(()=>finish(null),IMAGE_LOAD_TIMEOUT);
         const img=new Image();
         // Allow cross-origin data URIs (base64 photos) to draw without tainting the canvas
         img.crossOrigin="anonymous";
-        img.onload=()=>{cache[src]=img;resolve(img);};
+        img.onload=()=>{clearTimeout(timer);finish(img);};
         img.onerror=()=>{
+          clearTimeout(timer);
           // Retry without crossOrigin for data URIs that reject the attribute
+          let settled2=false;
+          const finish2=(val)=>{ if(!settled2){ settled2=true; finish(val); } };
+          const timer2=setTimeout(()=>finish2(null),IMAGE_LOAD_TIMEOUT);
           const img2=new Image();
-          img2.onload=()=>{cache[src]=img2;resolve(img2);};
-          img2.onerror=()=>{cache[src]=null;resolve(null);};
+          img2.onload=()=>{clearTimeout(timer2);finish2(img2);};
+          img2.onerror=()=>{clearTimeout(timer2);finish2(null);};
           img2.src=src;
         };
         img.src=src;
@@ -2065,12 +2077,24 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
   // ── Main draw dispatcher ─────────────────────────────────────────────────
   const draw=async(selectedTheme)=>{
     if(!canvasRef.current)return;
-    setGenerating(true);setImgUrl(null);
-    const imageCache=await loadImages();
-    const url=selectedTheme==="modern"
-      ?await drawModern(canvasRef.current,imageCache)
-      :await drawClean(canvasRef.current,imageCache);
-    setImgUrl(url);setGenerating(false);
+    setGenerating(true);setImgUrl(null);setExportError(false);
+    try{
+      // Overall safety net: even if loadImages/canvas drawing somehow hangs
+      // (e.g. unexpected browser quirk), never leave the UI stuck on "Gerando...".
+      const url=await withTimeout((async()=>{
+        const imageCache=await loadImages();
+        return selectedTheme==="modern"
+          ?await drawModern(canvasRef.current,imageCache)
+          :await drawClean(canvasRef.current,imageCache);
+      })(), 20000);
+      if(url){ setImgUrl(url); }
+      else { setExportError(true); }
+    }catch(e){
+      console.error("Export draw error:",e);
+      setExportError(true);
+    }finally{
+      setGenerating(false);
+    }
   };
 
   useEffect(()=>{if(!drewRef.current){drewRef.current=true;draw(theme);}},[]);
@@ -2092,7 +2116,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
         {/* Header */}
         <div style={{padding:"15px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>Exportar Escalação</span>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
+          <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
         </div>
 
         <div style={{overflowY:"auto",padding:"14px 16px 20px",display:"flex",flexDirection:"column",gap:14,alignItems:"center"}}>
@@ -2122,6 +2146,12 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
             <div style={{width:"100%",aspectRatio:"0.63",background:"rgba(255,255,255,0.03)",borderRadius:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,border:"1px solid rgba(255,255,255,0.08)"}}>
               <div style={{width:36,height:36,border:"3px solid #34d399",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
               <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Gerando imagem...</span>
+            </div>
+          ):exportError?(
+            <div style={{width:"100%",aspectRatio:"0.63",background:"rgba(239,68,68,0.06)",borderRadius:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,border:"1px solid rgba(239,68,68,0.2)",padding:20,textAlign:"center"}}>
+              <span style={{color:"#f87171",fontSize:28}}>⚠</span>
+              <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Não foi possível gerar a imagem.<br/>Verifique sua conexão e tente novamente.</span>
+              <button onClick={()=>draw(theme)} aria-label="Tentar gerar a imagem novamente" style={{padding:"10px 20px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"#fff",cursor:"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1}}>TENTAR NOVAMENTE</button>
             </div>
           ):imgUrl?(
             <div style={{width:"100%",borderRadius:14,overflow:"hidden",border:"1px solid rgba(255,255,255,0.12)"}}>
@@ -2161,8 +2191,8 @@ function PlayerCard({player,onEdit,onDelete}) {
         <div style={{marginTop:3}}><StarRating value={player.stars} readonly/></div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
-        <button onClick={onEdit} style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:8,padding:"7px 10px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
-        <button onClick={onDelete} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"7px 10px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
+        <button onClick={onEdit} aria-label={`Editar ${player.name}`} style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:8,padding:"7px 10px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
+        <button onClick={onDelete} aria-label={`Excluir ${player.name}`} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"7px 10px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
       </div>
     </div>
   );
@@ -2248,12 +2278,13 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
           value={search}
           onChange={e => setSearch(e.target.value)}
           placeholder="Buscar por nome ou número..."
+          aria-label="Buscar jogador por nome ou número"
           style={{ ...IS, paddingLeft:34, background:"rgba(255,255,255,0.05)", fontSize:13 }}
           onFocus={e => e.target.style.borderColor = c1}
           onBlur={e => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
         />
         {search && (
-          <button onClick={() => setSearch("")} style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
+          <button onClick={() => setSearch("")} aria-label="Limpar busca" style={{ position:"absolute", right:10, top:"50%", transform:"translateY(-50%)",
             background:"none", border:"none", color:"#6B7280", cursor:"pointer", padding:2, display:"flex", alignItems:"center" }}>
             <Ico.Close/>
           </button>
@@ -2398,7 +2429,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
               background:`${c1}25`,border:`1px solid ${c1}60`,color:c2,cursor:"pointer",
               fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800
             }}><Ico.Plus/>Nova</button>
-            <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
+            <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
           </div>
         </div>
 
@@ -2408,7 +2439,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
           {creatingNew && (
             <div style={{background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:14,padding:"14px 14px 12px",display:"flex",flexDirection:"column",gap:10}}>
               <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,color:"#34d399"}}>Nova escalação</div>
-              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Nome da escalação..." style={{...IS,fontSize:13}}
+              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Nome da escalação..." aria-label="Nome da nova escalação" style={{...IS,fontSize:13}}
                 onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
               <div style={{display:"flex",gap:6}}>
                 {LINEUP_TYPES.map(t=>(
@@ -2458,12 +2489,12 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
                   <div style={{flex:1,minWidth:0}}>
                     {isRenaming ? (
                       <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        <input value={renameVal} onChange={e=>setRenameVal(e.target.value)} autoFocus
+                        <input value={renameVal} onChange={e=>setRenameVal(e.target.value)} autoFocus aria-label="Novo nome da escalação"
                           style={{...IS,fontSize:13,flex:1,padding:"5px 10px"}}
                           onFocus={e=>e.target.style.borderColor=c1} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}
                           onKeyDown={e=>{if(e.key==="Enter"&&renameVal.trim()){onRename(lineup.id,renameVal.trim());setRenamingId(null);}if(e.key==="Escape")setRenamingId(null);}}/>
-                        <button onClick={e=>{e.stopPropagation();if(renameVal.trim()){onRename(lineup.id,renameVal.trim());setRenamingId(null);}}} style={{background:"rgba(52,211,153,0.2)",border:"1px solid rgba(52,211,153,0.4)",borderRadius:7,padding:"5px 10px",color:"#34d399",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"'DM Sans',sans-serif",flexShrink:0}}>OK</button>
-                        <button onClick={e=>{e.stopPropagation();setRenamingId(null);}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:7,padding:"5px 8px",color:"#9CA3AF",cursor:"pointer",flexShrink:0}}><Ico.Close/></button>
+                        <button onClick={e=>{e.stopPropagation();if(renameVal.trim()){onRename(lineup.id,renameVal.trim());setRenamingId(null);}}} aria-label="Confirmar novo nome" style={{background:"rgba(52,211,153,0.2)",border:"1px solid rgba(52,211,153,0.4)",borderRadius:7,padding:"5px 10px",color:"#34d399",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"'DM Sans',sans-serif",flexShrink:0}}>OK</button>
+                        <button onClick={e=>{e.stopPropagation();setRenamingId(null);}} aria-label="Cancelar renomeação" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:7,padding:"5px 8px",color:"#9CA3AF",cursor:"pointer",flexShrink:0}}><Ico.Close/></button>
                       </div>
                     ) : (
                       <>
@@ -2481,9 +2512,9 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
                   {/* Action buttons */}
                   {!isRenaming && (
                     <div style={{display:"flex",gap:5,flexShrink:0}}>
-                      <button onClick={e=>{e.stopPropagation();setRenamingId(lineup.id);setRenameVal(lineup.name);}} style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:7,padding:"6px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
+                      <button onClick={e=>{e.stopPropagation();setRenamingId(lineup.id);setRenameVal(lineup.name);}} aria-label={`Renomear ${lineup.name}`} style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:7,padding:"6px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
                       {lineups.length > 1 && (
-                        <button onClick={e=>{e.stopPropagation();setConfirmDelId(lineup.id);}} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.22)",borderRadius:7,padding:"6px 8px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
+                        <button onClick={e=>{e.stopPropagation();setConfirmDelId(lineup.id);}} aria-label={`Excluir ${lineup.name}`} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.22)",borderRadius:7,padding:"6px 8px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
                       )}
                     </div>
                   )}
@@ -2635,13 +2666,13 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       <div style={{background:`linear-gradient(180deg,#0a1f12 0%,#050c0a 100%)`,borderBottom:`1px solid ${c1}30`,padding:"12px 14px 10px",position:"sticky",top:0,zIndex:50}}>
         {/* Top row */}
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-          <button onClick={onBack} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"7px 9px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0,transition:"all 0.15s"}}
+          <button onClick={onBack} aria-label="Voltar para a lista de times" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"7px 9px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0,transition:"all 0.15s"}}
             onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.12)";e.currentTarget.style.color="#fff";}}
             onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#9CA3AF";}}>
             <Ico.Back/>
           </button>
 
-          <div style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}} onClick={()=>setShowEditTeam(true)}>
+          <div role="button" tabIndex={0} aria-label="Editar dados do time" onKeyDown={e=>{if(e.key==="Enter")setShowEditTeam(true);}} style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}} onClick={()=>setShowEditTeam(true)}>
             <TeamShield team={team} size={40}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -2702,10 +2733,10 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           </div>
           <div style={{display:"flex",gap:5,alignItems:"center"}}>
             <FormationPicker current={team.formation} onChange={handleFormationChange}/>
-            <button onClick={()=>setShowFList(true)} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:9,padding:"7px 9px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
+            <button onClick={()=>setShowFList(true)} aria-label="Ver lista de formações" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:9,padding:"7px 9px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
               <Ico.List/>
             </button>
-            <button onClick={()=>setShowLineupMgr(true)} title="Gerenciar escalações" style={{background:`${c1}18`,border:`1px solid ${c1}40`,borderRadius:9,padding:"7px 9px",color:c2,cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800}}>
+            <button onClick={()=>setShowLineupMgr(true)} title="Gerenciar escalações" aria-label="Gerenciar escalações" style={{background:`${c1}18`,border:`1px solid ${c1}40`,borderRadius:9,padding:"7px 9px",color:c2,cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800}}>
               <Ico.Lineup/>{(team.lineups||[]).length>1?<span style={{background:c1,color:"#000",borderRadius:4,padding:"0 4px",fontSize:9,fontWeight:900}}>{(team.lineups||[]).length}</span>:null}
             </button>
           </div>
@@ -2754,7 +2785,8 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           boxShadow:`0 6px 24px ${c1}70`,zIndex:100,transition:"transform 0.15s"
         }}
           onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
-          onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+          onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+          aria-label="Adicionar novo jogador">
           <Ico.Plus/>
         </button>
       )}
