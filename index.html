@@ -2446,27 +2446,35 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const upd=(patch)=>onUpdateTeam({...team,...patch});
 
   const savePlayer=async(form)=>{
-    const fb=getFirebase();
-    const uid=fb?.auth?.currentUser?.uid;
-    const isEditing=editingPlayer;
-    const newId=isEditing?isEditing.id:genId();
-    let resolvedForm={...form};
-    if(uid){
-      try{
-        const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${newId}`);
-        resolvedForm={...form,photo};
-      }catch(e){
-        console.warn("resolveImageUrl failed, using original:",e);
+    try{
+      const fb=getFirebase();
+      const uid=fb?.auth?.currentUser?.uid;
+      const isEditing=editingPlayer;
+      const newId=isEditing?isEditing.id:genId();
+      let resolvedForm={...form};
+      if(uid){
+        try{
+          const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${newId}`);
+          resolvedForm={...form,photo};
+        }catch(e){
+          console.warn("resolveImageUrl failed, using original photo:",e);
+        }
       }
+      const savedPlayer={...resolvedForm,id:newId};
+      // Use functional updater via onUpdateTeam to always read latest players list
+      onUpdateTeam(current=>{
+        const curPlayers=current.players||[];
+        const updatedPlayers=isEditing
+          ?curPlayers.map(p=>p.id===isEditing.id?savedPlayer:p)
+          :[...curPlayers,savedPlayer];
+        return {...current,players:updatedPlayers};
+      });
+      if(onSavePlayer) onSavePlayer(team.id,savedPlayer);
+      setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
+    }catch(e){
+      console.error("savePlayer error:",e);
+      setToast("\u26a0\ufe0f Erro ao salvar jogador. Tente novamente.");
     }
-    const savedPlayer={...resolvedForm,id:newId};
-    const curPlayers=team.players||[];
-    const updatedPlayers=isEditing
-      ?curPlayers.map(p=>p.id===isEditing.id?savedPlayer:p)
-      :[...curPlayers,savedPlayer];
-    upd({players:updatedPlayers});
-    if(onSavePlayer) onSavePlayer(team.id, savedPlayer);
-    setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
   const deletePlayer=(id)=>{
     // Remove from all lineups
