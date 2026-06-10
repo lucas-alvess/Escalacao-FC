@@ -128,6 +128,44 @@ function withTimeout(promise, ms = 8000) {
   ]);
 }
 
+/**
+ * Generates a collision-resistant unique ID (UUID v4).
+ * Uses crypto.randomUUID() when available (modern browsers, secure contexts).
+ * Falls back to crypto.getRandomValues(), then to Math.random() for very old
+ * environments — always returns a syntactically valid UUID v4 string.
+ */
+function genUUID() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 10
+  const hex = [...bytes].map(b => b.toString(16).padStart(2, "0"));
+  return `${hex.slice(0,4).join("")}-${hex.slice(4,6).join("")}-${hex.slice(6,8).join("")}-${hex.slice(8,10).join("")}-${hex.slice(10,16).join("")}`;
+}
+
+/**
+ * Compares two IDs for sorting, supporting a mix of legacy numeric IDs
+ * (from the old Date.now()-based generator) and new UUID strings
+ * (from genUUID()). Numeric IDs sort first (oldest-created-first, as before);
+ * UUID IDs sort after them, ordered alphabetically for a stable, deterministic
+ * order.
+ */
+function compareIds(a, b) {
+  const na = Number(a), nb = Number(b);
+  const aNum = !isNaN(na) && a !== "" && a != null;
+  const bNum = !isNaN(nb) && b !== "" && b != null;
+  if (aNum && bNum) return na - nb;
+  if (aNum !== bNum) return aNum ? -1 : 1;
+  return String(a).localeCompare(String(b));
+}
+
 // ─── In-memory cache ─────────────────────────────────────────────────────────
 // Avoids redundant Firestore reads within the same session.
 // Structure: { teams: Map<uid, teamMeta[]>, players: Map<uid_teamId, player[]>, lineups: Map<uid_teamId, lineup[]> }
@@ -241,7 +279,7 @@ async function loadPlayersCloud(uid, teamId, { force = false } = {}) {
     const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "players");
     const snap = await fb.getDocs(col);
     const players = snap.empty ? [] : snap.docs.map(d => d.data());
-    players.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
+    players.sort((a, b) => compareIds(a.id, b.id));
     _memCache.players.set(cacheKey, players);
     return players;
   } catch(e) { console.warn("loadPlayersCloud error:", e); return null; }
@@ -2484,13 +2522,8 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [showEditTeam,setShowEditTeam]=useState(false);
   const [showLineupMgr,setShowLineupMgr]=useState(false);
   const [saveStatus,setSaveStatus]=useState("idle"); // "idle" | "saving" | "saved" | "error"
-  const nextId=useRef(null);
-  const genId=()=>{
-    // Usa Date.now + incremento para garantir unicidade mesmo em saves rápidos
-    const base=Date.now();
-    if(!nextId.current||nextId.current<=base){nextId.current=base+1;}else{nextId.current++;}
-    return nextId.current;
-  };
+  // ID generation: crypto.randomUUID() (with fallback) avoids any chance of
+  // collision, even across teams/components remounted in quick succession.
   const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
 
   const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
@@ -2500,7 +2533,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const savePlayer=async(form)=>{
     try{
       const isEditing=editingPlayer;
-      const newId=isEditing?isEditing.id:genId();
+      const newId=isEditing?isEditing.id:genUUID();
       // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
       // No further async image processing here, so the save can never hang.
       const savedPlayer={...form,id:newId};
@@ -2741,7 +2774,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
         }}
         onCreate={(type,name)=>{
           const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
-          const newL=makeLineup({id:String(Date.now()),name,type,formation:team.formation||"4-4-2",entries:[],isActive:false});
+          const newL=makeLineup({id:genUUID(),name,type,formation:team.formation||"4-4-2",entries:[],isActive:false});
           const updated=[...(team.lineups||[]),newL];
           upd({lineups:updated});
           if(onSaveLineup)onSaveLineup(team.id,newL);
