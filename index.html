@@ -93,8 +93,14 @@ function getFirebase() { return window.__firebase || null; }
 function compressImage(dataUrl, maxDim = 300, quality = 0.75) {
   return new Promise((resolve) => {
     if (!dataUrl || !dataUrl.startsWith("data:")) { resolve(dataUrl); return; }
+    let settled = false;
+    const finish = (val) => { if (!settled) { settled = true; resolve(val); } };
+    // Safety timeout: never let this hang the UI forever (e.g. if onload/onerror
+    // never fire for some image formats/environments).
+    const timer = setTimeout(() => finish(dataUrl), 6000);
     const img = new Image();
     img.onload = () => {
+      clearTimeout(timer);
       try {
         const { naturalWidth: w, naturalHeight: h } = img;
         const scale = Math.min(1, maxDim / Math.max(w, h));
@@ -106,12 +112,20 @@ function compressImage(dataUrl, maxDim = 300, quality = 0.75) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, 0, 0, nw, nh);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      } catch (e) { resolve(dataUrl); }
+        finish(canvas.toDataURL("image/jpeg", quality));
+      } catch (e) { finish(dataUrl); }
     };
-    img.onerror = () => resolve(dataUrl);
+    img.onerror = () => { clearTimeout(timer); finish(dataUrl); };
     img.src = dataUrl;
   });
+}
+
+/** Wraps a promise with a timeout fallback so the UI never hangs forever. */
+function withTimeout(promise, ms = 8000) {
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((resolve) => setTimeout(() => resolve(undefined), ms)),
+  ]);
 }
 
 // ─── In-memory cache ─────────────────────────────────────────────────────────
@@ -905,7 +919,7 @@ function TeamFormModal({initial,onSave,onClose}) {
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
-    try{ await onSave(form); }catch(e){ console.error("TeamFormModal save error:",e); }
+    try{ await withTimeout(onSave(form), 8000); }catch(e){ console.error("TeamFormModal save error:",e); }
     setSaving(false);
   };
   return (
@@ -1148,7 +1162,7 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
-    try{ await onSave(form); }catch(e){ console.error("PlayerFormModal save error:",e); }
+    try{ await withTimeout(onSave(form), 8000); }catch(e){ console.error("PlayerFormModal save error:",e); }
     setSaving(false);
   };
   return (
@@ -2442,20 +2456,11 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
   const savePlayer=async(form)=>{
     try{
-      const fb=getFirebase();
-      const uid=fb?.auth?.currentUser?.uid;
       const isEditing=editingPlayer;
       const newId=isEditing?isEditing.id:genId();
-      let resolvedForm={...form};
-      if(uid){
-        try{
-          const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${newId}`);
-          resolvedForm={...form,photo};
-        }catch(e){
-          console.warn("resolveImageUrl failed, using original photo:",e);
-        }
-      }
-      const savedPlayer={...resolvedForm,id:newId};
+      // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
+      // No further async image processing here, so the save can never hang.
+      const savedPlayer={...form,id:newId};
       // Use functional updater via onUpdateTeam to always read latest players list
       onUpdateTeam(current=>{
         const curPlayers=current.players||[];
@@ -2713,14 +2718,8 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
         }}
       />}
       {showEditTeam&&<TeamFormModal initial={team} onSave={async(f)=>{
-        const fb=getFirebase();
-        const uid=fb?.auth?.currentUser?.uid;
-        let resolved=f;
-        if(uid){
-          const photo=await resolveImageUrl(uid,f.photo||"",`shields/team_${team.id}`);
-          resolved={...f,photo};
-        }
-        upd(resolved);setShowEditTeam(false);setToast("Time atualizado!");
+        // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
+        upd(f);setShowEditTeam(false);setToast("Time atualizado!");
       }} onClose={()=>setShowEditTeam(false)}/>}
     </div>
   );
@@ -2955,12 +2954,8 @@ function App() {
     t.shieldEmoji = form.shieldEmoji || "🛡️";
     const fb = getFirebase();
     const uid = fb?.auth?.currentUser?.uid;
-    try {
-      t.photo = uid ? await resolveImageUrl(uid, form.photo || "", `shields/team_${t.id}`) : (form.photo || "");
-    } catch(e) {
-      console.warn("createTeam: image upload failed, using base64 fallback:", e);
-      t.photo = form.photo || "";
-    }
+    // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
+    t.photo = form.photo || "";
     setTeams(prev => [...prev, t]);
     setShowNewTeam(false);
     setActiveTeamId(t.id);
@@ -3026,12 +3021,8 @@ function App() {
   const editTeam = async (form) => {
     const fb = getFirebase();
     const uid = fb?.auth?.currentUser?.uid;
-    let resolved = form;
-    if (uid) {
-      const photo = await resolveImageUrl(uid, form.photo || "", `shields/team_${editingTeam.id}`);
-      resolved = { ...form, photo };
-    }
-    const updated = { ...editingTeam, ...resolved };
+    // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
+    const updated = { ...editingTeam, ...form };
     setTeams(prev => prev.map(t => t.id === editingTeam.id ? updated : t));
     setEditingTeam(null);
     setToast("Time atualizado!");
