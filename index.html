@@ -75,7 +75,7 @@
     window.dispatchEvent(new Event("firebase-ready"));
   </script>
   <script type="text/babel" data-presets="react">
-    const { useState, useRef, useEffect, useCallback } = React;
+    const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 // ─── Firebase helpers (populated after firebase-ready event) ─────────────────
 let FB = null;
@@ -836,6 +836,39 @@ const StarRating = ({value,onChange,readonly,size=14}) => (
   </div>
 );
 
+// ─── Sync Status Indicator ───────────────────────────────────────────────────
+// Shows the state of automatic background saves to the cloud.
+// "idle"    → nothing to show (no recent activity)
+// "pending" → changes queued, waiting for debounce
+// "syncing" → actively writing to Firestore
+// "synced"  → just finished successfully (auto-hides after 2s)
+// "error"   → last save attempt failed
+function SyncIndicator({status, onRetry}) {
+  if (status === "idle") return null;
+  const CFG = {
+    pending: { color:"#9CA3AF", label:"Alterações pendentes...", spin:false, icon:"●" },
+    syncing: { color:"#34d399", label:"Sincronizando...",        spin:true,  icon:null },
+    synced:  { color:"#34d399", label:"Sincronizado",            spin:false, icon:"✓" },
+    error:   { color:"#f87171", label:"Erro ao sincronizar",     spin:false, icon:"!" },
+  };
+  const c = CFG[status]; if (!c) return null;
+  const clickable = status === "error" && onRetry;
+  return (
+    <div onClick={clickable?onRetry:undefined} title={clickable?"Toque para tentar novamente":undefined} style={{
+      display:"flex",alignItems:"center",gap:6,padding:"4px 9px",borderRadius:20,
+      background:`${c.color}18`,border:`1px solid ${c.color}40`,
+      color:c.color,fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,
+      letterSpacing:0.3,whiteSpace:"nowrap",cursor:clickable?"pointer":"default",
+      transition:"all 0.2s"
+    }}>
+      {c.spin
+        ? <div style={{width:9,height:9,border:`1.5px solid ${c.color}50`,borderTopColor:c.color,borderRadius:"50%",animation:"spin 0.7s linear infinite",flexShrink:0}}/>
+        : <span style={{fontSize:11,lineHeight:1}}>{c.icon}</span>}
+      {c.label}
+    </div>
+  );
+}
+
 function TeamShield({team, size=56}) {
   const [c1,c2] = SHIELD_COLORS[team.colorIdx % SHIELD_COLORS.length];
   if (team.photo) {
@@ -1002,7 +1035,7 @@ function TeamFormModal({initial,onSave,onClose}) {
 }
 
 // ─── Home / Team List ─────────────────────────────────────────────────────────
-function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout}) {
+function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync}) {
   const [confirmDel,setConfirmDel]=useState(null);
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif"}}>
@@ -1027,7 +1060,10 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
             boxShadow:"0 6px 24px rgba(52,211,153,0.4)"}}>⚽</div>
           <div style={{flex:1}}>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:"#fff",letterSpacing:2,lineHeight:1}}>ESCALAÇÃO FC</div>
-            <div style={{color:"#4ade80",fontSize:12,fontWeight:700,letterSpacing:1,marginTop:2}}>GERENCIE SEUS TIMES</div>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2,flexWrap:"wrap",rowGap:4}}>
+              <span style={{color:"#4ade80",fontSize:12,fontWeight:700,letterSpacing:1}}>GERENCIE SEUS TIMES</span>
+              <SyncIndicator status={syncStatus} onRetry={onRetrySync}/>
+            </div>
           </div>
           {user&&(
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -2124,9 +2160,12 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
   // Reset to page 1 whenever filter/sort changes
   useEffect(() => { setPage(1); }, [search, sortBy, sortAsc, filterPos]);
 
-  const allPositions = ["Todas", ...Array.from(new Set(players.map(p => p.position)))];
+  const allPositions = useMemo(
+    () => ["Todas", ...Array.from(new Set(players.map(p => p.position)))],
+    [players]
+  );
 
-  const allFiltered = players
+  const allFiltered = useMemo(() => players
     .filter(p => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || String(p.number).includes(search);
       const matchPos    = filterPos === "Todas" || p.position === filterPos;
@@ -2141,9 +2180,13 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
       if (va < vb) return sortAsc ? -1 : 1;
       if (va > vb) return sortAsc ? 1 : -1;
       return 0;
-    });
+    }), [players, search, filterPos, sortBy, sortAsc]);
+
   const totalPages = Math.ceil(allFiltered.length / PLAYERS_PAGE_SIZE);
-  const filtered = allFiltered.slice(0, page * PLAYERS_PAGE_SIZE);
+  const filtered = useMemo(
+    () => allFiltered.slice(0, page * PLAYERS_PAGE_SIZE),
+    [allFiltered, page]
+  );
   const hasMore = filtered.length < allFiltered.length;
 
   const toggleSort = (key) => {
@@ -2429,7 +2472,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
 }
 
 // ─── Team Tactical View (existing app logic) ──────────────────────────────────
-function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud,onSaveLineup,onDeleteLineup}) {
+function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud,onSaveLineup,onDeleteLineup,syncStatus}) {
   const [tab,setTab]=useState("field");
   const [editingName,setEditingName]=useState(false);
   const [showForm,setShowForm]=useState(false);
@@ -2568,8 +2611,11 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                 <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:0.8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{team.name}</span>
                 <span style={{color:"#4B5563",flexShrink:0}}><Ico.Edit/></span>
               </div>
-              <div style={{color:"#4B5563",fontSize:10,marginTop:-1,fontWeight:600}}>
-                {getActiveLineup(team,team.lineups||[])?.name||"Titular"} · {escalados}/{slots.length} escalados
+              <div style={{display:"flex",alignItems:"center",gap:8,marginTop:1,flexWrap:"wrap",rowGap:3}}>
+                <span style={{color:"#4B5563",fontSize:10,fontWeight:600}}>
+                  {getActiveLineup(team,team.lineups||[])?.name||"Titular"} · {escalados}/{slots.length} escalados
+                </span>
+                <SyncIndicator status={syncStatus} onRetry={handleForceSave}/>
               </div>
             </div>
           </div>
@@ -2817,6 +2863,31 @@ function App() {
   const [showNewTeam, setShowNewTeam] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [toast, setToast] = useState(null);
+  // ── Global sync status (auto background saves) ─────────────────────────────
+  // "idle" | "pending" | "syncing" | "synced" | "error"
+  const [syncStatus, setSyncStatus] = useState("idle");
+  const pendingOpsRef = useRef(0);
+  const syncedTimerRef = useRef(null);
+  const beginSync = useCallback(() => {
+    pendingOpsRef.current += 1;
+    setSyncStatus(s => s === "error" ? "error" : "pending");
+  }, []);
+  const startSyncing = useCallback(() => {
+    setSyncStatus(s => s === "error" ? "error" : "syncing");
+  }, []);
+  const endSync = useCallback((success) => {
+    pendingOpsRef.current = Math.max(0, pendingOpsRef.current - 1);
+    if (!success) { setSyncStatus("error"); return; }
+    if (pendingOpsRef.current === 0) {
+      setSyncStatus("synced");
+      clearTimeout(syncedTimerRef.current);
+      syncedTimerRef.current = setTimeout(() => {
+        setSyncStatus(s => s === "synced" ? "idle" : s);
+      }, 2000);
+    } else {
+      setSyncStatus("pending");
+    }
+  }, []);
   // Track which teamIds have pending saves to debounce individually
   const saveTimersRef = useRef({}); // { [teamId]: timeoutId }
   const unsubAuthRef = useRef(null);
@@ -2894,22 +2965,28 @@ function App() {
     if (!user) return;
     const key = `team_${team.id}`;
     clearTimeout(saveTimersRef.current[key]);
-    saveTimersRef.current[key] = setTimeout(() => {
-      saveTeamCloud(user.uid, team); // metadata only (no players array)
+    beginSync();
+    saveTimersRef.current[key] = setTimeout(async () => {
+      startSyncing();
+      const ok = await saveTeamCloud(user.uid, team); // metadata only (no players array)
       delete saveTimersRef.current[key];
+      endSync(ok);
     }, 600);
-  }, [user]);
+  }, [user, beginSync, startSyncing, endSync]);
 
   // ── Save a single player to cloud (debounced 800ms) ───────────────────────
   const scheduleSavePlayer = useCallback((teamId, player) => {
     if (!user) return;
     const key = `player_${teamId}_${player.id}`;
     clearTimeout(saveTimersRef.current[key]);
-    saveTimersRef.current[key] = setTimeout(() => {
-      savePlayerCloud(user.uid, teamId, player);
+    beginSync();
+    saveTimersRef.current[key] = setTimeout(async () => {
+      startSyncing();
+      const ok = await savePlayerCloud(user.uid, teamId, player);
       delete saveTimersRef.current[key];
+      endSync(ok);
     }, 800);
-  }, [user]);
+  }, [user, beginSync, startSyncing, endSync]);
 
   // ── Save on tab close ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -2926,9 +3003,21 @@ function App() {
   const handleForceSave = useCallback(async () => {
     if (!user || !loaded) return false;
     saveDataLocal({ teams });
+    startSyncing();
     const ok = await saveAllTeamsCloud(user.uid, teams);
+    if (ok) {
+      // Force-save covers everything pending — clear the counter entirely
+      pendingOpsRef.current = 0;
+      setSyncStatus("synced");
+      clearTimeout(syncedTimerRef.current);
+      syncedTimerRef.current = setTimeout(() => {
+        setSyncStatus(s => s === "synced" ? "idle" : s);
+      }, 2000);
+    } else {
+      setSyncStatus("error");
+    }
     return ok;
-  }, [user, loaded, teams]);
+  }, [user, loaded, teams, startSyncing]);
 
   // ── Auth helpers ───────────────────────────────────────────────────────────
   const handleLogin = async () => {
@@ -2961,9 +3050,12 @@ function App() {
     setActiveTeamId(t.id);
     setToast("Time criado!");
     if (uid) {
-      await saveTeamCloud(uid, t);
+      beginSync();
+      startSyncing();
+      const ok = await saveTeamCloud(uid, t);
       // Save initial lineup
-      (t.lineups || []).forEach(l => saveLineupCloud(uid, t.id, l));
+      const lineupResults = await Promise.all((t.lineups || []).map(l => saveLineupCloud(uid, t.id, l)));
+      endSync(ok && lineupResults.every(Boolean));
     }
   };
 
@@ -2994,11 +3086,14 @@ function App() {
     if (!user) return;
     const key = `lineup_${teamId}_${lineup.id}`;
     clearTimeout(saveTimersRef.current[key]);
-    saveTimersRef.current[key] = setTimeout(() => {
-      saveLineupCloud(user.uid, teamId, lineup);
+    beginSync();
+    saveTimersRef.current[key] = setTimeout(async () => {
+      startSyncing();
+      const ok = await saveLineupCloud(user.uid, teamId, lineup);
       delete saveTimersRef.current[key];
+      endSync(ok);
     }, 600);
-  }, [user]);
+  }, [user, beginSync, startSyncing, endSync]);
 
   const deleteTeam = async (id) => {
     setTeams(prev => prev.filter(t => t.id !== id));
@@ -3084,6 +3179,7 @@ function App() {
           onForceSave={handleForceSave}
           onSavePlayer={scheduleSavePlayer}
           onSaveLineup={scheduleSaveLineup}
+          syncStatus={syncStatus}
           onDeletePlayerCloud={(teamId, playerId) => {
             const uid = user?.uid;
             if (uid) {
@@ -3107,6 +3203,8 @@ function App() {
         <HomePage
           teams={teams}
           user={user}
+          syncStatus={syncStatus}
+          onRetrySync={handleForceSave}
           onSelectTeam={async (t) => {
             // Lazy-load players + lineups if not yet in memory
             const fb = getFirebase();
