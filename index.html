@@ -1158,7 +1158,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 function PlayerFormModal({initial,onSave,onClose,teamColor}) {
   const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3});
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const valid=form.name.trim()&&String(form.number).trim()!=="";
+  const valid=!!(form.name.trim()&&String(form.number).trim()!=="");
   const [c1]=SHIELD_COLORS[teamColor%SHIELD_COLORS.length];
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.82)",backdropFilter:"blur(6px)",padding:"12px"}}>
@@ -1207,7 +1207,7 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
               <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>{["","Iniciante","Regular","Bom","Ótimo","Elite"][form.stars]}</span>
             </div>
           </div>
-          <button onClick={()=>valid&&onSave(form)} style={{
+          <button onClick={()=>{if(valid)onSave(form);}} style={{
             marginTop:2,padding:"13px 0",borderRadius:12,border:"none",cursor:valid?"pointer":"not-allowed",
             background:valid?`linear-gradient(135deg,#166534,#34d399)`:"rgba(255,255,255,0.07)",
             color:valid?"#fff":"#6B7280",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,transition:"all 0.2s",
@@ -2451,20 +2451,23 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
     let resolvedForm=form;
     if(uid){
       const playerId=editingPlayer?editingPlayer.id:`tmp_${Date.now()}`;
-      const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${playerId}`);
-      resolvedForm={...form,photo};
+      try{
+        const photo=await resolveImageUrl(uid,form.photo||"",`players/player_${playerId}`);
+        resolvedForm={...form,photo};
+      }catch(e){
+        console.warn("resolveImageUrl failed, using original:",e);
+      }
     }
-    let savedPlayer;
-    if(editingPlayer){
-      savedPlayer={...resolvedForm,id:editingPlayer.id};
-      const players=team.players.map(p=>p.id===editingPlayer.id?savedPlayer:p);
-      upd({players});
-    } else {
-      savedPlayer={...resolvedForm,id:genId()};
-      const players=[...team.players,savedPlayer];
-      upd({players});
-    }
-    // Save player to its own subcollection doc (debounced)
+    const isEditing=editingPlayer;
+    const savedPlayer={...resolvedForm,id:isEditing?isEditing.id:genId()};
+    // Use functional updater to avoid stale closure
+    onUpdateTeam(prev=>{
+      const curPlayers=prev.players||[];
+      const players=isEditing
+        ?curPlayers.map(p=>p.id===isEditing.id?savedPlayer:p)
+        :[...curPlayers,savedPlayer];
+      return{...prev,players};
+    });
     if(onSavePlayer) onSavePlayer(team.id, savedPlayer);
     setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
@@ -2964,14 +2967,27 @@ function App() {
     }
   };
 
-  const updateTeam = useCallback((updated) => {
+  const updateTeam = useCallback((updatedOrFn) => {
     setTeams(prev => {
-      const next = prev.map(t => t.id === updated.id ? { ...t, ...updated } : t);
-      const fresh = next.find(t => t.id === updated.id);
+      // Support both direct object update and functional updater (fn receives current team object)
+      let next;
+      if (typeof updatedOrFn === 'function') {
+        // Find active team, apply fn, then merge back
+        next = prev.map(t => {
+          if (t.id !== activeTeamId) return t;
+          const result = updatedOrFn(t);
+          return result;
+        });
+      } else {
+        const updated = updatedOrFn;
+        next = prev.map(t => t.id === updated.id ? { ...t, ...updated } : t);
+      }
+      const teamId = typeof updatedOrFn === 'function' ? activeTeamId : updatedOrFn.id;
+      const fresh = next.find(t => t.id === teamId);
       if (fresh) scheduleSaveTeam(fresh);
       return next;
     });
-  }, [scheduleSaveTeam]);
+  }, [scheduleSaveTeam, activeTeamId]);
 
   // ── Save a single lineup to cloud (debounced 600ms) ────────────────────────
   const scheduleSaveLineup = useCallback((teamId, lineup) => {
