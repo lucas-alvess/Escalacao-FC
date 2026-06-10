@@ -1101,7 +1101,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
             <img src={LOGO_URI} alt="Escalação FC" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           </div>
           <div style={{flex:1}}>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:"#fff",letterSpacing:2,lineHeight:1}}>ESCALAÇÃO FC</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:"#fff",letterSpacing:2,lineHeight:1}}>ESCALAÇÃO F.C.</div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2,flexWrap:"wrap",rowGap:4}}>
               <span style={{color:"#4ade80",fontSize:12,fontWeight:700,letterSpacing:1}}>GERENCIE SEUS TIMES</span>
               <SyncIndicator status={syncStatus} onRetry={onRetrySync}/>
@@ -1945,7 +1945,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
     // Watermark
     ctx.fillStyle="rgba(52,211,153,0.25)";ctx.font="bold 13px 'DM Sans',sans-serif";
     ctx.textAlign="center";ctx.textBaseline="bottom";
-    ctx.fillText("⚽ ESCALAÇÃO FC",W/2,H-8);
+    ctx.fillText("⚽ ESCALAÇÃO F.C.",W/2,H-8);
 
     return canvas.toDataURL("image/png");
   };
@@ -2057,7 +2057,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
     // Watermark
     ctx.fillStyle="rgba(22,101,52,0.2)";ctx.font="11px 'DM Sans',sans-serif";
     ctx.textAlign="center";ctx.textBaseline="bottom";
-    ctx.fillText("Escalação FC",W/2,H-8);
+    ctx.fillText("Escalação F.C.",W/2,H-8);
 
     return canvas.toDataURL("image/png");
   };
