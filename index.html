@@ -7,7 +7,7 @@
   <meta name="mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-  <title>Escalação FC ⚽</title>
+  <title>Escalação F.C. ⚽</title>
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet"/>
   <style>
     *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -821,22 +821,6 @@ const SHIELD_COLORS = [
 
 // ─── Default team factory ─────────────────────────────────────────────────────
 let _uid = 1;
-
-// Helper: returns [c1, c2] for a team, supporting both preset and custom colors.
-function getTeamColors(colorIdx, customColor) {
-  if (colorIdx === CUSTOM_COLOR_IDX && customColor) {
-    const lighten = (hex, amt=40) => {
-      const n = parseInt(hex.replace("#",""), 16);
-      const r = Math.min(255, ((n>>16)&0xff)+amt);
-      const g = Math.min(255, ((n>>8)&0xff)+amt);
-      const b = Math.min(255, (n&0xff)+amt);
-      return "#"+[r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("");
-    };
-    return [customColor, lighten(customColor)];
-  }
-  return SHIELD_COLORS[(colorIdx||0) % SHIELD_COLORS.length];
-}
-
 function makeTeam(name="Novo Time", colorIdx=0) {
   const defaultLineup = makeLineup({ id: String(Date.now()), name: "Titular", type: "titular", formation: "4-4-2", entries: [], isActive: true });
   return {
@@ -927,7 +911,7 @@ function SyncIndicator({status, onRetry}) {
 }
 
 function TeamShield({team, size=56}) {
-  const [c1,c2] = getTeamColors(team.colorIdx, team.customColor);
+  const [c1,c2] = SHIELD_COLORS[team.colorIdx % SHIELD_COLORS.length];
   if (team.photo) {
     return (
       <div style={{width:size,height:size,borderRadius:size*0.18,overflow:"hidden",flexShrink:0}}>
@@ -1000,26 +984,12 @@ const SHIELD_EMOJIS = ["🛡️","⚽","🏆","🦁","🦅","🐯","🐺","🦊"
 const IS = {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 14px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,outline:"none",transition:"border-color 0.2s",width:"100%",boxSizing:"border-box"};
 const LT = {color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5};
 
-// CUSTOM_COLOR_IDX is a sentinel value meaning "user picked a free color"
-const CUSTOM_COLOR_IDX = 99;
-
 function TeamFormModal({initial,onSave,onClose}) {
-  const [form,setForm]=useState(initial||{name:"",colorIdx:0,shieldEmoji:"🛡️",photo:"",customColor:""});
+  const [form,setForm]=useState(initial||{name:"",colorIdx:0,shieldEmoji:"🛡️",photo:""});
   const [saving,setSaving]=useState(false);
-  const colorPickerRef=useRef();
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.name.trim()!=="";
-  const isCustom=form.colorIdx===CUSTOM_COLOR_IDX;
-  // For custom color, derive a lighter shade for c2 by lightening the hex
-  const lightenHex=(hex,amt=40)=>{
-    const n=parseInt(hex.replace("#",""),16);
-    const r=Math.min(255,((n>>16)&0xff)+amt);
-    const g=Math.min(255,((n>>8)&0xff)+amt);
-    const b=Math.min(255,(n&0xff)+amt);
-    return "#"+[r,g,b].map(v=>v.toString(16).padStart(2,"0")).join("");
-  };
-  const customC=form.customColor||"#16a34a";
-  const [c1,c2]=isCustom?[customC,lightenHex(customC)]:SHIELD_COLORS[form.colorIdx%SHIELD_COLORS.length];
+  const [c1,c2]=SHIELD_COLORS[form.colorIdx%SHIELD_COLORS.length];
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
@@ -1080,29 +1050,7 @@ function TeamFormModal({initial,onSave,onClose}) {
                   transition:"all 0.15s"
                 }}/>
               ))}
-              {/* Custom color picker swatch — last slot */}
-              <button onClick={()=>{set("colorIdx",CUSTOM_COLOR_IDX);setTimeout(()=>colorPickerRef.current?.click(),80);}} style={{
-                height:30,borderRadius:8,border:"2px solid",cursor:"pointer",position:"relative",overflow:"hidden",
-                background:isCustom?`linear-gradient(135deg,${customC},${lightenHex(customC)})`:"conic-gradient(red,yellow,lime,cyan,blue,magenta,red)",
-                borderColor:isCustom?"#fff":"transparent",
-                boxShadow:isCustom?`0 0 10px ${customC}80`:"none",
-                transition:"all 0.15s",
-                display:"flex",alignItems:"center",justifyContent:"center",
-              }} title="Cor personalizada">
-                {!isCustom&&<span style={{fontSize:14,filter:"drop-shadow(0 0 2px rgba(0,0,0,0.8))"}}>🎨</span>}
-                <input ref={colorPickerRef} type="color" value={customC}
-                  onChange={e=>{set("colorIdx",CUSTOM_COLOR_IDX);set("customColor",e.target.value);}}
-                  style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%",border:"none",padding:0}}/>
-              </button>
             </div>
-            {/* Show hex value when custom is selected */}
-            {isCustom&&(
-              <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
-                <div style={{width:18,height:18,borderRadius:4,background:customC,border:"1px solid rgba(255,255,255,0.2)",flexShrink:0}}/>
-                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:12,color:"#9CA3AF",letterSpacing:0.5}}>{customC.toUpperCase()}</span>
-                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#4B5563"}}>— cor personalizada</span>
-              </div>
-            )}
           </div>
 
           {/* Foto escudo (opcional) */}
@@ -1210,7 +1158,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
         )}
 
         {teams.map((team,i)=>{
-          const [c1,c2]=getTeamColors(team.colorIdx, team.customColor);
+          const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
           const escalados=(team.lineup||[]).filter(l=>l.playerId).length;
           const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
           return (
@@ -1283,12 +1231,12 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 }
 
 // ─── Player Form ──────────────────────────────────────────────────────────────
-function PlayerFormModal({initial,onSave,onClose,teamColor,teamCustomColor}) {
+function PlayerFormModal({initial,onSave,onClose,teamColor}) {
   const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3});
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=!!(form.name.trim()&&String(form.number).trim()!=="");
-  const [c1]=getTeamColors(teamColor, teamCustomColor||null);
+  const [c1]=SHIELD_COLORS[teamColor%SHIELD_COLORS.length];
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
@@ -1738,7 +1686,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
 
   // ── Shared: draw team shield in header ───────────────────────────────────
   const drawShieldInHeader=(ctx,imageCache,x,y,size,isModern)=>{
-    const [c1s,c2s]=getTeamColors(team?.colorIdx||0, team?.customColor||"");
+    const [c1s,c2s]=SHIELD_COLORS[(team?.colorIdx||0)%SHIELD_COLORS.length];
     const r=size*0.18;
     const cachedShield=team?.photo?imageCache[team.photo]:null;
     ctx.save();
@@ -2244,13 +2192,13 @@ const SORT_OPTIONS = [
 
 const PLAYERS_PAGE_SIZE = 20;
 
-function PlayersTab({ players, onEdit, onDelete, teamColor, teamCustomColor }) {
+function PlayersTab({ players, onEdit, onDelete, teamColor }) {
   const [search, setSearch]     = useState("");
   const [sortBy, setSortBy]     = useState("name");
   const [sortAsc, setSortAsc]   = useState(true);
   const [filterPos, setFilterPos] = useState("Todas");
   const [page, setPage]         = useState(1);
-  const [c1, c2] = getTeamColors(teamColor, teamCustomColor||null);
+  const [c1, c2] = SHIELD_COLORS[teamColor % SHIELD_COLORS.length];
   // Reset to page 1 whenever filter/sort changes
   useEffect(() => { setPage(1); }, [search, sortBy, sortAsc, filterPos]);
 
@@ -2429,7 +2377,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal] = useState("");
   const [confirmDelId, setConfirmDelId] = useState(null);
-  const [c1, c2] = getTeamColors(team.colorIdx||0, team.customColor||"");
+  const [c1, c2] = SHIELD_COLORS[(team.colorIdx||0) % SHIELD_COLORS.length];
   const lineups = team.lineups || [];
 
   const typeInfo = (type) => LINEUP_TYPES.find(t => t.key === type) || LINEUP_TYPES[0];
@@ -2580,7 +2528,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [saveStatus,setSaveStatus]=useState("idle"); // "idle" | "saving" | "saved" | "error"
   // ID generation: crypto.randomUUID() (with fallback) avoids any chance of
   // collision, even across teams/components remounted in quick succession.
-  const [c1,c2]=getTeamColors(team.colorIdx, team.customColor||"");
+  const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
 
   const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
   // upd sempre usa o team atual da prop (TeamView recebe team atualizado do pai via setTeams)
@@ -2793,7 +2741,6 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             onEdit={(p)=>{setEditingPlayer(p);setShowForm(true);}}
             onDelete={deletePlayer}
             teamColor={team.colorIdx}
-            teamCustomColor={team.customColor||""}
           />
         )}
       </div>
@@ -2812,7 +2759,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
         </button>
       )}
 
-      {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} teamCustomColor={team.customColor||""} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
+      {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)}/>}
       {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
