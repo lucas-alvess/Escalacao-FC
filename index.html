@@ -147,7 +147,7 @@ async function migrateBase64InTeam(uid, team) {
 //
 // Fields stored per player: id, name, number, position, foot, stars, photo, updatedAt
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 // ── Player cloud CRUD ─────────────────────────────────────────────────────────
 
@@ -210,15 +210,15 @@ async function deleteAllPlayersCloud(uid, teamId) {
 // ── Team cloud CRUD (v3 — no players array in team doc) ───────────────────────
 
 /**
- * Save (upsert) team metadata only (no players array).
+ * Save (upsert) team metadata only (no players, lineup, or lineups arrays).
  * Migrates shield base64 → Storage URL.
  */
 async function saveTeamCloud(uid, team) {
   const fb = getFirebase(); if (!fb) return false;
   try {
     const resolved = await migrateBase64InTeam(uid, team);
-    // Strip players array — stored in subcollection
-    const { players: _p, ...teamMeta } = resolved;
+    // Strip subcollection fields — stored separately
+    const { players: _p, lineup: _l, lineups: _ls, ...teamMeta } = resolved;
     const ref = fb.doc(fb.db, "users", uid, "teams", String(team.id));
     await fb.setDoc(ref, { ...teamMeta, updatedAt: fb.serverTimestamp() });
     return true;
@@ -231,7 +231,10 @@ async function saveTeamCloud(uid, team) {
 async function deleteTeamCloud(uid, teamId) {
   const fb = getFirebase(); if (!fb) return false;
   try {
-    await deleteAllPlayersCloud(uid, teamId);
+    await Promise.all([
+      deleteAllPlayersCloud(uid, teamId),
+      deleteAllLineupsCloud(uid, teamId),
+    ]);
     await fb.deleteDoc(fb.doc(fb.db, "users", uid, "teams", String(teamId)));
     return true;
   } catch(e) { console.warn("deleteTeamCloud error:", e); return false; }
@@ -239,7 +242,7 @@ async function deleteTeamCloud(uid, teamId) {
 
 /**
  * Load all teams (metadata only) from the teams subcollection.
- * Players are loaded separately and merged in.
+ * Players and lineups are loaded separately and merged in.
  */
 async function loadTeamsCloud(uid) {
   const fb = getFirebase(); if (!fb) return null;
@@ -250,13 +253,106 @@ async function loadTeamsCloud(uid) {
     const teams = snap.docs.map(d => d.data());
     teams.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
 
-    // Load players for each team in parallel
-    const teamsWithPlayers = await Promise.all(teams.map(async team => {
-      const players = await loadPlayersCloud(uid, team.id);
-      return { ...team, players: players || [] };
+    // Load players AND lineups for each team in parallel
+    const teamsWithData = await Promise.all(teams.map(async team => {
+      const [players, lineups] = await Promise.all([
+        loadPlayersCloud(uid, team.id),
+        loadLineupsCloud(uid, team.id),
+      ]);
+      // Derive active lineup for backward-compat fields (formation, lineup)
+      const activeLineup = getActiveLineup(team, lineups || []);
+      return {
+        ...team,
+        players: players || [],
+        lineups: lineups || [],
+        // backward-compat: expose active lineup fields at team level
+        formation: activeLineup?.formation || team.formation || "4-4-2",
+        lineup: activeLineup?.entries || [],
+      };
     }));
-    return teamsWithPlayers;
+    return teamsWithData;
   } catch(e) { console.warn("loadTeamsCloud error:", e); return null; }
+}
+
+
+// ── Lineup cloud CRUD ─────────────────────────────────────────────────────────
+// Structure: users/{uid}/teams/{teamId}/lineups/{lineupId}
+// Fields: id, name, type ("titular"|"reserva"|"personalizada"), formation,
+//         entries (Array<{slotId,playerId}>), isActive, updatedAt
+
+/** Factory: create a new lineup object (local only, not saved). */
+function makeLineup(overrides = {}) {
+  return {
+    id: String(Date.now()),
+    name: "Titular",
+    type: "titular",
+    formation: "4-4-2",
+    entries: [],
+    isActive: true,
+    ...overrides,
+  };
+}
+
+/** Returns the active lineup object from a team's lineups array. */
+function getActiveLineup(team, lineups) {
+  if (!lineups || lineups.length === 0) return null;
+  // Prefer the one marked isActive matching activeLineupId
+  if (team.activeLineupId) {
+    const byId = lineups.find(l => String(l.id) === String(team.activeLineupId));
+    if (byId) return byId;
+  }
+  // Fallback: first isActive, then first
+  return lineups.find(l => l.isActive) || lineups[0];
+}
+
+/** Save (upsert) a single lineup document under a team. */
+async function saveLineupCloud(uid, teamId, lineup) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "lineups", String(lineup.id));
+    await fb.setDoc(ref, { ...lineup, updatedAt: fb.serverTimestamp() });
+    return true;
+  } catch(e) { console.warn("saveLineupCloud error:", e); return false; }
+}
+
+/** Delete a single lineup document. */
+async function deleteLineupCloud(uid, teamId, lineupId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(
+      fb.doc(fb.db, "users", uid, "teams", String(teamId), "lineups", String(lineupId))
+    );
+    return true;
+  } catch(e) { console.warn("deleteLineupCloud error:", e); return false; }
+}
+
+/** Load all lineups for a team from the lineups subcollection. */
+async function loadLineupsCloud(uid, teamId) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "lineups");
+    const snap = await fb.getDocs(col);
+    if (snap.empty) return [];
+    return snap.docs.map(d => d.data());
+  } catch(e) { console.warn("loadLineupsCloud error:", e); return null; }
+}
+
+/** Delete all lineups in a team's subcollection (used when deleting a team). */
+async function deleteAllLineupsCloud(uid, teamId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "lineups");
+    const snap = await fb.getDocs(col);
+    if (snap.empty) return true;
+    const CHUNK = 400;
+    const docs = snap.docs;
+    for (let i = 0; i < docs.length; i += CHUNK) {
+      const batch = fb.writeBatch(fb.db);
+      docs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    return true;
+  } catch(e) { console.warn("deleteAllLineupsCloud error:", e); return false; }
 }
 
 // ── Schema versioning ─────────────────────────────────────────────────────────
@@ -342,8 +438,58 @@ async function migrateV2toV3(uid) {
   } catch(e) { console.warn("migrateV2toV3 error:", e); }
 }
 
+
 /**
- * Full init routine: check schema, run any pending migrations, load all teams+players.
+ * v3 → v4: Move embedded `lineup` array + `formation` from each team doc
+ *          into an individual lineup document in the lineups subcollection.
+ *          Sets isActive=true and type="titular" on the migrated lineup.
+ *          Idempotent: skips teams that already have lineup docs.
+ */
+async function migrateV3toV4(uid) {
+  const fb = getFirebase(); if (!fb) return;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams");
+    const snap = await fb.getDocs(col);
+    if (snap.empty) return;
+
+    await Promise.all(snap.docs.map(async teamDoc => {
+      const teamData = teamDoc.data();
+      // Check if lineups subcollection already has docs (already migrated)
+      const lineupCol = fb.collection(fb.db, "users", uid, "teams", String(teamData.id), "lineups");
+      const lineupSnap = await fb.getDocs(lineupCol);
+      if (!lineupSnap.empty) return; // already migrated
+
+      // Build a lineup doc from embedded fields
+      const lineupId = String(Date.now() + Math.random());
+      const lineupDoc = {
+        id: lineupId,
+        name: "Titular",
+        type: "titular",
+        formation: teamData.formation || "4-4-2",
+        entries: Array.isArray(teamData.lineup) ? teamData.lineup : [],
+        isActive: true,
+        updatedAt: fb.serverTimestamp(),
+      };
+
+      // Write lineup to subcollection
+      await fb.setDoc(
+        fb.doc(fb.db, "users", uid, "teams", String(teamData.id), "lineups", lineupId),
+        lineupDoc
+      );
+
+      // Update team doc: set activeLineupId, remove embedded lineup/formation
+      const { lineup: _l, ...teamMeta } = teamData;
+      await fb.setDoc(
+        fb.doc(fb.db, "users", uid, "teams", String(teamData.id)),
+        { ...teamMeta, activeLineupId: lineupId, updatedAt: fb.serverTimestamp() }
+      );
+      console.log(`[v3→v4] Migrated lineup for team ${teamData.id} → lineup ${lineupId}`);
+    }));
+  } catch(e) { console.warn("migrateV3toV4 error:", e); }
+}
+
+/**
+ * Full init routine: check schema, run any pending migrations, load all teams+players+lineups.
  * Returns { teams: Array, migrated: boolean }
  */
 async function initTeamsFromCloud(uid) {
@@ -356,6 +502,10 @@ async function initTeamsFromCloud(uid) {
   }
   if (version < 3) {
     await migrateV2toV3(uid);
+    migrated = true;
+  }
+  if (version < 4) {
+    await migrateV3toV4(uid);
     await setSchemaVersion(uid, SCHEMA_VERSION);
     migrated = true;
   }
@@ -367,20 +517,24 @@ async function initTeamsFromCloud(uid) {
 // ── Batch save helpers ────────────────────────────────────────────────────────
 
 /**
- * Save team metadata + all its players to cloud.
+ * Save team metadata + all its players + all lineups to cloud.
  * Used for force-save and initial push from localStorage.
  */
 async function saveTeamWithPlayersCloud(uid, team) {
   const fb = getFirebase(); if (!fb) return false;
   try {
-    // Save team metadata (no players array)
+    // Save team metadata (no players/lineup arrays)
     const teamOk = await saveTeamCloud(uid, team);
     if (!teamOk) return false;
     // Save each player individually
-    const results = await Promise.all(
+    const playerResults = await Promise.all(
       (team.players || []).map(p => savePlayerCloud(uid, team.id, p))
     );
-    return results.every(Boolean);
+    // Save each lineup individually
+    const lineupResults = await Promise.all(
+      (team.lineups || []).map(l => saveLineupCloud(uid, team.id, l))
+    );
+    return [...playerResults, ...lineupResults].every(Boolean);
   } catch(e) { console.warn("saveTeamWithPlayersCloud error:", e); return false; }
 }
 
@@ -394,7 +548,7 @@ async function saveAllTeamsCloud(uid, teams) {
 }
 
 // Local fallback (used while offline / before auth)
-const STORAGE_KEY = "escalacao_fc_v5";
+const STORAGE_KEY = "escalacao_fc_v6";
 function loadDataLocal() {
   try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; }
 }
@@ -532,12 +686,17 @@ const SHIELD_COLORS = [
 // ─── Default team factory ─────────────────────────────────────────────────────
 let _uid = 1;
 function makeTeam(name="Novo Time", colorIdx=0) {
+  const defaultLineup = makeLineup({ id: String(Date.now()), name: "Titular", type: "titular", formation: "4-4-2", entries: [], isActive: true });
   return {
     id: Date.now() + (_uid++),
     name,
     colorIdx,
     shieldEmoji: "🛡️",
     players: [],
+    // v4: lineups subcollection; active lineup exposed at team level for compat
+    lineups: [defaultLineup],
+    activeLineupId: defaultLineup.id,
+    // backward-compat getters (derived from active lineup)
     lineup: [],
     formation: "4-4-2",
   };
@@ -563,6 +722,8 @@ const Ico = {
   Home:    ()=><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
   Palette: ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><circle cx="8" cy="10" r="1" fill="currentColor"/><circle cx="16" cy="10" r="1" fill="currentColor"/><circle cx="12" cy="16" r="1" fill="currentColor"/></svg>,
   Save:    ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
+  Lineup:  ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="15" r="1" fill="currentColor"/><circle cx="12" cy="15" r="1" fill="currentColor"/><circle cx="16" cy="15" r="1" fill="currentColor"/></svg>,
+  Star2:   ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -805,7 +966,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 
         {teams.map((team,i)=>{
           const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
-          const escalados=team.lineup.filter(l=>l.playerId).length;
+          const escalados=(team.lineup||[]).filter(l=>l.playerId).length;
           const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
           return (
             <div key={team.id} style={{
@@ -1966,8 +2127,159 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
   );
 }
 
+
+// ─── Lineup Manager Modal ─────────────────────────────────────────────────────
+const LINEUP_TYPES = [
+  { key: "titular",      label: "Titular",      color: "#34d399", emoji: "⭐" },
+  { key: "reserva",      label: "Reserva",       color: "#60a5fa", emoji: "🔄" },
+  { key: "personalizada",label: "Personalizada", color: "#f59e0b", emoji: "✏️" },
+];
+
+function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDelete}) {
+  const [creatingNew, setCreatingNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState("titular");
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameVal, setRenameVal] = useState("");
+  const [confirmDelId, setConfirmDelId] = useState(null);
+  const [c1, c2] = SHIELD_COLORS[(team.colorIdx||0) % SHIELD_COLORS.length];
+  const lineups = team.lineups || [];
+
+  const typeInfo = (type) => LINEUP_TYPES.find(t => t.key === type) || LINEUP_TYPES[0];
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.78)",backdropFilter:"blur(5px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:500,maxHeight:"80vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+
+        {/* Header */}
+        <div style={{padding:"16px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
+          <div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>Escalações</div>
+            <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#4B5563",marginTop:1}}>{lineups.length} escalação{lineups.length!==1?"s":""} · toque para ativar</div>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <button onClick={()=>{setCreatingNew(true);setNewName("");setNewType("titular");}} style={{
+              display:"flex",alignItems:"center",gap:5,padding:"7px 11px",borderRadius:9,
+              background:`${c1}25`,border:`1px solid ${c1}60`,color:c2,cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800
+            }}><Ico.Plus/>Nova</button>
+            <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
+          </div>
+        </div>
+
+        <div style={{overflowY:"auto",padding:"10px 14px 24px",display:"flex",flexDirection:"column",gap:8}}>
+
+          {/* Create new form */}
+          {creatingNew && (
+            <div style={{background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:14,padding:"14px 14px 12px",display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,color:"#34d399"}}>Nova escalação</div>
+              <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Nome da escalação..." style={{...IS,fontSize:13}}
+                onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+              <div style={{display:"flex",gap:6}}>
+                {LINEUP_TYPES.map(t=>(
+                  <button key={t.key} onClick={()=>setNewType(t.key)} style={{
+                    flex:1,padding:"7px 4px",borderRadius:9,border:"1.5px solid",cursor:"pointer",
+                    borderColor:newType===t.key?t.color:"rgba(255,255,255,0.1)",
+                    background:newType===t.key?`${t.color}20`:"rgba(255,255,255,0.03)",
+                    fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,
+                    color:newType===t.key?t.color:"#6B7280",
+                  }}>{t.emoji} {t.label}</button>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setCreatingNew(false)} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Cancelar</button>
+                <button onClick={()=>{if(!newName.trim())return;onCreate(newType,newName.trim());setCreatingNew(false);}} style={{
+                  flex:2,padding:"9px 0",borderRadius:9,border:"none",cursor:newName.trim()?"pointer":"not-allowed",
+                  background:newName.trim()?"linear-gradient(135deg,#166534,#34d399)":"rgba(255,255,255,0.06)",
+                  color:newName.trim()?"#fff":"#4B5563",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
+                }}>CRIAR</button>
+              </div>
+            </div>
+          )}
+
+          {/* Lineup list */}
+          {lineups.map((lineup, idx) => {
+            const isActive = String(lineup.id) === String(team.activeLineupId) || lineup.isActive;
+            const ti = typeInfo(lineup.type);
+            const escalados = (lineup.entries||[]).filter(e=>e.playerId).length;
+            const slots = FORMATIONS[lineup.formation]?.slots || FORMATIONS["4-4-2"].slots;
+            const isRenaming = renamingId === lineup.id;
+            const isConfirmDel = confirmDelId === lineup.id;
+
+            return (
+              <div key={lineup.id} style={{
+                background: isActive ? `${c1}12` : "rgba(255,255,255,0.03)",
+                border: `1.5px solid ${isActive ? c1 + "55" : "rgba(255,255,255,0.08)"}`,
+                borderRadius: 14, overflow: "hidden",
+                transition: "all 0.18s",
+              }}>
+                {/* Active indicator bar */}
+                {isActive && <div style={{height:3,background:`linear-gradient(90deg,${c1},${c2})`}}/>}
+
+                <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>{if(!isActive)onActivate(lineup.id);}}>
+                  {/* Type badge */}
+                  <div style={{width:38,height:38,borderRadius:10,background:`${ti.color}20`,border:`1px solid ${ti.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{ti.emoji}</div>
+
+                  <div style={{flex:1,minWidth:0}}>
+                    {isRenaming ? (
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <input value={renameVal} onChange={e=>setRenameVal(e.target.value)} autoFocus
+                          style={{...IS,fontSize:13,flex:1,padding:"5px 10px"}}
+                          onFocus={e=>e.target.style.borderColor=c1} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}
+                          onKeyDown={e=>{if(e.key==="Enter"&&renameVal.trim()){onRename(lineup.id,renameVal.trim());setRenamingId(null);}if(e.key==="Escape")setRenamingId(null);}}/>
+                        <button onClick={e=>{e.stopPropagation();if(renameVal.trim()){onRename(lineup.id,renameVal.trim());setRenamingId(null);}}} style={{background:"rgba(52,211,153,0.2)",border:"1px solid rgba(52,211,153,0.4)",borderRadius:7,padding:"5px 10px",color:"#34d399",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"'DM Sans',sans-serif",flexShrink:0}}>OK</button>
+                        <button onClick={e=>{e.stopPropagation();setRenamingId(null);}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:7,padding:"5px 8px",color:"#9CA3AF",cursor:"pointer",flexShrink:0}}><Ico.Close/></button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700,color:isActive?c2:"#fff"}}>{lineup.name}</span>
+                          {isActive && <span style={{background:c1,color:"#000",borderRadius:5,padding:"1px 7px",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:900,flexShrink:0}}>ATIVA</span>}
+                        </div>
+                        <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#6B7280",marginTop:1}}>
+                          {lineup.formation} · {escalados}/{slots.length} escalados · <span style={{color:ti.color}}>{ti.label}</span>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Action buttons */}
+                  {!isRenaming && (
+                    <div style={{display:"flex",gap:5,flexShrink:0}}>
+                      <button onClick={e=>{e.stopPropagation();setRenamingId(lineup.id);setRenameVal(lineup.name);}} style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:7,padding:"6px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
+                      {lineups.length > 1 && (
+                        <button onClick={e=>{e.stopPropagation();setConfirmDelId(lineup.id);}} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.22)",borderRadius:7,padding:"6px 8px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Confirm delete */}
+                {isConfirmDel && (
+                  <div onClick={e=>e.stopPropagation()} style={{borderTop:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.07)",padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{flex:1,fontFamily:"'DM Sans',sans-serif",fontSize:12,color:"#f87171"}}>Excluir esta escalação?</span>
+                    <button onClick={()=>setConfirmDelId(null)} style={{padding:"5px 10px",borderRadius:7,border:"1px solid rgba(255,255,255,0.12)",background:"transparent",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>Não</button>
+                    <button onClick={()=>{onDelete(lineup.id);setConfirmDelId(null);}} style={{padding:"5px 12px",borderRadius:7,border:"none",background:"rgba(239,68,68,0.8)",color:"#fff",cursor:"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:0.5}}>EXCLUIR</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {lineups.length === 0 && (
+            <div style={{textAlign:"center",padding:"36px 20px",color:"#4B5563"}}>
+              <div style={{fontSize:40,marginBottom:10}}>📋</div>
+              <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:14,color:"#6B7280"}}>Nenhuma escalação ainda</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Team Tactical View (existing app logic) ──────────────────────────────────
-function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud}) {
+function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud,onSaveLineup,onDeleteLineup}) {
   const [tab,setTab]=useState("field");
   const [editingName,setEditingName]=useState(false);
   const [showForm,setShowForm]=useState(false);
@@ -1977,6 +2289,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [showFList,setShowFList]=useState(false);
   const [toast,setToast]=useState(null);
   const [showEditTeam,setShowEditTeam]=useState(false);
+  const [showLineupMgr,setShowLineupMgr]=useState(false);
   const [saveStatus,setSaveStatus]=useState("idle"); // "idle" | "saving" | "saved" | "error"
   const nextId=useRef(null);
   const genId=()=>{
@@ -2015,28 +2328,61 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
     setShowForm(false);setEditingPlayer(null);setToast("Jogador salvo!");
   };
   const deletePlayer=(id)=>{
-    upd({players:team.players.filter(p=>p.id!==id),lineup:team.lineup.filter(e=>e.playerId!==id)});
-    // Remove player doc from subcollection
+    // Remove from all lineups
+    const updatedLineups=(team.lineups||[]).map(l=>({...l,entries:(l.entries||[]).filter(e=>e.playerId!==id)}));
+    const activeLineup=getActiveLineup(team,updatedLineups);
+    upd({
+      players:team.players.filter(p=>p.id!==id),
+      lineups:updatedLineups,
+      lineup:activeLineup?.entries||[],
+    });
+    // Remove player doc from subcollection + save updated lineups
     if(onDeletePlayerCloud) onDeletePlayerCloud(team.id, id);
+    if(onSaveLineup) updatedLineups.forEach(l=>onSaveLineup(team.id,l));
   };
   const handleFormationChange=(f)=>{
-    const oldSlots=FORMATIONS[team.formation].slots;
+    const oldSlots=FORMATIONS[team.formation||"4-4-2"].slots;
     const newSlots=FORMATIONS[f].slots;
-    upd({formation:f,lineup:migrateLineup(team.lineup,oldSlots,newSlots)});
+    const migratedEntries=migrateLineup(team.lineup||[],oldSlots,newSlots);
+    // Update active lineup formation + entries
+    const updatedLineups=(team.lineups||[]).map(l=>{
+      if(String(l.id)===String(team.activeLineupId)||(l.isActive&&!team.activeLineupId))
+        return{...l,formation:f,entries:migratedEntries};
+      return l;
+    });
+    upd({formation:f,lineup:migratedEntries,lineups:updatedLineups});
+    if(onSaveLineup){const al=getActiveLineup(team,updatedLineups);if(al)onSaveLineup(team.id,al);}
     setToast(`Formação ${f}`);
   };
   const handleSlotTap=(slotId,label)=>setActiveSlot({slotId,label});
   const pickPlayer=(playerId)=>{
-    const l=team.lineup;
+    const l=team.lineup||[];
     const existingEntry=l.find(e=>e.playerId===playerId);
     const currentEntry=l.find(e=>e.slotId===activeSlot.slotId);
     let next=l.filter(e=>e.slotId!==activeSlot.slotId&&e.playerId!==playerId);
     next.push({slotId:activeSlot.slotId,playerId});
     if(existingEntry&&currentEntry)next.push({slotId:existingEntry.slotId,playerId:currentEntry.playerId});
-    upd({lineup:next});setActiveSlot(null);
+    const updatedLineups=(team.lineups||[]).map(l2=>{
+      if(String(l2.id)===String(team.activeLineupId)||(l2.isActive&&!team.activeLineupId))
+        return{...l2,entries:next};
+      return l2;
+    });
+    upd({lineup:next,lineups:updatedLineups});
+    if(onSaveLineup){const al=getActiveLineup(team,updatedLineups);if(al)onSaveLineup(team.id,al);}
+    setActiveSlot(null);
   };
-  const clearSlot=()=>{upd({lineup:team.lineup.filter(e=>e.slotId!==activeSlot.slotId)});setActiveSlot(null);};
-  const escalados=team.lineup.filter(l=>l.playerId).length;
+  const clearSlot=()=>{
+    const next=(team.lineup||[]).filter(e=>e.slotId!==activeSlot.slotId);
+    const updatedLineups=(team.lineups||[]).map(l=>{
+      if(String(l.id)===String(team.activeLineupId)||(l.isActive&&!team.activeLineupId))
+        return{...l,entries:next};
+      return l;
+    });
+    upd({lineup:next,lineups:updatedLineups});
+    if(onSaveLineup){const al=getActiveLineup(team,updatedLineups);if(al)onSaveLineup(team.id,al);}
+    setActiveSlot(null);
+  };
+  const escalados=(team.lineup||[]).filter(l=>l.playerId).length;
 
   const handleForceSave=async()=>{
     if(saveStatus==="saving")return;
@@ -2073,7 +2419,9 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                 <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:0.8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{team.name}</span>
                 <span style={{color:"#4B5563",flexShrink:0}}><Ico.Edit/></span>
               </div>
-              <div style={{color:"#4B5563",fontSize:10,marginTop:-1,fontWeight:600}}>{escalados}/{slots.length} escalados · Campo (11)</div>
+              <div style={{color:"#4B5563",fontSize:10,marginTop:-1,fontWeight:600}}>
+                {getActiveLineup(team,team.lineups||[])?.name||"Titular"} · {escalados}/{slots.length} escalados
+              </div>
             </div>
           </div>
 
@@ -2124,6 +2472,9 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             <FormationPicker current={team.formation} onChange={handleFormationChange}/>
             <button onClick={()=>setShowFList(true)} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:9,padding:"7px 9px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
               <Ico.List/>
+            </button>
+            <button onClick={()=>setShowLineupMgr(true)} title="Gerenciar escalações" style={{background:`${c1}18`,border:`1px solid ${c1}40`,borderRadius:9,padding:"7px 9px",color:c2,cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800}}>
+              <Ico.Lineup/>{(team.lineups||[]).length>1?<span style={{background:c1,color:"#000",borderRadius:4,padding:"0 4px",fontSize:9,fontWeight:900}}>{(team.lineups||[]).length}</span>:null}
             </button>
           </div>
         </div>
@@ -2180,6 +2531,43 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)}/>}
       {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
+      {showLineupMgr&&<LineupManagerModal team={team} onClose={()=>setShowLineupMgr(false)}
+        onActivate={(lineupId)=>{
+          const lu=team.lineups||[];
+          const updated=lu.map(l=>({...l,isActive:String(l.id)===String(lineupId)}));
+          const al=updated.find(l=>l.isActive)||updated[0];
+          upd({lineups:updated,activeLineupId:String(lineupId),formation:al?.formation||"4-4-2",lineup:al?.entries||[]});
+        }}
+        onRename={(lineupId,newName)=>{
+          const updated=(team.lineups||[]).map(l=>l.id===lineupId?{...l,name:newName}:l);
+          upd({lineups:updated});
+          const tgt=updated.find(l=>String(l.id)===String(lineupId));
+          if(tgt&&onSaveLineup)onSaveLineup(team.id,tgt);
+        }}
+        onCreate={(type,name)=>{
+          const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
+          const newL=makeLineup({id:String(Date.now()),name,type,formation:team.formation||"4-4-2",entries:[],isActive:false});
+          const updated=[...(team.lineups||[]),newL];
+          upd({lineups:updated});
+          if(onSaveLineup)onSaveLineup(team.id,newL);
+          setToast(`Escalação "${name}" criada!`);
+        }}
+        onDelete={(lineupId)=>{
+          const lu=team.lineups||[];
+          if(lu.length<=1){setToast("Mantenha ao menos 1 escalação.");return;}
+          const updated=lu.filter(l=>String(l.id)!==String(lineupId));
+          // If we deleted the active one, activate the first remaining
+          let newActive=team.activeLineupId;
+          if(String(team.activeLineupId)===String(lineupId)){
+            updated[0].isActive=true;
+            newActive=updated[0].id;
+          }
+          const al=getActiveLineup({activeLineupId:newActive},updated)||updated[0];
+          upd({lineups:updated,activeLineupId:String(newActive),formation:al?.formation||"4-4-2",lineup:al?.entries||[]});
+          if(onDeleteLineup)onDeleteLineup(team.id,lineupId);
+          setToast("Escalação removida.");
+        }}
+      />}
       {showEditTeam&&<TeamFormModal initial={team} onSave={async(f)=>{
         const fb=getFirebase();
         const uid=fb?.auth?.currentUser?.uid;
@@ -2310,8 +2698,14 @@ function App() {
               const local = loadDataLocal();
               if (local?.teams?.length > 0) {
                 setTeams(local.teams);
-                // Push local data up to cloud immediately (teams + players in subcollection)
-                await Promise.all(local.teams.map(t => saveTeamWithPlayersCloud(u.uid, t)));
+                // Push local data up to cloud immediately (teams + players + lineups in subcollection)
+                // Ensure old local data has lineups structure before pushing
+                const teamsWithLineups = local.teams.map(t => {
+                  if (t.lineups && t.lineups.length > 0) return t;
+                  const defL = makeLineup({ id: String(Date.now() + Math.random()), name: "Titular", type: "titular", formation: t.formation || "4-4-2", entries: t.lineup || [], isActive: true });
+                  return { ...t, lineups: [defL], activeLineupId: defL.id };
+                });
+                await Promise.all(teamsWithLineups.map(t => saveTeamWithPlayersCloud(u.uid, t)));
                 await setSchemaVersion(u.uid, SCHEMA_VERSION);
               }
             }
@@ -2420,7 +2814,11 @@ function App() {
     setShowNewTeam(false);
     setActiveTeamId(t.id);
     setToast("Time criado!");
-    if (uid) saveTeamCloud(uid, t); // immediate save for new team (no players yet)
+    if (uid) {
+      await saveTeamCloud(uid, t);
+      // Save initial lineup
+      (t.lineups || []).forEach(l => saveLineupCloud(uid, t.id, l));
+    }
   };
 
   const updateTeam = useCallback((updated) => {
@@ -2432,6 +2830,17 @@ function App() {
     });
   }, [scheduleSaveTeam]);
 
+  // ── Save a single lineup to cloud (debounced 600ms) ────────────────────────
+  const scheduleSaveLineup = useCallback((teamId, lineup) => {
+    if (!user) return;
+    const key = `lineup_${teamId}_${lineup.id}`;
+    clearTimeout(saveTimersRef.current[key]);
+    saveTimersRef.current[key] = setTimeout(() => {
+      saveLineupCloud(user.uid, teamId, lineup);
+      delete saveTimersRef.current[key];
+    }, 600);
+  }, [user]);
+
   const deleteTeam = async (id) => {
     setTeams(prev => prev.filter(t => t.id !== id));
     if (activeTeamId === id) setActiveTeamId(null);
@@ -2441,7 +2850,7 @@ function App() {
     if (uid) {
       // Cancel all pending saves for this team and its players
       Object.keys(saveTimersRef.current).forEach(key => {
-        if (key === `team_${id}` || key.startsWith(`player_${id}_`)) {
+        if (key === `team_${id}` || key.startsWith(`player_${id}_`) || key.startsWith(`lineup_${id}_`)) {
           clearTimeout(saveTimersRef.current[key]);
           delete saveTimersRef.current[key];
         }
@@ -2519,6 +2928,7 @@ function App() {
           onBack={() => setActiveTeamId(null)}
           onForceSave={handleForceSave}
           onSavePlayer={scheduleSavePlayer}
+          onSaveLineup={scheduleSaveLineup}
           onDeletePlayerCloud={(teamId, playerId) => {
             const uid = user?.uid;
             if (uid) {
@@ -2526,6 +2936,15 @@ function App() {
               clearTimeout(saveTimersRef.current[key]);
               delete saveTimersRef.current[key];
               deletePlayerCloud(uid, teamId, playerId);
+            }
+          }}
+          onDeleteLineup={(teamId, lineupId) => {
+            const uid = user?.uid;
+            if (uid) {
+              const key = `lineup_${teamId}_${lineupId}`;
+              clearTimeout(saveTimersRef.current[key]);
+              delete saveTimersRef.current[key];
+              deleteLineupCloud(uid, teamId, lineupId);
             }
           }}
         />
