@@ -153,10 +153,15 @@ function isBase64Image(str) {
 async function uploadImageToStorage(uid, base64, path) {
   const fb = getFirebase();
   if (!fb) throw new Error("Firebase not ready");
-  // Convert base64 data URL → Blob
-  const res = await fetch(base64);
-  const blob = await res.blob();
-  const ext = blob.type.split("/")[1] || "jpg";
+  // Convert base64 data URL → Blob using atob (avoids fetch() Content-Security-Policy issues with data: URLs)
+  const [header, data] = base64.split(",");
+  const mimeMatch = header.match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) { bytes[i] = binary.charCodeAt(i); }
+  const blob = new Blob([bytes], { type: mime });
+  const ext = mime.split("/")[1] || "jpg";
   const fullPath = `users/${uid}/${path}.${ext}`;
   const ref = fb.storageRef(fb.storage, fullPath);
   await fb.uploadBytes(ref, blob);
@@ -925,9 +930,16 @@ const LT = {color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWe
 
 function TeamFormModal({initial,onSave,onClose}) {
   const [form,setForm]=useState(initial||{name:"",colorIdx:0,shieldEmoji:"🛡️",photo:""});
+  const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.name.trim()!=="";
   const [c1,c2]=SHIELD_COLORS[form.colorIdx%SHIELD_COLORS.length];
+  const handleSave=async()=>{
+    if(!valid||saving)return;
+    setSaving(true);
+    try{ await onSave(form); }catch(e){ console.error("TeamFormModal save error:",e); }
+    setSaving(false);
+  };
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(8px)",padding:"12px"}}>
       <div style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:22,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
@@ -991,12 +1003,16 @@ function TeamFormModal({initial,onSave,onClose}) {
             <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
           </div>
 
-          <button onClick={()=>valid&&onSave(form)} style={{
-            marginTop:4,padding:"14px 0",borderRadius:13,border:"none",cursor:valid?"pointer":"not-allowed",
-            background:valid?`linear-gradient(135deg,${c1},${c2})`:"rgba(255,255,255,0.07)",
-            color:valid?"#fff":"#6B7280",fontFamily:"'Bebas Neue',sans-serif",fontSize:19,letterSpacing:1.5,transition:"all 0.2s",
-            boxShadow:valid?`0 4px 20px ${c1}60`:"none"
-          }}>SALVAR TIME</button>
+          <button onClick={handleSave} disabled={saving||!valid} style={{
+            marginTop:4,padding:"14px 0",borderRadius:13,border:"none",cursor:(valid&&!saving)?"pointer":"not-allowed",
+            background:(valid&&!saving)?`linear-gradient(135deg,${c1},${c2})`:"rgba(255,255,255,0.07)",
+            color:(valid&&!saving)?"#fff":"#6B7280",fontFamily:"'Bebas Neue',sans-serif",fontSize:19,letterSpacing:1.5,transition:"all 0.2s",
+            boxShadow:(valid&&!saving)?`0 4px 20px ${c1}60`:"none",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:8
+          }}>
+            {saving&&<div style={{width:16,height:16,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.7s linear infinite",flexShrink:0}}/>}
+            {saving?"SALVANDO...":"SALVAR TIME"}
+          </button>
         </div>
       </div>
     </div>
@@ -1157,9 +1173,15 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 // ─── Player Form ──────────────────────────────────────────────────────────────
 function PlayerFormModal({initial,onSave,onClose,teamColor}) {
   const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3});
+  const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=!!(form.name.trim()&&String(form.number).trim()!=="");
   const [c1]=SHIELD_COLORS[teamColor%SHIELD_COLORS.length];
+  const handleSave=async()=>{
+    if(!valid||saving)return;
+    setSaving(true);
+    try{ await onSave(form); }catch(e){ console.error("PlayerFormModal save error:",e); setSaving(false); }
+  };
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.82)",backdropFilter:"blur(6px)",padding:"12px"}}>
       <div style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
@@ -1207,12 +1229,16 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
               <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>{["","Iniciante","Regular","Bom","Ótimo","Elite"][form.stars]}</span>
             </div>
           </div>
-          <button onClick={()=>{if(valid)onSave(form);}} style={{
-            marginTop:2,padding:"13px 0",borderRadius:12,border:"none",cursor:valid?"pointer":"not-allowed",
-            background:valid?`linear-gradient(135deg,#166534,#34d399)`:"rgba(255,255,255,0.07)",
-            color:valid?"#fff":"#6B7280",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,transition:"all 0.2s",
-            boxShadow:valid?"0 4px 20px rgba(52,211,153,0.3)":"none"
-          }}>SALVAR JOGADOR</button>
+          <button onClick={handleSave} disabled={saving||!valid} style={{
+            marginTop:2,padding:"13px 0",borderRadius:12,border:"none",cursor:(valid&&!saving)?"pointer":"not-allowed",
+            background:(valid&&!saving)?`linear-gradient(135deg,#166534,#34d399)`:"rgba(255,255,255,0.07)",
+            color:(valid&&!saving)?"#fff":"#6B7280",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,transition:"all 0.2s",
+            boxShadow:(valid&&!saving)?"0 4px 20px rgba(52,211,153,0.3)":"none",
+            display:"flex",alignItems:"center",justifyContent:"center",gap:8
+          }}>
+            {saving&&<div style={{width:16,height:16,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.7s linear infinite",flexShrink:0}}/>}
+            {saving?"SALVANDO...":"SALVAR JOGADOR"}
+          </button>
         </div>
       </div>
     </div>
@@ -2960,7 +2986,12 @@ function App() {
     t.shieldEmoji = form.shieldEmoji || "🛡️";
     const fb = getFirebase();
     const uid = fb?.auth?.currentUser?.uid;
-    t.photo = uid ? await resolveImageUrl(uid, form.photo || "", `shields/team_${t.id}`) : (form.photo || "");
+    try {
+      t.photo = uid ? await resolveImageUrl(uid, form.photo || "", `shields/team_${t.id}`) : (form.photo || "");
+    } catch(e) {
+      console.warn("createTeam: image upload failed, using base64 fallback:", e);
+      t.photo = form.photo || "";
+    }
     setTeams(prev => [...prev, t]);
     setShowNewTeam(false);
     setActiveTeamId(t.id);
