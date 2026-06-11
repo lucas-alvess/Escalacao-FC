@@ -444,6 +444,7 @@ function makeLineup(overrides = {}) {
     formation: "4-4-2",
     entries: [],
     isActive: true,
+    coach: "",
     ...overrides,
   };
 }
@@ -1682,7 +1683,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
 }
 
 // ─── Export Modal ─────────────────────────────────────────────────────────────
-function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
+function ExportModal({slots,lineup,players,teamName,formation,team,coach,onClose}) {
   const canvasRef=useRef();
   const [generating,setGenerating]=useState(false);
   const [imgUrl,setImgUrl]=useState(null);
@@ -1850,19 +1851,19 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
     ctx.textAlign="center";ctx.textBaseline="top";
     if(player){
       const tag=player.name.split(" ")[0].toUpperCase();
-      ctx.font=`bold 13px 'Bebas Neue',sans-serif`;
+      ctx.font=`bold 15px 'Bebas Neue',sans-serif`;
       const tw=ctx.measureText(tag).width;
       if(isModern){
         ctx.fillStyle="rgba(3,12,8,0.88)";
         ctx.strokeStyle="rgba(52,211,153,0.35)";ctx.lineWidth=1;
-        ctx.beginPath();ctx.roundRect(cx-tw/2-8,cy+R+5,tw+16,20,6);ctx.fill();ctx.stroke();
+        ctx.beginPath();ctx.roundRect(cx-tw/2-8,cy+R+4,tw+16,22,6);ctx.fill();ctx.stroke();
         ctx.fillStyle="#34d399";
       } else {
         ctx.fillStyle="rgba(26,47,36,0.88)";
-        ctx.beginPath();ctx.roundRect(cx-tw/2-7,cy+R+4,tw+14,20,5);ctx.fill();
+        ctx.beginPath();ctx.roundRect(cx-tw/2-7,cy+R+4,tw+14,22,5);ctx.fill();
         ctx.fillStyle="#ffffff";
       }
-      ctx.fillText(tag,cx,cy+R+7);
+      ctx.fillText(tag,cx,cy+R+6);
     } else {
       const lbl=slot.label;
       ctx.font="bold 11px sans-serif";
@@ -1876,7 +1877,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
 
   // ── Theme A: Modern / Dark ───────────────────────────────────────────────
   const drawModern=async(canvas,imageCache)=>{
-    const W=540,H=1000;
+    const W=540,H=1018;
     // Render at 2× for crisp output on all screens (retina-quality export)
     const DPR=2;
     canvas.width=W*DPR;canvas.height=H*DPR;
@@ -1906,7 +1907,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
     ctx.save();
     ctx.fillStyle="rgba(255,255,255,0.035)";
     ctx.strokeStyle="rgba(52,211,153,0.18)";ctx.lineWidth=1;
-    ctx.beginPath();ctx.roundRect(14,12,W-28,84,14);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.roundRect(14,12,W-28,102,14);ctx.fill();ctx.stroke();
     ctx.restore();
 
     // Shield — real team photo/emoji/color
@@ -1922,21 +1923,31 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
     const escalados=lineup.filter(l=>l.playerId).length;
     ctx.fillStyle="#4B5563";
     ctx.font="bold 11px 'DM Sans',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="middle";
     ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,94,61);
 
-    // Formation pill
-    const fpg=ctx.createLinearGradient(W-122,26,W-18,26);
-    fpg.addColorStop(0,"rgba(52,211,153,0.22)");fpg.addColorStop(1,"rgba(52,211,153,0.08)");
-    ctx.fillStyle=fpg;
-    ctx.strokeStyle="rgba(52,211,153,0.55)";ctx.lineWidth=1.2;
-    ctx.beginPath();ctx.roundRect(W-122,26,102,46,11);ctx.fill();ctx.stroke();
+    // Coach (técnico)
+    if(coach&&coach.trim()){
+      ctx.fillStyle="#34d399";
+      ctx.font="bold 11px 'DM Sans',sans-serif";
+      ctx.textAlign="left";ctx.textBaseline="middle";
+      ctx.fillText(`TÉCNICO: ${coach.trim().toUpperCase()}`,94,80);
+    }
+
+    // Formation — no pill background, large & bold for emphasis
+    ctx.fillStyle="#6B7280";
+    ctx.font="bold 9px 'DM Sans',sans-serif";
+    ctx.textAlign="right";ctx.textBaseline="alphabetic";
+    ctx.fillText("FORMAÇÃO",W-22,32);
     ctx.fillStyle="#34d399";
-    ctx.font="bold 24px 'Bebas Neue',sans-serif";
-    ctx.textAlign="center";ctx.textBaseline="middle";
-    ctx.fillText(formation,W-71,49);
+    ctx.font="bold 40px 'Bebas Neue',sans-serif";
+    ctx.textAlign="right";ctx.textBaseline="middle";
+    if(ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
+    ctx.fillText(formation,W-22,62);
+    if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
 
     // Field
-    const FX=16,FY=104,FW=W-32,FH=FW/0.65;
+    const FX=16,FY=122,FW=W-32,FH=FW/0.65;
     ctx.save();
     ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,14);ctx.clip();
     for(let i=0;i<8;i++){
@@ -1999,7 +2010,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
 
   // ── Theme B: Clean / Light ───────────────────────────────────────────────
   const drawClean=async(canvas,imageCache)=>{
-    const W=540,H=940;
+    const W=540,H=986;
     // Render at 2× for crisp output on all screens (retina-quality export)
     const DPR=2;
     canvas.width=W*DPR;canvas.height=H*DPR;
@@ -2028,24 +2039,38 @@ function ExportModal({slots,lineup,players,teamName,formation,team,onClose}) {
     ctx.textAlign="left";ctx.textBaseline="top";
     ctx.fillText(teamName.toUpperCase(),90,16);
 
-    // Formation badge
+    // Formation — no badge background, large & bold for emphasis
+    ctx.fillStyle="#9CA3AF";
+    ctx.font="bold 9px 'DM Sans',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    ctx.fillText("FORMAÇÃO",90,58);
     ctx.fillStyle="#166534";
-    ctx.beginPath();ctx.roundRect(90,56,90,28,7);ctx.fill();
-    ctx.fillStyle="#fff";ctx.font="bold 18px 'Bebas Neue',sans-serif";
-    ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(formation,100,70);
+    ctx.font="bold 34px 'Bebas Neue',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="middle";
+    if(ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
+    ctx.fillText(formation,90,82);
+    if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
 
     // Player count
     const escalados=lineup.filter(l=>l.playerId).length;
     ctx.fillStyle="#6B7280";ctx.font="12px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="middle";
-    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,190,70);
+    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,90,104);
+
+    // Coach (técnico)
+    if(coach&&coach.trim()){
+      ctx.fillStyle="#166534";
+      ctx.font="bold 12px 'DM Sans',sans-serif";
+      ctx.textAlign="left";ctx.textBaseline="middle";
+      ctx.fillText(`TÉCNICO: ${coach.trim().toUpperCase()}`,90,122);
+    }
 
     // Thin separator
     ctx.strokeStyle="#e5e7eb";ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(16,92);ctx.lineTo(W-16,92);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(16,138);ctx.lineTo(W-16,138);ctx.stroke();
 
     // Field
-    const FX=16,FY=98,FW=W-32,FH=FW/0.65;
+    const FX=16,FY=144,FW=W-32,FH=FW/0.65;
     ctx.save();
     ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,10);ctx.clip();
     for(let i=0;i<8;i++){
@@ -2597,8 +2622,20 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
 
   const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
+  const activeLineup=getActiveLineup(team,team.lineups||[]);
   // upd sempre usa o team atual da prop (TeamView recebe team atualizado do pai via setTeams)
   const upd=(patch)=>onUpdateTeam({...team,...patch});
+
+  const setCoach=(coachName)=>{
+    const updatedLineups=(team.lineups||[]).map(l=>
+      String(l.id)===String(activeLineup?.id)?{...l,coach:coachName}:l
+    );
+    upd({lineups:updatedLineups});
+    if(onSaveLineup){
+      const al=updatedLineups.find(l=>String(l.id)===String(activeLineup?.id));
+      if(al)onSaveLineup(team.id,al);
+    }
+  };
 
   const savePlayer=async(form)=>{
     try{
@@ -2798,6 +2835,11 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             <div style={{marginBottom:9,padding:"6px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#6B7280",textAlign:"center"}}>
               💡 <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar · <b style={{color:"#9CA3AF"}}>Deslize</b> para rolar
             </div>
+            <div style={{marginBottom:9,display:"flex",flexDirection:"column",gap:5}}>
+              <label htmlFor="coach-name" style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Técnico</label>
+              <input id="coach-name" value={activeLineup?.coach||""} onChange={e=>setCoach(e.target.value)} placeholder="Nome do técnico" style={IS}
+                onFocus={e=>e.target.style.borderColor=c1} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+            </div>
             <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={handleSlotTap}/>
           </>
         )}
@@ -2828,7 +2870,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
       {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)}/>}
-      {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} onClose={()=>setShowExport(false)}/>}
+      {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} coach={activeLineup?.coach||""} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
       {showLineupMgr&&<LineupManagerModal team={team} onClose={()=>setShowLineupMgr(false)}
         onActivate={(lineupId)=>{
