@@ -3145,14 +3145,23 @@ function App() {
 
   // ── Save on tab close ──────────────────────────────────────────────────────
   useEffect(() => {
-    const handleUnload = () => {
+    const handleUnload = (e) => {
       if (!loaded || !user) return;
       saveDataLocal({ teams });
       teams.forEach(t => saveTeamCloud(user.uid, t));
+      // saveTeamCloud above is fire-and-forget — beforeunload can't reliably
+      // await promises, so on a slow connection it may not finish before the
+      // tab closes. Warn the user if a sync is still pending/in-flight or
+      // last failed, so they get a chance to stay and let it complete.
+      if (syncStatus === "pending" || syncStatus === "syncing" || syncStatus === "error") {
+        e.preventDefault();
+        e.returnValue = "";
+        return "";
+      }
     };
     window.addEventListener("beforeunload", handleUnload);
     return () => window.removeEventListener("beforeunload", handleUnload);
-  }, [teams, loaded, user]);
+  }, [teams, loaded, user, syncStatus]);
 
   // ── Force-save (called from TeamView save button) ─────────────────────────
   const handleForceSave = useCallback(async () => {
