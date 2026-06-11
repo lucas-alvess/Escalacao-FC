@@ -865,6 +865,7 @@ function makeTeam(name="Novo Time", colorIdx=0) {
     colorIdx,
     shieldEmoji: "🛡️",
     players: [],
+    captainPlayerId: null,
     // v4: lineups subcollection; active lineup exposed at team level for compat
     lineups: [defaultLineup],
     activeLineupId: defaultLineup.id,
@@ -1847,23 +1848,41 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,onClose
     }
     ctx.restore();
 
+    // Captain badge — small "C" circle on top-right of the avatar
+    if(player&&team?.captainPlayerId&&String(team.captainPlayerId)===String(player.id)){
+      const br=R*0.32;
+      const bx=cx+R*0.74,by=cy-R*0.74;
+      ctx.save();
+      ctx.fillStyle="#F59E0B";
+      ctx.strokeStyle=isModern?"#050c0a":"#ffffff";
+      ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.fillStyle="#1a1a0a";
+      ctx.font=`bold ${br*1.25}px 'Bebas Neue',sans-serif`;
+      ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText("C",bx,by+br*0.08);
+      ctx.restore();
+    }
+
     // Name tag below
     ctx.textAlign="center";ctx.textBaseline="top";
     if(player){
       const tag=player.name.split(" ")[0].toUpperCase();
       ctx.font=`bold 15px 'Bebas Neue',sans-serif`;
+      if(isModern&&ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
       const tw=ctx.measureText(tag).width;
       if(isModern){
         ctx.fillStyle="rgba(3,12,8,0.88)";
         ctx.strokeStyle="rgba(52,211,153,0.35)";ctx.lineWidth=1;
         ctx.beginPath();ctx.roundRect(cx-tw/2-8,cy+R+4,tw+16,22,6);ctx.fill();ctx.stroke();
-        ctx.fillStyle="#34d399";
+        ctx.fillStyle="#ffffff";
       } else {
         ctx.fillStyle="rgba(26,47,36,0.88)";
         ctx.beginPath();ctx.roundRect(cx-tw/2-7,cy+R+4,tw+14,22,5);ctx.fill();
         ctx.fillStyle="#ffffff";
       }
       ctx.fillText(tag,cx,cy+R+6);
+      if(isModern&&ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
     } else {
       const lbl=slot.label;
       ctx.font="bold 11px sans-serif";
@@ -2238,10 +2257,15 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,onClose
 }
 
 // ─── Player Card ──────────────────────────────────────────────────────────────
-function PlayerCard({player,onEdit,onDelete}) {
+function PlayerCard({player,onEdit,onDelete,isCaptain,onToggleCaptain}) {
   return (
-    <div style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"12px 13px",display:"flex",alignItems:"center",gap:12}}>
-      <PlayerAvatar player={player} size={52} style={{border:"2px solid rgba(255,255,255,0.14)"}}/>
+    <div style={{background:"rgba(255,255,255,0.04)",border:isCaptain?"1px solid rgba(245,158,11,0.4)":"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"12px 13px",display:"flex",alignItems:"center",gap:12}}>
+      <div style={{position:"relative",flexShrink:0}}>
+        <PlayerAvatar player={player} size={52} style={{border:"2px solid rgba(255,255,255,0.14)"}}/>
+        {isCaptain&&(
+          <div style={{position:"absolute",top:-4,right:-4,width:20,height:20,borderRadius:"50%",background:"#F59E0B",border:"2px solid #050c0a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Bebas Neue',sans-serif",fontSize:11,fontWeight:900,color:"#1a1a0a"}}>C</div>
+        )}
+      </div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{player.name}</span>
@@ -2251,6 +2275,13 @@ function PlayerCard({player,onEdit,onDelete}) {
         <div style={{marginTop:3}}><StarRating value={player.stars} readonly/></div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        <button onClick={onToggleCaptain} aria-label={isCaptain?`Remover ${player.name} da capitania`:`Definir ${player.name} como capitão`} title={isCaptain?"Remover capitania":"Definir como capitão"} style={{
+          background:isCaptain?"rgba(245,158,11,0.18)":"rgba(255,255,255,0.05)",
+          border:isCaptain?"1px solid rgba(245,158,11,0.5)":"1px solid rgba(255,255,255,0.12)",
+          borderRadius:8,padding:"7px 10px",color:isCaptain?"#F59E0B":"#6B7280",cursor:"pointer",
+          fontFamily:"'Bebas Neue',sans-serif",fontSize:13,fontWeight:900,lineHeight:1,
+          display:"flex",alignItems:"center",justifyContent:"center",minWidth:30
+        }}>C</button>
         <button onClick={onEdit} aria-label={`Editar ${player.name}`} style={{background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:8,padding:"7px 10px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
         <button onClick={onDelete} aria-label={`Excluir ${player.name}`} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"7px 10px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
       </div>
@@ -2282,7 +2313,7 @@ const SORT_OPTIONS = [
 
 const PLAYERS_PAGE_SIZE = 20;
 
-function PlayersTab({ players, onEdit, onDelete, teamColor }) {
+function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onToggleCaptain }) {
   const [search, setSearch]     = useState("");
   const [sortBy, setSortBy]     = useState("name");
   const [sortAsc, setSortAsc]   = useState(true);
@@ -2432,6 +2463,8 @@ function PlayersTab({ players, onEdit, onDelete, teamColor }) {
         <PlayerCard key={p.id} player={p}
           onEdit={() => onEdit(p)}
           onDelete={() => onDelete(p.id)}
+          isCaptain={String(captainPlayerId)===String(p.id)}
+          onToggleCaptain={() => onToggleCaptain(p.id)}
         />
       ))}
 
@@ -2623,6 +2656,17 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
   const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
   const activeLineup=getActiveLineup(team,team.lineups||[]);
+  // Local draft for the coach name input — only persisted when the user
+  // confirms with the OK button (or presses Enter), avoiding a save on
+  // every keystroke.
+  const [coachInput,setCoachInput]=useState(activeLineup?.coach||"");
+  const [coachSaved,setCoachSaved]=useState(false);
+  useEffect(()=>{ setCoachInput(activeLineup?.coach||""); },[activeLineup?.id]);
+  const confirmCoach=()=>{
+    setCoach(coachInput);
+    setCoachSaved(true);
+    setTimeout(()=>setCoachSaved(false),1500);
+  };
   // upd sempre usa o team atual da prop (TeamView recebe team atualizado do pai via setTeams)
   const upd=(patch)=>onUpdateTeam({...team,...patch});
 
@@ -2635,6 +2679,10 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       const al=updatedLineups.find(l=>String(l.id)===String(activeLineup?.id));
       if(al)onSaveLineup(team.id,al);
     }
+  };
+
+  const toggleCaptain=(playerId)=>{
+    upd({captainPlayerId: String(team.captainPlayerId)===String(playerId) ? null : playerId});
   };
 
   const savePlayer=async(form)=>{
@@ -2667,6 +2715,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       players:team.players.filter(p=>p.id!==id),
       lineups:updatedLineups,
       lineup:activeLineup?.entries||[],
+      captainPlayerId: String(team.captainPlayerId)===String(id) ? null : team.captainPlayerId,
     });
     // Remove player doc from subcollection + save updated lineups
     if(onDeletePlayerCloud) onDeletePlayerCloud(team.id, id);
@@ -2837,8 +2886,20 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             </div>
             <div style={{marginBottom:9,display:"flex",flexDirection:"column",gap:5}}>
               <label htmlFor="coach-name" style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Técnico</label>
-              <input id="coach-name" value={activeLineup?.coach||""} onChange={e=>setCoach(e.target.value)} placeholder="Nome do técnico" style={IS}
-                onFocus={e=>e.target.style.borderColor=c1} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+              <div style={{display:"flex",gap:8}}>
+                <input id="coach-name" value={coachInput} onChange={e=>setCoachInput(e.target.value)} placeholder="Nome do técnico" style={{...IS,flex:1}}
+                  onFocus={e=>e.target.style.borderColor=c1} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}
+                  onKeyDown={e=>{if(e.key==="Enter"){e.target.blur();confirmCoach();}}}/>
+                <button onClick={confirmCoach} aria-label="Confirmar nome do técnico" title="Confirmar" style={{
+                  flexShrink:0,padding:"0 18px",borderRadius:10,border:"none",cursor:"pointer",
+                  background:coachSaved?"rgba(52,211,153,0.25)":`linear-gradient(135deg,${c1},${c2})`,
+                  color:coachSaved?"#34d399":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:5,transition:"all 0.2s",
+                  boxShadow:coachSaved?"none":`0 2px 10px ${c1}50`
+                }}>
+                  {coachSaved?<>✓ OK</>:"OK"}
+                </button>
+              </div>
             </div>
             <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={handleSlotTap}/>
           </>
@@ -2849,6 +2910,8 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             onEdit={(p)=>{setEditingPlayer(p);setShowForm(true);}}
             onDelete={deletePlayer}
             teamColor={team.colorIdx}
+            captainPlayerId={team.captainPlayerId}
+            onToggleCaptain={toggleCaptain}
           />
         )}
       </div>
