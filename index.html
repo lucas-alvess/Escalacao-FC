@@ -891,7 +891,12 @@ const JERSEY_FONTS = [
 
 /** Returns the default jersey config for a player based on their number (kept stable/backward-compatible with the old solid-color avatar). */
 function defaultJersey(number){
-  return { pattern:"solid", primary: AVATAR_COLORS[(parseInt(number)||0)%AVATAR_COLORS.length], secondary:"#ffffff", numberFont:"bebas" };
+  return { pattern:"solid", primary: AVATAR_COLORS[(parseInt(number)||0)%AVATAR_COLORS.length], secondary:"#ffffff", numberFont:"bebas", numberColor:"#ffffff" };
+}
+
+/** Returns the effective number color for a jersey (fallback: white). */
+function getJerseyNumberColor(jersey){
+  return jersey?.numberColor || "#ffffff";
 }
 
 /** Returns the CSS font-family stack for a jersey's number font (falls back to Bebas Neue). */
@@ -1215,7 +1220,7 @@ function PlayerAvatar({player,size=44,style:ex={},team=null}) {
   const jersey = team ? getPlayerJersey(team,player) : (player?.jersey || defaultJersey(player?.number));
   return (
     <div style={{...base,background:getJerseyBackground(jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <span style={{fontFamily:getJerseyFontFamily(jersey),fontSize:size*0.38,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
+      <span style={{fontFamily:getJerseyFontFamily(jersey),fontSize:size*0.38,lineHeight:1,color:getJerseyNumberColor(jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
     </div>
   );
 }
@@ -1435,7 +1440,7 @@ function TeamFormModal({initial,onSave,onClose}) {
                   }}>
                     {isActive&&<div style={{position:"absolute",top:4,right:4,fontSize:8,fontWeight:900,color:"#1a1a0a",background:"#facc15",borderRadius:4,padding:"1px 4px",fontFamily:"'DM Sans',sans-serif"}}>ATIVO</div>}
                     <div style={{width:38,height:38,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
+                      <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:getJerseyNumberColor(kit.jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
                     </div>
                     <span style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{kit.name}</span>
                   </button>
@@ -1464,7 +1469,7 @@ function TeamFormModal({initial,onSave,onClose}) {
               <div style={{display:"flex",flexDirection:"column",gap:12,padding:"12px 13px",borderRadius:12,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(52,211,153,0.25)"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:48,height:48,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:18,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                    <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:18,lineHeight:1,color:getJerseyNumberColor(kit.jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
                   </div>
                   <input value={kit.name} onChange={e=>updateKit(kit.id,{name:e.target.value})} placeholder="Nome do uniforme" style={{...IS,flex:1}}
                     onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
@@ -1481,7 +1486,7 @@ function TeamFormModal({initial,onSave,onClose}) {
                         transition:"all 0.15s"
                       }}>
                         <div style={{width:"100%",height:"100%",borderRadius:7,background:getJerseyBackground({...kit.jersey,pattern:p.id}),display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          <span style={{fontFamily:getJerseyFontFamily({...kit.jersey,pattern:p.id}),fontSize:14,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                          <span style={{fontFamily:getJerseyFontFamily({...kit.jersey,pattern:p.id}),fontSize:14,lineHeight:1,color:getJerseyNumberColor(kit.jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
                         </div>
                       </button>
                     ))}
@@ -1527,10 +1532,53 @@ function TeamFormModal({initial,onSave,onClose}) {
                         background:(kit.jersey.numberFont||"bebas")===fnt.id?"rgba(52,211,153,0.12)":"rgba(255,255,255,0.03)",
                         transition:"all 0.15s"
                       }}>
-                        <span style={{fontFamily:fnt.family,fontSize:18,lineHeight:1,color:"#fff"}}>10</span>
+                        <span style={{fontFamily:fnt.family,fontSize:18,lineHeight:1,color:getJerseyNumberColor(kit.jersey)}}>10</span>
                         <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{fnt.name}</span>
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Cor da fonte do número */}
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <span style={{...LT,fontSize:9}}>Cor do Número</span>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:22,height:22,borderRadius:6,background:kit.jersey.numberColor||"#ffffff",border:"2px solid rgba(255,255,255,0.25)",flexShrink:0}}/>
+                      <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
+                        {(kit.jersey.numberColor||"#ffffff").toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(10,1fr)",gap:5}}>
+                    {JERSEY_COLOR_SWATCHES.map(col=>(
+                      <button key={col} onClick={()=>updateKit(kit.id,{jersey:{...kit.jersey,numberColor:col}})} title={col} style={{
+                        aspectRatio:"1",borderRadius:7,border:"2px solid",cursor:"pointer",
+                        background:col,
+                        borderColor:(kit.jersey.numberColor||"#ffffff")===col?"#34d399":(col==="#ffffff"?"rgba(255,255,255,0.35)":"transparent"),
+                        boxShadow:(kit.jersey.numberColor||"#ffffff")===col?`0 0 8px ${col}90`:"none",
+                        transition:"all 0.15s",
+                        position:"relative"
+                      }}>
+                        {(kit.jersey.numberColor||"#ffffff")===col&&(
+                          <span style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
+                            fontSize:10,color:col==="#ffffff"||col==="#facc15"?"#166534":"#fff",fontWeight:900,lineHeight:1}}>✓</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Prévia ao vivo */}
+                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:9,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)"}}>
+                    <div style={{width:38,height:38,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
+                      <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:getJerseyNumberColor(kit.jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>Prévia do número</div>
+                      <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,marginTop:1}}>
+                        Cor: <span style={{color:kit.jersey.numberColor||"#ffffff"}}>{(kit.jersey.numberColor||"#ffffff").toUpperCase()}</span>
+                        {" · "}Fonte: {JERSEY_FONTS.find(f=>f.id===(kit.jersey.numberFont||"bebas"))?.name||"Bebas Neue"}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -2390,7 +2438,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       }
       ctx.save();
       ctx.shadowColor="rgba(0,0,0,0.45)";ctx.shadowBlur=4;
-      ctx.fillStyle="#fff";
+      ctx.fillStyle=getJerseyNumberColor(jersey);
       ctx.font=`bold ${R*0.75}px '${getJerseyFontName(jersey)}',sans-serif`;
       ctx.textAlign="center";ctx.textBaseline="middle";
       ctx.fillText(player.number||"?",cx,cy+1);
