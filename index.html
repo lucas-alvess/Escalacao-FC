@@ -851,9 +851,32 @@ function migrateLineup(oldLineup, oldSlots, newSlots) {
 const POSITIONS = ["Goleiro","Lateral Direito","Lateral Esquerdo","Zagueiro","Volante","Meio-campo","Meia Atacante","Ponta Direita","Ponta Esquerda","Centroavante","Atacante","Segundo Volante","Líbero"];
 const AVATAR_COLORS = ["#1a6b3a","#c8102e","#003087","#6f2c91","#00539f","#e8650a","#b45309","#0e7490","#7c3aed","#be185d"];
 const SHIELD_COLORS = [
+  // Base set
   ["#16a34a","#22c55e"],["#dc2626","#f87171"],["#2563eb","#60a5fa"],
   ["#7c3aed","#a78bfa"],["#b45309","#fbbf24"],["#0e7490","#22d3ee"],
   ["#be185d","#f472b6"],["#15803d","#4ade80"],
+  // Extra set — striking gradients (gold, neon, two-tone) for richer customization
+  ["#facc15","#b45309"], // ouro
+  ["#0f172a","#facc15"], // preto & dourado
+  ["#a3e635","#16a34a"], // verde neon
+  ["#06b6d4","#7c3aed"], // ciano-violeta
+  ["#f97316","#ec4899"], // pôr do sol
+  ["#94a3b8","#475569"], // prata
+  ["#10b981","#3b82f6"], // esmeralda-azul
+  ["#f43f5e","#0ea5e9"], // carmim-celeste
+];
+
+// SVG shield/crest silhouettes (100×100 viewBox). `path` is reused both for
+// React <path> elements and for canvas Path2D() during export.
+const SHIELD_SHAPES = [
+  { id:"shield",       name:"Clássico",  path:"M8,8 H92 V45 C92,72 72,90 50,96 C28,90 8,72 8,45 Z" },
+  { id:"shield-round", name:"Brasão",    path:"M50,4 C75,4 92,12 92,30 V55 C92,78 74,94 50,98 C26,94 8,78 8,55 V30 C8,12 25,4 50,4 Z" },
+  { id:"crest",        name:"Coroado",   path:"M50,2 C20,2 6,18 6,40 V60 C6,82 26,98 50,98 C74,98 94,82 94,60 V40 C94,18 80,2 50,2 Z" },
+  { id:"hexagon",      name:"Hexágono",  path:"M50,2 L94,26 V74 L50,98 L6,74 V26 Z" },
+  { id:"pentagon",     name:"Pentágono", path:"M50,2 L96,36 L78,96 L22,96 L4,36 Z" },
+  { id:"diamond",      name:"Diamante",  path:"M50,2 L98,50 L50,98 L2,50 Z" },
+  { id:"banner",       name:"Bandeira",  path:"M6,4 H94 V70 L72,58 L50,76 L28,58 L6,70 Z" },
+  { id:"circle",       name:"Círculo",   path:"M50,2 A48,48 0 1 1 49.99,2 Z" },
 ];
 
 // ─── Default team factory ─────────────────────────────────────────────────────
@@ -865,6 +888,7 @@ function makeTeam(name="Novo Time", colorIdx=0) {
     name,
     colorIdx,
     shieldEmoji: "🛡️",
+    shieldShapeId: null, // null = default rounded-square; or one of SHIELD_SHAPES ids
     players: [],
     captainPlayerId: null,
     // v4: lineups subcollection; active lineup exposed at team level for compat
@@ -948,12 +972,36 @@ function SyncIndicator({status, onRetry}) {
   );
 }
 
-function TeamShield({team, size=56}) {
-  const [c1,c2] = SHIELD_COLORS[team.colorIdx % SHIELD_COLORS.length];
-  if (team.photo) {
+/**
+ * Renders a team shield: either a custom SVG shape (gradient-filled, with the
+ * photo clipped to the shape or the emoji centered on top) or the legacy
+ * rounded-square style. `uid` must be unique per rendered instance to avoid
+ * SVG id collisions when several shields render on the same page.
+ */
+function ShieldVisual({c1,c2,shape,photo,emoji,size=56,uid,name=""}) {
+  if (shape) {
+    const gradId=`sg-${uid}`, clipId=`sc-${uid}`;
+    return (
+      <svg width={size} height={size} viewBox="0 0 100 100" style={{flexShrink:0,filter:`drop-shadow(0 4px 10px ${c1}55)`,overflow:"visible"}}>
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor={c1}/>
+            <stop offset="1" stopColor={c2}/>
+          </linearGradient>
+          <clipPath id={clipId}><path d={shape.path}/></clipPath>
+        </defs>
+        <path d={shape.path} fill={`url(#${gradId})`}/>
+        {photo
+          ? <image href={photo} x="0" y="0" width="100" height="100" preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clipId})`}/>
+          : <text x="50" y="56" fontSize="44" textAnchor="middle" dominantBaseline="middle">{emoji||"🛡️"}</text>}
+      </svg>
+    );
+  }
+  // Default: rounded-square (legacy style, kept for backward compatibility)
+  if (photo) {
     return (
       <div style={{width:size,height:size,borderRadius:size*0.18,overflow:"hidden",flexShrink:0}}>
-        <img src={team.photo} alt={team.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+        <img src={photo} alt={name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
       </div>
     );
   }
@@ -961,9 +1009,15 @@ function TeamShield({team, size=56}) {
     <div style={{width:size,height:size,borderRadius:size*0.18,background:`linear-gradient(135deg,${c1},${c2})`,
       display:"flex",alignItems:"center",justifyContent:"center",
       boxShadow:`0 4px 18px ${c1}55`,flexShrink:0,fontSize:size*0.44}}>
-      {team.shieldEmoji||"🛡️"}
+      {emoji||"🛡️"}
     </div>
   );
+}
+
+function TeamShield({team, size=56}) {
+  const [c1,c2] = SHIELD_COLORS[team.colorIdx % SHIELD_COLORS.length];
+  const shape = SHIELD_SHAPES.find(s=>s.id===team.shieldShapeId);
+  return <ShieldVisual c1={c1} c2={c2} shape={shape} photo={team.photo} emoji={team.shieldEmoji} size={size} uid={team.id} name={team.name}/>;
 }
 
 function PlayerAvatar({player,size=44,style:ex={}}) {
@@ -1023,11 +1077,14 @@ const IS = {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,2
 const LT = {color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5};
 
 function TeamFormModal({initial,onSave,onClose}) {
-  const [form,setForm]=useState(initial||{name:"",colorIdx:0,shieldEmoji:"🛡️",photo:""});
+  const [form,setForm]=useState(initial||{name:"",colorIdx:0,shieldEmoji:"🛡️",shieldShapeId:null,photo:""});
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.name.trim()!=="";
   const [c1,c2]=SHIELD_COLORS[form.colorIdx%SHIELD_COLORS.length];
+  const previewIdRef=useRef(null);
+  if(!previewIdRef.current) previewIdRef.current=genUUID();
+  const previewShape=SHIELD_SHAPES.find(s=>s.id===form.shieldShapeId);
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
@@ -1045,10 +1102,8 @@ function TeamFormModal({initial,onSave,onClose}) {
 
           {/* Preview escudo */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-            <div style={{width:80,height:80,borderRadius:16,background:`linear-gradient(135deg,${c1},${c2})`,
-              display:"flex",alignItems:"center",justifyContent:"center",fontSize:40,
-              boxShadow:`0 6px 24px ${c1}60`,transition:"all 0.3s"}}>
-              {form.photo?<img src={form.photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:14}}/>:form.shieldEmoji}
+            <div style={{width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <ShieldVisual c1={c1} c2={c2} shape={previewShape} photo={form.photo} emoji={form.shieldEmoji} size={80} uid={previewIdRef.current} name={form.name}/>
             </div>
             <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Prévia do escudo</span>
           </div>
@@ -1058,6 +1113,38 @@ function TeamFormModal({initial,onSave,onClose}) {
             <label htmlFor="team-name" style={LT}>Nome do Time</label>
             <input id="team-name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: Flamengo, Real Madrid..." style={IS}
               onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+          </div>
+
+          {/* Formato do escudo */}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <span style={LT}>Formato do Escudo</span>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
+              <button onClick={()=>set("shieldShapeId",null)} title="Padrão" style={{
+                aspectRatio:"1",borderRadius:9,border:"2px solid",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+                borderColor:!form.shieldShapeId?"#34d399":"rgba(255,255,255,0.08)",
+                background:!form.shieldShapeId?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.03)",
+                transition:"all 0.15s"
+              }}>
+                <div style={{width:"60%",height:"60%",borderRadius:6,background:`linear-gradient(135deg,${c1},${c2})`}}/>
+              </button>
+              {SHIELD_SHAPES.map(shape=>(
+                <button key={shape.id} onClick={()=>set("shieldShapeId",shape.id)} title={shape.name} style={{
+                  aspectRatio:"1",borderRadius:9,border:"2px solid",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:6,
+                  borderColor:form.shieldShapeId===shape.id?"#34d399":"rgba(255,255,255,0.08)",
+                  background:form.shieldShapeId===shape.id?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.03)",
+                  transition:"all 0.15s"
+                }}>
+                  <svg viewBox="0 0 100 100" style={{width:"100%",height:"100%"}}>
+                    <path d={shape.path} fill={`url(#tg-${form.colorIdx}-${shape.id})`}/>
+                    <defs>
+                      <linearGradient id={`tg-${form.colorIdx}-${shape.id}`} x1="0" y1="0" x2="1" y2="1">
+                        <stop offset="0" stopColor={c1}/><stop offset="1" stopColor={c2}/>
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Emoji escudo */}
@@ -1793,8 +1880,46 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   // ── Shared: draw team shield in header ───────────────────────────────────
   const drawShieldInHeader=(ctx,imageCache,x,y,size,isModern)=>{
     const [c1s,c2s]=SHIELD_COLORS[(team?.colorIdx||0)%SHIELD_COLORS.length];
+    const shape=SHIELD_SHAPES.find(s=>s.id===team?.shieldShapeId);
     const r=size*0.18;
     const cachedShield=team?.photo?imageCache[team.photo]:null;
+
+    if(shape){
+      // Custom SVG shield shape — drawn in a 0..100 local space, scaled to `size`
+      const sc=size/100;
+      const path=new Path2D(shape.path);
+      ctx.save();
+      ctx.translate(x,y);ctx.scale(sc,sc);
+      ctx.clip(path);
+      if(cachedShield){
+        ctx.fillStyle="#fff";ctx.fillRect(0,0,100,100);
+        ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+        const iw=cachedShield.naturalWidth||cachedShield.width||1;
+        const ih=cachedShield.naturalHeight||cachedShield.height||1;
+        const scale=Math.max(100/iw,100/ih);
+        const sw=iw*scale,sh=ih*scale;
+        ctx.drawImage(cachedShield,(100-sw)/2,(100-sh)/2,sw,sh);
+      } else {
+        const sg=ctx.createLinearGradient(0,0,100,100);
+        sg.addColorStop(0,c1s);sg.addColorStop(1,c2s);
+        ctx.fillStyle=sg;ctx.fillRect(0,0,100,100);
+        ctx.font=`52px serif`;
+        ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillStyle="#fff";
+        ctx.fillText(team?.shieldEmoji||"🛡️",50,54);
+      }
+      ctx.restore();
+      // Border glow (un-scaled stroke width/blur)
+      ctx.save();
+      ctx.translate(x,y);ctx.scale(sc,sc);
+      ctx.strokeStyle=isModern?"rgba(52,211,153,0.5)":"rgba(22,101,52,0.3)";
+      ctx.lineWidth=(isModern?2:2.5)/sc;
+      if(isModern){ctx.shadowColor="rgba(52,211,153,0.4)";ctx.shadowBlur=8/sc;}
+      ctx.stroke(path);
+      ctx.restore();
+      return;
+    }
+
+    // Default: rounded-square (legacy style)
     ctx.save();
     ctx.beginPath();ctx.roundRect(x,y,size,size,r);ctx.clip();
     if(cachedShield){
@@ -3393,6 +3518,7 @@ function App() {
   const createTeam = async (form) => {
     const t = makeTeam(form.name, form.colorIdx);
     t.shieldEmoji = form.shieldEmoji || "🛡️";
+    t.shieldShapeId = form.shieldShapeId || null;
     const fb = getFirebase();
     const uid = fb?.auth?.currentUser?.uid;
     // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
