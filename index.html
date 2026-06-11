@@ -445,6 +445,7 @@ function makeLineup(overrides = {}) {
     entries: [],
     isActive: true,
     coach: "",
+    benchPlayerIds: [],
     ...overrides,
   };
 }
@@ -1684,13 +1685,69 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
 }
 
 // ─── Export Modal ─────────────────────────────────────────────────────────────
-function ExportModal({slots,lineup,players,teamName,formation,team,coach,onClose}) {
+function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPlayerIds,onClose}) {
   const canvasRef=useRef();
   const [generating,setGenerating]=useState(false);
   const [imgUrl,setImgUrl]=useState(null);
   const [exportError,setExportError]=useState(false);
   const [theme,setTheme]=useState("modern"); // "modern" | "clean"
   const drewRef=useRef(false);
+
+  // Bench players, sorted by jersey number for a predictable export order
+  const benchPlayers=useMemo(()=>{
+    const idSet=new Set((benchPlayerIds||[]).map(String));
+    return (players||[])
+      .filter(p=>idSet.has(String(p.id)))
+      .sort((a,b)=>(parseInt(a.number)||0)-(parseInt(b.number)||0));
+  },[players,benchPlayerIds]);
+
+  // ── Shared: draw the bench ("Banco de Reservas") player chip list ───────────
+  // Wraps chips within `maxWidth`, up to `maxRows` rows. If more players don't
+  // fit, shows a "+N" indicator chip instead of overflowing the box.
+  const drawBenchChips=(ctx,x,y,maxWidth,maxRows,isModern)=>{
+    if(!benchPlayers.length){
+      ctx.fillStyle=isModern?"#4B5563":"#9CA3AF";
+      ctx.font=`11px 'DM Sans',sans-serif`;
+      ctx.textAlign="left";ctx.textBaseline="middle";
+      ctx.fillText("Nenhum jogador no banco",x,y+11);
+      return;
+    }
+    const chipH=22,gap=6,padX=10;
+    let cx=x,cy=y,row=0;
+    ctx.font=`bold 11px 'DM Sans',sans-serif`;
+    ctx.textAlign="left";ctx.textBaseline="middle";
+    for(let i=0;i<benchPlayers.length;i++){
+      const p=benchPlayers[i];
+      const label=`#${p.number} ${p.name.split(" ")[0]}`;
+      const tw=ctx.measureText(label).width;
+      let chipW=tw+padX*2;
+      // If this chip doesn't fit on the current row, wrap to the next
+      if(cx+chipW>x+maxWidth&&cx>x){
+        row++;cx=x;cy+=chipH+gap;
+      }
+      // If we've run out of rows, replace this chip with a "+N" indicator
+      if(row>=maxRows){
+        const remaining=benchPlayers.length-i;
+        const moreLabel=`+${remaining}`;
+        const mtw=ctx.measureText(moreLabel).width;
+        const mChipW=mtw+padX*2;
+        ctx.fillStyle=isModern?"rgba(255,255,255,0.06)":"rgba(22,101,52,0.08)";
+        ctx.strokeStyle=isModern?"rgba(255,255,255,0.14)":"rgba(22,101,52,0.2)";
+        ctx.lineWidth=1;
+        ctx.beginPath();ctx.roundRect(cx,cy,mChipW,chipH,chipH/2);ctx.fill();ctx.stroke();
+        ctx.fillStyle=isModern?"#9CA3AF":"#166534";
+        ctx.fillText(moreLabel,cx+padX,cy+chipH/2+1);
+        return;
+      }
+      ctx.fillStyle=isModern?"rgba(255,255,255,0.06)":"rgba(22,101,52,0.08)";
+      ctx.strokeStyle=isModern?"rgba(255,255,255,0.14)":"rgba(22,101,52,0.2)";
+      ctx.lineWidth=1;
+      ctx.beginPath();ctx.roundRect(cx,cy,chipW,chipH,chipH/2);ctx.fill();ctx.stroke();
+      ctx.fillStyle=isModern?"#e5e7eb":"#166534";
+      ctx.fillText(label,cx+padX,cy+chipH/2+1);
+      cx+=chipW+gap;
+    }
+  };
 
   // ── Shared: pre-load images ──────────────────────────────────────────────
   // Each image load is guarded by a timeout so a single broken/slow URL
@@ -1896,7 +1953,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,onClose
 
   // ── Theme A: Modern / Dark ───────────────────────────────────────────────
   const drawModern=async(canvas,imageCache)=>{
-    const W=540,H=1018;
+    const W=540,H=1034;
     // Render at 2× for crisp output on all screens (retina-quality export)
     const DPR=2;
     canvas.width=W*DPR;canvas.height=H*DPR;
@@ -1994,30 +2051,17 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,onClose
     const R=38;
     for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,true,FX,FY,FW);
 
-    // Bottom stats bar
+    // Bottom card — Banco de Reservas
     const BY=FY+FH+16;
     ctx.fillStyle="rgba(255,255,255,0.035)";
     ctx.strokeStyle="rgba(255,255,255,0.07)";ctx.lineWidth=1;
-    ctx.beginPath();ctx.roundRect(14,BY,W-28,60,12);ctx.fill();ctx.stroke();
-    const counts=[
-      {l:"Goleiro",v:slots.filter(s=>s.label==="GOL").length},
-      {l:"Defensores",v:slots.filter(s=>["ZAG","LE","LD"].includes(s.label)).length},
-      {l:"Meio-campo",v:slots.filter(s=>["MC","ME","MD","VOL","MAT"].includes(s.label)).length},
-      {l:"Atacantes",v:slots.filter(s=>["CA","PE","PD","MA"].includes(s.label)).length},
-    ];
-    counts.forEach((c,i)=>{
-      const sx=14+((W-28)/4)*(i+0.5);
-      ctx.fillStyle="#34d399";ctx.font="bold 24px 'Bebas Neue',sans-serif";
-      ctx.textAlign="center";ctx.textBaseline="top";ctx.fillText(String(c.v),sx,BY+9);
-      ctx.fillStyle="#6B7280";ctx.font="bold 9px 'DM Sans',sans-serif";
-      ctx.textBaseline="bottom";ctx.fillText(c.l.toUpperCase(),sx,BY+58);
-    });
-    // Dividers between stats
-    for(let i=1;i<4;i++){
-      const dx=14+((W-28)/4)*i;
-      ctx.strokeStyle="rgba(255,255,255,0.07)";ctx.lineWidth=1;
-      ctx.beginPath();ctx.moveTo(dx,BY+10);ctx.lineTo(dx,BY+50);ctx.stroke();
-    }
+    ctx.beginPath();ctx.roundRect(14,BY,W-28,76,12);ctx.fill();ctx.stroke();
+    ctx.fillStyle="#34d399";ctx.font="bold 11px 'DM Sans',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    if(ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
+    ctx.fillText("BANCO DE RESERVAS",28,BY+22);
+    if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
+    drawBenchChips(ctx,28,BY+34,W-56,2,true);
 
     // Watermark
     ctx.fillStyle="rgba(52,211,153,0.25)";ctx.font="bold 13px 'DM Sans',sans-serif";
@@ -2115,35 +2159,17 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,onClose
     const R=36;
     for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,false,FX,FY,FW);
 
-    // Bottom list
+    // Bottom card — Banco de Reservas
     const LY=FY+FH+16;
     ctx.strokeStyle="#e5e7eb";ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(16,LY);ctx.lineTo(W-16,LY);ctx.stroke();
 
-    const posGroups=[
-      {label:"Goleiro",    filter:s=>s.label==="GOL"},
-      {label:"Defensores", filter:s=>["ZAG","LE","LD","LIB"].includes(s.label)},
-      {label:"Meio-campo", filter:s=>["MC","ME","MD","VOL","MAT","VOL"].includes(s.label)},
-      {label:"Atacantes",  filter:s=>["CA","PE","PD","MA","AT"].includes(s.label)},
-    ];
-    posGroups.forEach((g,i)=>{
-      const ry=LY+14+i*34;
-      // Position label
-      ctx.fillStyle="#166534";ctx.font="bold 13px 'DM Sans',sans-serif";
-      ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(g.label,20,ry);
-      // Player numbers in those slots
-      const nums=slots.filter(g.filter).map(s=>{
-        const e=lineup.find(l=>l.slotId===s.id);
-        const p=e?players.find(pl=>pl.id===e.playerId):null;
-        return p?`#${p.number}`:"–";
-      }).join("   ");
-      ctx.fillStyle="#6B7280";ctx.font="12px 'DM Sans',sans-serif";
-      ctx.textAlign="right";ctx.fillText(nums,W-20,ry);
-      if(i<3){
-        ctx.strokeStyle="#f0f0f0";ctx.lineWidth=0.5;
-        ctx.beginPath();ctx.moveTo(16,ry+20);ctx.lineTo(W-16,ry+20);ctx.stroke();
-      }
-    });
+    ctx.fillStyle="#166534";ctx.font="bold 13px 'DM Sans',sans-serif";
+    ctx.textAlign="left";ctx.textBaseline="alphabetic";
+    if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0.5px";
+    ctx.fillText("BANCO DE RESERVAS",16,LY+22);
+    if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
+    drawBenchChips(ctx,16,LY+34,W-32,3,false);
 
     // Watermark
     ctx.fillStyle="rgba(22,101,52,0.2)";ctx.font="11px 'DM Sans',sans-serif";
@@ -2685,6 +2711,19 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
     upd({captainPlayerId: String(team.captainPlayerId)===String(playerId) ? null : playerId});
   };
 
+  const toggleBenchPlayer=(playerId)=>{
+    const current=activeLineup?.benchPlayerIds||[];
+    const next=current.includes(playerId)?current.filter(id=>id!==playerId):[...current,playerId];
+    const updatedLineups=(team.lineups||[]).map(l=>
+      String(l.id)===String(activeLineup?.id)?{...l,benchPlayerIds:next}:l
+    );
+    upd({lineups:updatedLineups});
+    if(onSaveLineup){
+      const al=updatedLineups.find(l=>String(l.id)===String(activeLineup?.id));
+      if(al)onSaveLineup(team.id,al);
+    }
+  };
+
   const savePlayer=async(form)=>{
     try{
       const isEditing=editingPlayer;
@@ -2744,8 +2783,11 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
     next.push({slotId:activeSlot.slotId,playerId});
     if(existingEntry&&currentEntry)next.push({slotId:existingEntry.slotId,playerId:currentEntry.playerId});
     const updatedLineups=(team.lineups||[]).map(l2=>{
-      if(String(l2.id)===String(team.activeLineupId)||(l2.isActive&&!team.activeLineupId))
-        return{...l2,entries:next};
+      if(String(l2.id)===String(team.activeLineupId)||(l2.isActive&&!team.activeLineupId)){
+        // A player can't be on the field and on the bench at the same time
+        const benchPlayerIds=(l2.benchPlayerIds||[]).filter(id=>String(id)!==String(playerId));
+        return{...l2,entries:next,benchPlayerIds};
+      }
       return l2;
     });
     upd({lineup:next,lineups:updatedLineups});
@@ -2902,6 +2944,47 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
               </div>
             </div>
             <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={handleSlotTap}/>
+
+            {/* Banco de reservas */}
+            <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:7}}>
+              <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>
+                Banco de Reservas {(activeLineup?.benchPlayerIds||[]).length>0&&`(${(activeLineup?.benchPlayerIds||[]).length})`}
+              </span>
+              {(()=>{
+                const onFieldIds=new Set((team.lineup||[]).filter(e=>e.playerId).map(e=>String(e.playerId)));
+                const candidates=(team.players||[]).filter(p=>!onFieldIds.has(String(p.id)));
+                if(candidates.length===0){
+                  return (
+                    <div style={{padding:"10px 12px",borderRadius:10,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,textAlign:"center"}}>
+                      Nenhum jogador disponível para o banco
+                    </div>
+                  );
+                }
+                const benchSet=new Set((activeLineup?.benchPlayerIds||[]).map(String));
+                return (
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {candidates.map(p=>{
+                      const onBench=benchSet.has(String(p.id));
+                      return (
+                        <button key={p.id} onClick={()=>toggleBenchPlayer(p.id)}
+                          aria-pressed={onBench}
+                          aria-label={onBench?`Remover ${p.name} do banco de reservas`:`Adicionar ${p.name} ao banco de reservas`}
+                          style={{
+                            display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:20,cursor:"pointer",
+                            border:onBench?`1.5px solid ${c1}`:"1px solid rgba(255,255,255,0.1)",
+                            background:onBench?`${c1}22`:"rgba(255,255,255,0.03)",
+                            color:onBench?c2:"#9CA3AF",
+                            fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,transition:"all 0.15s"
+                          }}>
+                          <span style={{opacity:0.7}}>#{p.number}</span>{p.name.split(" ")[0]}
+                          {onBench&&<span style={{fontSize:13,lineHeight:1}}>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
           </>
         )}
         {tab==="players"&&(
@@ -2933,7 +3016,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
       {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)}/>}
-      {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} coach={activeLineup?.coach||""} onClose={()=>setShowExport(false)}/>}
+      {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} coach={activeLineup?.coach||""} benchPlayerIds={activeLineup?.benchPlayerIds||[]} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
       {showLineupMgr&&<LineupManagerModal team={team} onClose={()=>setShowLineupMgr(false)}
         onActivate={(lineupId)=>{
