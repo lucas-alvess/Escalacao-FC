@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
   <title>Escalação F.C. ⚽</title>
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;900&family=Anton&family=Oswald:wght@400;700&family=Teko:wght@400;700&family=Russo+One&family=Archivo+Black&family=Squada+One&family=Black+Ops+One&family=Orbitron:wght@400;700&family=Staatliches&family=Bungee&display=swap" rel="stylesheet"/>
   <style>
     *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
     html,body,#root{height:100%;background:#050c0a;overscroll-behavior:none;-webkit-overflow-scrolling:touch;}
@@ -852,8 +852,8 @@ const POSITIONS = ["Goleiro","Lateral Direito","Lateral Esquerdo","Zagueiro","Vo
 const AVATAR_COLORS = ["#1a6b3a","#c8102e","#003087","#6f2c91","#00539f","#e8650a","#b45309","#0e7490","#7c3aed","#be185d"];
 
 // ─── Jersey customization (used as the player avatar when no photo is set) ───
-// "solid"/"stripes"/"hoops"/"sleeves" are the free/basic patterns; "sash" and
-// "gradient" are richer two-tone styles — good premium-pack candidates later.
+// "solid"/"stripes"/"hoops"/"sleeves" are the free/basic patterns; the rest
+// are richer two-tone styles — good premium-pack candidates later.
 const JERSEY_PATTERNS = [
   { id:"solid",    name:"Liso" },
   { id:"stripes",  name:"Listrado V" },
@@ -861,15 +861,48 @@ const JERSEY_PATTERNS = [
   { id:"sleeves",  name:"Gola" },
   { id:"sash",     name:"Faixa" },
   { id:"gradient", name:"Degradê" },
+  { id:"halves",   name:"Bipartido V" },
+  { id:"halves-h", name:"Bipartido H" },
+  { id:"diagonal", name:"Diagonal" },
+  { id:"quarters", name:"Xadrez" },
+  { id:"ring",     name:"Anel" },
+  { id:"dots",     name:"Bolinhas" },
 ];
 const JERSEY_COLOR_SWATCHES = [
   "#1a6b3a","#c8102e","#003087","#6f2c91","#00539f","#e8650a","#b45309","#0e7490","#7c3aed","#be185d",
   "#ffffff","#000000","#facc15","#22c55e","#3b82f6","#f97316","#ec4899","#06b6d4","#94a3b8","#16a34a",
 ];
 
+// Number font options for jersey numbers — applied to the digit shown on the
+// player avatar (screen and export). All loaded via Google Fonts.
+const JERSEY_FONTS = [
+  { id:"bebas",     name:"Bebas Neue",   family:"'Bebas Neue',sans-serif" },
+  { id:"anton",     name:"Anton",        family:"'Anton',sans-serif" },
+  { id:"oswald",    name:"Oswald",       family:"'Oswald',sans-serif" },
+  { id:"teko",      name:"Teko",         family:"'Teko',sans-serif" },
+  { id:"russo",     name:"Russo One",    family:"'Russo One',sans-serif" },
+  { id:"archivo",   name:"Archivo Black",family:"'Archivo Black',sans-serif" },
+  { id:"squada",    name:"Squada One",   family:"'Squada One',sans-serif" },
+  { id:"blackops",  name:"Black Ops One",family:"'Black Ops One',sans-serif" },
+  { id:"orbitron",  name:"Orbitron",     family:"'Orbitron',sans-serif" },
+  { id:"staatliches",name:"Staatliches", family:"'Staatliches',sans-serif" },
+  { id:"bungee",    name:"Bungee",       family:"'Bungee',sans-serif" },
+];
+
 /** Returns the default jersey config for a player based on their number (kept stable/backward-compatible with the old solid-color avatar). */
 function defaultJersey(number){
-  return { pattern:"solid", primary: AVATAR_COLORS[(parseInt(number)||0)%AVATAR_COLORS.length], secondary:"#ffffff" };
+  return { pattern:"solid", primary: AVATAR_COLORS[(parseInt(number)||0)%AVATAR_COLORS.length], secondary:"#ffffff", numberFont:"bebas" };
+}
+
+/** Returns the CSS font-family stack for a jersey's number font (falls back to Bebas Neue). */
+function getJerseyFontFamily(jersey){
+  const f=JERSEY_FONTS.find(f=>f.id===jersey?.numberFont);
+  return f?f.family:"'Bebas Neue',sans-serif";
+}
+/** Returns the bare font name (for canvas `ctx.font` strings, no fallback list). */
+function getJerseyFontName(jersey){
+  const f=JERSEY_FONTS.find(f=>f.id===jersey?.numberFont);
+  return f?f.name:"Bebas Neue";
 }
 
 /** Returns a CSS `background` value for a jersey config — used by PlayerAvatar (React). */
@@ -881,6 +914,12 @@ function getJerseyBackground(jersey){
     case "sleeves":  return `linear-gradient(to bottom, ${secondary} 0 18%, ${primary} 18% 100%)`;
     case "sash":     return `linear-gradient(135deg, ${primary} 0 38%, ${secondary} 38% 58%, ${primary} 58% 100%)`;
     case "gradient": return `linear-gradient(135deg, ${primary}, ${secondary})`;
+    case "halves":   return `linear-gradient(90deg, ${primary} 0 50%, ${secondary} 50% 100%)`;
+    case "halves-h": return `linear-gradient(180deg, ${primary} 0 50%, ${secondary} 50% 100%)`;
+    case "diagonal": return `linear-gradient(135deg, ${primary} 0 50%, ${secondary} 50% 100%)`;
+    case "quarters": return `conic-gradient(from -45deg, ${primary} 0 90deg, ${secondary} 90deg 180deg, ${primary} 180deg 270deg, ${secondary} 270deg 360deg)`;
+    case "ring":     return `radial-gradient(circle, ${primary} 0 62%, ${secondary} 62% 100%)`;
+    case "dots":     return `radial-gradient(${secondary} 22%, transparent 23%) 0 0/30% 30%, radial-gradient(${secondary} 22%, transparent 23%) 15% 15%/30% 30%, ${primary}`;
     default:         return primary;
   }
 }
@@ -922,6 +961,50 @@ function drawJerseyFill(ctx,cx,cy,R,jersey){
       const g=ctx.createLinearGradient(x0,y0,x0+d,y0+d);
       g.addColorStop(0,primary);g.addColorStop(1,secondary);
       ctx.fillStyle=g; ctx.fillRect(x0,y0,d,d);
+      break;
+    }
+    case "halves": {
+      ctx.fillStyle=primary; ctx.fillRect(x0,y0,d/2,d);
+      ctx.fillStyle=secondary; ctx.fillRect(x0+d/2,y0,d/2,d);
+      break;
+    }
+    case "halves-h": {
+      ctx.fillStyle=primary; ctx.fillRect(x0,y0,d,d/2);
+      ctx.fillStyle=secondary; ctx.fillRect(x0,y0+d/2,d,d/2);
+      break;
+    }
+    case "diagonal": {
+      ctx.fillStyle=primary; ctx.fillRect(x0,y0,d,d);
+      ctx.fillStyle=secondary;
+      ctx.beginPath();
+      ctx.moveTo(x0,y0+d);ctx.lineTo(x0+d,y0+d);ctx.lineTo(x0+d,y0);ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "quarters": {
+      const hw=d/2,hh=d/2;
+      ctx.fillStyle=primary;   ctx.fillRect(x0,y0,hw,hh);             // top-left
+      ctx.fillStyle=secondary; ctx.fillRect(x0+hw,y0,hw,hh);          // top-right
+      ctx.fillStyle=secondary; ctx.fillRect(x0,y0+hh,hw,hh);          // bottom-left
+      ctx.fillStyle=primary;   ctx.fillRect(x0+hw,y0+hh,hw,hh);       // bottom-right
+      break;
+    }
+    case "ring": {
+      ctx.fillStyle=secondary; ctx.fillRect(x0,y0,d,d);
+      ctx.fillStyle=primary;
+      ctx.beginPath();ctx.arc(cx,cy,R*0.78,0,Math.PI*2);ctx.fill();
+      break;
+    }
+    case "dots": {
+      ctx.fillStyle=primary; ctx.fillRect(x0,y0,d,d);
+      ctx.fillStyle=secondary;
+      const step=d*0.3, rad=d*0.07;
+      for(let yy=y0-step;yy<=y0+d+step;yy+=step){
+        for(let xx=x0-step;xx<=x0+d+step;xx+=step){
+          ctx.beginPath();ctx.arc(xx,yy,rad,0,Math.PI*2);ctx.fill();
+          ctx.beginPath();ctx.arc(xx+step/2,yy+step/2,rad,0,Math.PI*2);ctx.fill();
+        }
+      }
       break;
     }
     default:
@@ -1132,7 +1215,7 @@ function PlayerAvatar({player,size=44,style:ex={},team=null}) {
   const jersey = team ? getPlayerJersey(team,player) : (player?.jersey || defaultJersey(player?.number));
   return (
     <div style={{...base,background:getJerseyBackground(jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:size*0.38,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
+      <span style={{fontFamily:getJerseyFontFamily(jersey),fontSize:size*0.38,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
     </div>
   );
 }
@@ -1352,7 +1435,7 @@ function TeamFormModal({initial,onSave,onClose}) {
                   }}>
                     {isActive&&<div style={{position:"absolute",top:4,right:4,fontSize:8,fontWeight:900,color:"#1a1a0a",background:"#facc15",borderRadius:4,padding:"1px 4px",fontFamily:"'DM Sans',sans-serif"}}>ATIVO</div>}
                     <div style={{width:38,height:38,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
+                      <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
                     </div>
                     <span style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{kit.name}</span>
                   </button>
@@ -1381,7 +1464,7 @@ function TeamFormModal({initial,onSave,onClose}) {
               <div style={{display:"flex",flexDirection:"column",gap:12,padding:"12px 13px",borderRadius:12,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(52,211,153,0.25)"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:48,height:48,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                    <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:18,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
                   </div>
                   <input value={kit.name} onChange={e=>updateKit(kit.id,{name:e.target.value})} placeholder="Nome do uniforme" style={{...IS,flex:1}}
                     onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
@@ -1398,7 +1481,7 @@ function TeamFormModal({initial,onSave,onClose}) {
                         transition:"all 0.15s"
                       }}>
                         <div style={{width:"100%",height:"100%",borderRadius:7,background:getJerseyBackground({...kit.jersey,pattern:p.id}),display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                          <span style={{fontFamily:getJerseyFontFamily({...kit.jersey,pattern:p.id}),fontSize:14,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
                         </div>
                       </button>
                     ))}
@@ -1430,6 +1513,24 @@ function TeamFormModal({initial,onSave,onClose}) {
                         }}/>
                       ))}
                     </div>
+                  </div>
+                </div>
+
+                {/* Fonte do número */}
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <span style={{...LT,fontSize:9}}>Fonte do Número</span>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                    {JERSEY_FONTS.map(fnt=>(
+                      <button key={fnt.id} onClick={()=>updateKit(kit.id,{jersey:{...kit.jersey,numberFont:fnt.id}})} title={fnt.name} style={{
+                        display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"7px 2px",borderRadius:9,border:"2px solid",cursor:"pointer",
+                        borderColor:(kit.jersey.numberFont||"bebas")===fnt.id?"#34d399":"rgba(255,255,255,0.08)",
+                        background:(kit.jersey.numberFont||"bebas")===fnt.id?"rgba(52,211,153,0.12)":"rgba(255,255,255,0.03)",
+                        transition:"all 0.15s"
+                      }}>
+                        <span style={{fontFamily:fnt.family,fontSize:18,lineHeight:1,color:"#fff"}}>10</span>
+                        <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{fnt.name}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -2290,7 +2391,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       ctx.save();
       ctx.shadowColor="rgba(0,0,0,0.45)";ctx.shadowBlur=4;
       ctx.fillStyle="#fff";
-      ctx.font=`bold ${R*0.75}px 'Bebas Neue',sans-serif`;
+      ctx.font=`bold ${R*0.75}px '${getJerseyFontName(jersey)}',sans-serif`;
       ctx.textAlign="center";ctx.textBaseline="middle";
       ctx.fillText(player.number||"?",cx,cy+1);
       ctx.restore();
@@ -3916,7 +4017,7 @@ function App() {
 
   return (
     <div style={{minHeight:"100vh",background:"#050c0a"}}>
-      <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet"/>
+      <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;900&family=Anton&family=Oswald:wght@400;700&family=Teko:wght@400;700&family=Russo+One&family=Archivo+Black&family=Squada+One&family=Black+Ops+One&family=Orbitron:wght@400;700&family=Staatliches&family=Bungee&display=swap" rel="stylesheet"/>
       <style>{`
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
         select option{background:#0d1f17;}
