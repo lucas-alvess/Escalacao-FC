@@ -1707,14 +1707,14 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   const drawBenchChips=(ctx,x,y,maxWidth,maxRows,isModern)=>{
     if(!benchPlayers.length){
       ctx.fillStyle=isModern?"#4B5563":"#9CA3AF";
-      ctx.font=`11px 'DM Sans',sans-serif`;
+      ctx.font=`13px 'DM Sans',sans-serif`;
       ctx.textAlign="left";ctx.textBaseline="middle";
-      ctx.fillText("Nenhum jogador no banco",x,y+11);
+      ctx.fillText("Nenhum jogador no banco",x,y+13);
       return;
     }
-    const chipH=22,gap=6,padX=10;
+    const chipH=28,gap=8,padX=13;
     let cx=x,cy=y,row=0;
-    ctx.font=`bold 11px 'DM Sans',sans-serif`;
+    ctx.font=`bold 14px 'DM Sans',sans-serif`;
     ctx.textAlign="left";ctx.textBaseline="middle";
     for(let i=0;i<benchPlayers.length;i++){
       const p=benchPlayers[i];
@@ -1925,20 +1925,20 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.textAlign="center";ctx.textBaseline="top";
     if(player){
       const tag=player.name.split(" ")[0].toUpperCase();
-      ctx.font=`bold 15px 'Bebas Neue',sans-serif`;
+      ctx.font=`bold 18px 'Bebas Neue',sans-serif`;
       if(isModern&&ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
       const tw=ctx.measureText(tag).width;
       if(isModern){
         ctx.fillStyle="rgba(3,12,8,0.88)";
         ctx.strokeStyle="rgba(52,211,153,0.35)";ctx.lineWidth=1;
-        ctx.beginPath();ctx.roundRect(cx-tw/2-8,cy+R+4,tw+16,22,6);ctx.fill();ctx.stroke();
+        ctx.beginPath();ctx.roundRect(cx-tw/2-9,cy+R+4,tw+18,26,6);ctx.fill();ctx.stroke();
         ctx.fillStyle="#ffffff";
       } else {
         ctx.fillStyle="rgba(26,47,36,0.88)";
-        ctx.beginPath();ctx.roundRect(cx-tw/2-7,cy+R+4,tw+14,22,5);ctx.fill();
+        ctx.beginPath();ctx.roundRect(cx-tw/2-8,cy+R+4,tw+16,26,5);ctx.fill();
         ctx.fillStyle="#ffffff";
       }
-      ctx.fillText(tag,cx,cy+R+6);
+      ctx.fillText(tag,cx,cy+R+7);
       if(isModern&&ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
     } else {
       const lbl=slot.label;
@@ -1953,7 +1953,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
 
   // ── Theme A: Modern / Dark ───────────────────────────────────────────────
   const drawModern=async(canvas,imageCache)=>{
-    const W=540,H=1034;
+    const W=540,H=1072;
     // Render at 2× for crisp output on all screens (retina-quality export)
     const DPR=2;
     canvas.width=W*DPR;canvas.height=H*DPR;
@@ -2055,13 +2055,13 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     const BY=FY+FH+16;
     ctx.fillStyle="rgba(255,255,255,0.035)";
     ctx.strokeStyle="rgba(255,255,255,0.07)";ctx.lineWidth=1;
-    ctx.beginPath();ctx.roundRect(14,BY,W-28,76,12);ctx.fill();ctx.stroke();
-    ctx.fillStyle="#34d399";ctx.font="bold 11px 'DM Sans',sans-serif";
+    ctx.beginPath();ctx.roundRect(14,BY,W-28,112,12);ctx.fill();ctx.stroke();
+    ctx.fillStyle="#34d399";ctx.font="bold 13px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="alphabetic";
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
-    ctx.fillText("BANCO DE RESERVAS",28,BY+22);
+    ctx.fillText("BANCO DE RESERVAS",28,BY+26);
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
-    drawBenchChips(ctx,28,BY+34,W-56,2,true);
+    drawBenchChips(ctx,28,BY+40,W-56,2,true);
 
     // Watermark
     ctx.fillStyle="rgba(52,211,153,0.25)";ctx.font="bold 13px 'DM Sans',sans-serif";
@@ -2073,7 +2073,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
 
   // ── Theme B: Clean / Light ───────────────────────────────────────────────
   const drawClean=async(canvas,imageCache)=>{
-    const W=540,H=986;
+    const W=540,H=1120;
     // Render at 2× for crisp output on all screens (retina-quality export)
     const DPR=2;
     canvas.width=W*DPR;canvas.height=H*DPR;
@@ -2164,12 +2164,12 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.strokeStyle="#e5e7eb";ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(16,LY);ctx.lineTo(W-16,LY);ctx.stroke();
 
-    ctx.fillStyle="#166534";ctx.font="bold 13px 'DM Sans',sans-serif";
+    ctx.fillStyle="#166534";ctx.font="bold 15px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="alphabetic";
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0.5px";
-    ctx.fillText("BANCO DE RESERVAS",16,LY+22);
+    ctx.fillText("BANCO DE RESERVAS",16,LY+26);
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
-    drawBenchChips(ctx,16,LY+34,W-32,3,false);
+    drawBenchChips(ctx,16,LY+40,W-32,3,false);
 
     // Watermark
     ctx.fillStyle="rgba(22,101,52,0.2)";ctx.font="11px 'DM Sans',sans-serif";
