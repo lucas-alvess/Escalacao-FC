@@ -957,6 +957,32 @@ const SHIELD_SHAPES = [
   { id:"circle",       name:"Círculo",   path:"M50,2 A48,48 0 1 1 49.99,2 Z" },
 ];
 
+// ─── Team kits (uniforms) ──────────────────────────────────────────────────────
+// A team has a library of "kits" (uniform sets): the 4 standard categories
+// (titular/reserva/alternativo/goleiro) plus any number of custom ones the
+// user adds. `activeKitId` selects which kit outfield players wear; the
+// "goleiro" kit is always used for players whose position is "Goleiro".
+function makeDefaultKits(colorIdx=0){
+  const [c1,c2]=SHIELD_COLORS[colorIdx%SHIELD_COLORS.length];
+  return [
+    { id:"titular",     type:"titular",     name:"Titular",     jersey:{pattern:"solid",  primary:c1,        secondary:"#ffffff"} },
+    { id:"reserva",     type:"reserva",     name:"Reserva",     jersey:{pattern:"solid",  primary:"#ffffff", secondary:c1} },
+    { id:"alternativo", type:"alternativo", name:"Alternativo", jersey:{pattern:"stripes",primary:c1,        secondary:c2} },
+    { id:"goleiro",     type:"goleiro",     name:"Goleiro",     jersey:{pattern:"solid",  primary:"#facc15", secondary:"#1f2937"} },
+  ];
+}
+
+/** Resolves the jersey a player should wear, based on the team's kit library. */
+function getPlayerJersey(team,player){
+  const kits=team?.kits||makeDefaultKits(team?.colorIdx||0);
+  if(player?.position==="Goleiro"){
+    const gk=kits.find(k=>k.type==="goleiro")||kits.find(k=>k.id==="goleiro");
+    if(gk) return gk.jersey;
+  }
+  const active=kits.find(k=>k.id===team?.activeKitId)||kits.find(k=>k.type==="titular")||kits[0];
+  return active?.jersey||defaultJersey(player?.number);
+}
+
 // ─── Default team factory ─────────────────────────────────────────────────────
 let _uid = 1;
 function makeTeam(name="Novo Time", colorIdx=0) {
@@ -967,6 +993,8 @@ function makeTeam(name="Novo Time", colorIdx=0) {
     colorIdx,
     shieldEmoji: "🛡️",
     shieldShapeId: null, // null = default rounded-square; or one of SHIELD_SHAPES ids
+    kits: makeDefaultKits(colorIdx),
+    activeKitId: "titular",
     players: [],
     captainPlayerId: null,
     // v4: lineups subcollection; active lineup exposed at team level for compat
@@ -1098,13 +1126,13 @@ function TeamShield({team, size=56}) {
   return <ShieldVisual c1={c1} c2={c2} shape={shape} photo={team.photo} emoji={team.shieldEmoji} size={size} uid={team.id} name={team.name}/>;
 }
 
-function PlayerAvatar({player,size=44,style:ex={}}) {
+function PlayerAvatar({player,size=44,style:ex={},team=null}) {
   const base = {width:size,height:size,borderRadius:"50%",flexShrink:0,overflow:"hidden",...ex};
   if (player?.photo) return <div style={base}><img src={player.photo} alt={player?.name||""} style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>;
-  const jersey = player?.jersey || defaultJersey(player?.number);
+  const jersey = team ? getPlayerJersey(team,player) : (player?.jersey || defaultJersey(player?.number));
   return (
     <div style={{...base,background:getJerseyBackground(jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:size*0.38,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{player?.number||"?"}</span>
+      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:size*0.38,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
     </div>
   );
 }
@@ -1158,14 +1186,37 @@ const IS = {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,2
 const LT = {color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5};
 
 function TeamFormModal({initial,onSave,onClose}) {
-  const [form,setForm]=useState(initial||{name:"",colorIdx:0,shieldEmoji:"🛡️",shieldShapeId:null,photo:""});
+  const [form,setForm]=useState(()=>{
+    if(initial) return {...initial, kits: initial.kits||makeDefaultKits(initial.colorIdx||0), activeKitId: initial.activeKitId||"titular"};
+    return {name:"",colorIdx:0,shieldEmoji:"🛡️",shieldShapeId:null,photo:"",kits:makeDefaultKits(0),activeKitId:"titular"};
+  });
   const [saving,setSaving]=useState(false);
+  const [tab,setTab]=useState("dados"); // "dados" | "uniformes"
+  const [editingKitId,setEditingKitId]=useState(null);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.name.trim()!=="";
   const [c1,c2]=SHIELD_COLORS[form.colorIdx%SHIELD_COLORS.length];
   const previewIdRef=useRef(null);
   if(!previewIdRef.current) previewIdRef.current=genUUID();
   const previewShape=SHIELD_SHAPES.find(s=>s.id===form.shieldShapeId);
+
+  const updateKit=(id,patch)=>set("kits",form.kits.map(k=>k.id===id?{...k,...patch}:k));
+  const addKit=()=>{
+    const id=genUUID();
+    const newKit={id,type:"custom",name:`Uniforme ${form.kits.length+1}`,jersey:{pattern:"solid",primary:"#1a6b3a",secondary:"#ffffff"}};
+    set("kits",[...form.kits,newKit]);
+    setEditingKitId(id);
+  };
+  const deleteKit=(id)=>{
+    const kit=form.kits.find(k=>k.id===id);
+    if(!kit||kit.type==="titular")return; // titular kit can't be removed
+    setForm(f=>{
+      const kits=f.kits.filter(k=>k.id!==id);
+      return {...f,kits,activeKitId:f.activeKitId===id?"titular":f.activeKitId};
+    });
+    if(editingKitId===id)setEditingKitId(null);
+  };
+
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
@@ -1181,6 +1232,19 @@ function TeamFormModal({initial,onSave,onClose}) {
         </div>
         <div style={{padding:"18px 20px 22px",display:"flex",flexDirection:"column",gap:16}}>
 
+          {/* Abas */}
+          <div style={{display:"flex",gap:6,padding:4,background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(255,255,255,0.06)"}}>
+            {[["dados","Dados do Time"],["uniformes","Uniformes"]].map(([id,label])=>(
+              <button key={id} onClick={()=>setTab(id)} style={{
+                flex:1,padding:"9px 0",borderRadius:9,border:"none",cursor:"pointer",
+                fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:800,letterSpacing:0.3,
+                background:tab===id?`linear-gradient(135deg,${c1},${c2})`:"transparent",
+                color:tab===id?"#fff":"#9CA3AF",transition:"all 0.2s"
+              }}>{label}</button>
+            ))}
+          </div>
+
+          {tab==="dados"&&(<>
           {/* Preview escudo */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
             <div style={{width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1264,6 +1328,132 @@ function TeamFormModal({initial,onSave,onClose}) {
             <span style={LT}>Ou envie uma imagem do escudo (opcional)</span>
             <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
           </div>
+          </>)}
+
+          {tab==="uniformes"&&(<>
+          {/* Biblioteca de uniformes */}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <span style={LT}>Uniformes do Time</span>
+            <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:-4}}>
+              O uniforme <b style={{color:"#9CA3AF"}}>ativo</b> é usado pelos jogadores de linha. Goleiros sempre usam o uniforme de Goleiro.
+            </span>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+              {form.kits.map(kit=>{
+                const isActive=form.activeKitId===kit.id;
+                const isEditing=editingKitId===kit.id;
+                const sampleNum=kit.type==="goleiro"?"1":"10";
+                return (
+                  <button key={kit.id} onClick={()=>setEditingKitId(isEditing?null:kit.id)} style={{
+                    display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"8px 4px",borderRadius:11,
+                    border:"2px solid",cursor:"pointer",position:"relative",
+                    borderColor:isEditing?"#34d399":(isActive?"#facc15":"rgba(255,255,255,0.08)"),
+                    background:isEditing?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
+                    transition:"all 0.15s"
+                  }}>
+                    {isActive&&<div style={{position:"absolute",top:4,right:4,fontSize:8,fontWeight:900,color:"#1a1a0a",background:"#facc15",borderRadius:4,padding:"1px 4px",fontFamily:"'DM Sans',sans-serif"}}>ATIVO</div>}
+                    <div style={{width:38,height:38,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
+                    </div>
+                    <span style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{kit.name}</span>
+                  </button>
+                );
+              })}
+              <button onClick={addKit} title="Adicionar uniforme" style={{
+                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,padding:"8px 4px",borderRadius:11,
+                border:"2px dashed rgba(255,255,255,0.15)",cursor:"pointer",background:"rgba(255,255,255,0.02)",color:"#6B7280",
+                transition:"all 0.15s"
+              }}>
+                <div style={{width:38,height:38,borderRadius:"50%",border:"2px dashed rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Ico.Plus/>
+                </div>
+                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>Novo</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Editor do uniforme selecionado */}
+          {editingKitId&&(()=>{
+            const kit=form.kits.find(k=>k.id===editingKitId);
+            if(!kit)return null;
+            const isActive=form.activeKitId===kit.id;
+            const canDelete=kit.type!=="titular";
+            return (
+              <div style={{display:"flex",flexDirection:"column",gap:12,padding:"12px 13px",borderRadius:12,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(52,211,153,0.25)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:48,height:48,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                  </div>
+                  <input value={kit.name} onChange={e=>updateKit(kit.id,{name:e.target.value})} placeholder="Nome do uniforme" style={{...IS,flex:1}}
+                    onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+                </div>
+
+                {/* Padrão */}
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <span style={{...LT,fontSize:9}}>Padrão</span>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
+                    {JERSEY_PATTERNS.map(p=>(
+                      <button key={p.id} onClick={()=>updateKit(kit.id,{jersey:{...kit.jersey,pattern:p.id}})} title={p.name} style={{
+                        aspectRatio:"1",borderRadius:9,border:"2px solid",cursor:"pointer",padding:0,overflow:"hidden",
+                        borderColor:kit.jersey.pattern===p.id?"#34d399":"rgba(255,255,255,0.08)",
+                        transition:"all 0.15s"
+                      }}>
+                        <div style={{width:"100%",height:"100%",borderRadius:7,background:getJerseyBackground({...kit.jersey,pattern:p.id}),display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Cores */}
+                <div style={{display:"flex",gap:10}}>
+                  <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                    <span style={{...LT,fontSize:9}}>Cor Principal</span>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+                      {JERSEY_COLOR_SWATCHES.map(col=>(
+                        <button key={col} onClick={()=>updateKit(kit.id,{jersey:{...kit.jersey,primary:col}})} title={col} style={{
+                          aspectRatio:"1",borderRadius:7,border:"2px solid",cursor:"pointer",background:col,
+                          borderColor:kit.jersey.primary===col?"#34d399":(col==="#ffffff"?"rgba(255,255,255,0.2)":"transparent"),
+                          boxShadow:kit.jersey.primary===col?`0 0 8px ${col}90`:"none",transition:"all 0.15s"
+                        }}/>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                    <span style={{...LT,fontSize:9}}>Cor Secundária</span>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+                      {JERSEY_COLOR_SWATCHES.map(col=>(
+                        <button key={col} onClick={()=>updateKit(kit.id,{jersey:{...kit.jersey,secondary:col}})} title={col} style={{
+                          aspectRatio:"1",borderRadius:7,border:"2px solid",cursor:"pointer",background:col,
+                          borderColor:kit.jersey.secondary===col?"#34d399":(col==="#ffffff"?"rgba(255,255,255,0.2)":"transparent"),
+                          boxShadow:kit.jersey.secondary===col?`0 0 8px ${col}90`:"none",transition:"all 0.15s"
+                        }}/>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ações */}
+                <div style={{display:"flex",gap:8}}>
+                  {kit.type!=="goleiro"&&(
+                    <button onClick={()=>set("activeKitId",kit.id)} disabled={isActive} style={{
+                      flex:1,padding:"9px 0",borderRadius:9,border:"1px solid",cursor:isActive?"default":"pointer",
+                      borderColor:isActive?"rgba(250,204,21,0.4)":"rgba(255,255,255,0.12)",
+                      background:isActive?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
+                      color:isActive?"#facc15":"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800,
+                    }}>{isActive?"✓ UNIFORME ATIVO":"DEFINIR COMO ATIVO"}</button>
+                  )}
+                  {canDelete&&(
+                    <button onClick={()=>deleteKit(kit.id)} style={{
+                      padding:"9px 14px",borderRadius:9,border:"1px solid rgba(239,68,68,0.25)",cursor:"pointer",
+                      background:"rgba(239,68,68,0.1)",color:"#f87171",display:"flex",alignItems:"center",justifyContent:"center"
+                    }}><Ico.Trash/></button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+          </>)}
 
           <button onClick={handleSave} disabled={saving||!valid} style={{
             marginTop:4,padding:"14px 0",borderRadius:13,border:"none",cursor:(valid&&!saving)?"pointer":"not-allowed",
@@ -1438,13 +1628,11 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 
 // ─── Player Form ──────────────────────────────────────────────────────────────
 function PlayerFormModal({initial,onSave,onClose,teamColor}) {
-  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3,jersey:null});
+  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3});
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=!!(form.name.trim()&&String(form.number).trim()!=="");
   const [c1]=SHIELD_COLORS[teamColor%SHIELD_COLORS.length];
-  const jersey=form.jersey||defaultJersey(form.number);
-  const setJersey=(patch)=>set("jersey",{...jersey,...patch});
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
@@ -1461,49 +1649,6 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
         <div style={{padding:"16px 18px 20px",display:"flex",flexDirection:"column",gap:15}}>
           <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
 
-          {/* Uniforme — usado como avatar do jogador quando não há foto */}
-          <div style={{display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",borderRadius:12,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)"}}>
-            <span style={LT}>Uniforme {form.photo&&"(usado se a foto for removida)"}</span>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
-              {JERSEY_PATTERNS.map(p=>(
-                <button key={p.id} onClick={()=>setJersey({pattern:p.id})} title={p.name} style={{
-                  aspectRatio:"1",borderRadius:9,border:"2px solid",cursor:"pointer",padding:0,overflow:"hidden",
-                  borderColor:jersey.pattern===p.id?"#34d399":"rgba(255,255,255,0.08)",
-                  transition:"all 0.15s"
-                }}>
-                  <div style={{width:"100%",height:"100%",borderRadius:7,background:getJerseyBackground({...jersey,pattern:p.id}),display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{form.number||"9"}</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div style={{display:"flex",gap:10,marginTop:2}}>
-              <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
-                <span style={{...LT,fontSize:9}}>Cor Principal</span>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
-                  {JERSEY_COLOR_SWATCHES.map(col=>(
-                    <button key={col} onClick={()=>setJersey({primary:col})} title={col} style={{
-                      aspectRatio:"1",borderRadius:7,border:"2px solid",cursor:"pointer",background:col,
-                      borderColor:jersey.primary===col?"#34d399":(col==="#ffffff"?"rgba(255,255,255,0.2)":"transparent"),
-                      boxShadow:jersey.primary===col?`0 0 8px ${col}90`:"none",transition:"all 0.15s"
-                    }}/>
-                  ))}
-                </div>
-              </div>
-              <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
-                <span style={{...LT,fontSize:9}}>Cor Secundária</span>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
-                  {JERSEY_COLOR_SWATCHES.map(col=>(
-                    <button key={col} onClick={()=>setJersey({secondary:col})} title={col} style={{
-                      aspectRatio:"1",borderRadius:7,border:"2px solid",cursor:"pointer",background:col,
-                      borderColor:jersey.secondary===col?"#34d399":(col==="#ffffff"?"rgba(255,255,255,0.2)":"transparent"),
-                      boxShadow:jersey.secondary===col?`0 0 8px ${col}90`:"none",transition:"all 0.15s"
-                    }}/>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             <label htmlFor="player-name" style={LT}>Nome</label>
             <input id="player-name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Nome do jogador" style={IS}
@@ -1617,7 +1762,7 @@ function sortPlayers(list, sortBy, asc) {
   });
 }
 
-function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose}) {
+function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose,team}) {
   const [sortBy,setSortBy]=useState("name");
   const [sortAsc,setSortAsc]=useState(true);
   const toggleSort=(key)=>{ if(sortBy===key) setSortAsc(a=>!a); else{setSortBy(key);setSortAsc(true);} };
@@ -1661,7 +1806,7 @@ function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose}) {
                 <button key={p.id} onClick={()=>onPick(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 13px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:11,cursor:"pointer",transition:"all 0.14s",textAlign:"left"}}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.1)";e.currentTarget.style.borderColor="rgba(52,211,153,0.4)";}}
                   onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.04)";e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";}}>
-                  <PlayerAvatar player={p} size={42} style={{border:"2px solid rgba(255,255,255,0.18)"}}/>
+                  <PlayerAvatar player={p} size={42} style={{border:"2px solid rgba(255,255,255,0.18)"}} team={team}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{p.name}</div>
                     <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:1}}>#{p.number} · {p.position} · {p.foot}</div>
@@ -1678,7 +1823,7 @@ function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose}) {
                 <button key={p.id} onClick={()=>onPick(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 13px",background:"rgba(250,204,21,0.04)",border:"1px solid rgba(250,204,21,0.15)",borderRadius:11,cursor:"pointer",transition:"all 0.14s",textAlign:"left"}}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(250,204,21,0.1)";e.currentTarget.style.borderColor="rgba(250,204,21,0.4)";}}
                   onMouseLeave={e=>{e.currentTarget.style.background="rgba(250,204,21,0.04)";e.currentTarget.style.borderColor="rgba(250,204,21,0.15)";}}>
-                  <PlayerAvatar player={p} size={42} style={{border:"2px solid rgba(250,204,21,0.4)"}}/>
+                  <PlayerAvatar player={p} size={42} style={{border:"2px solid rgba(250,204,21,0.4)"}} team={team}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{p.name}</div>
                     <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:1}}>#{p.number} · {p.position}</div>
@@ -1698,7 +1843,7 @@ function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose}) {
 }
 
 // ─── Football Field ───────────────────────────────────────────────────────────
-function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
+function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
   const fieldRef=useRef();
   const dragState=useRef(null);
   const [ghost,setGhost]=useState(null);
@@ -1869,7 +2014,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
             {player?(
               <>
                 <div style={{width:54,height:54,borderRadius:"50%",overflow:"hidden",border:isHL?"3px solid #facc15":"2.5px solid #34d399",boxShadow:isHL?"0 0 22px rgba(250,204,21,0.9)":"0 0 16px rgba(52,211,153,0.6)",transition:"border 0.12s,box-shadow 0.12s",flexShrink:0}}>
-                  <PlayerAvatar player={player} size={54}/>
+                  <PlayerAvatar player={player} size={54} team={team}/>
                 </div>
                 <div style={{background:"rgba(0,0,0,0.88)",borderRadius:6,padding:"2px 7px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,whiteSpace:"nowrap",maxWidth:72,overflow:"hidden",textOverflow:"ellipsis"}}>
                   {player.name.split(" ")[0].toUpperCase()}
@@ -1889,7 +2034,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap}) {
       {ghost&&(
         <div style={{position:"absolute",left:ghost.x,top:ghost.y,transform:"translate(-50%,-50%)",pointerEvents:"none",zIndex:100,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
           <div style={{width:62,height:62,borderRadius:"50%",overflow:"hidden",border:"3px solid #facc15",boxShadow:"0 0 28px rgba(250,204,21,0.95)",opacity:0.97,transform:"scale(1.12)"}}>
-            <PlayerAvatar player={ghost.player} size={62}/>
+            <PlayerAvatar player={ghost.player} size={62} team={team}/>
           </div>
           {ghost.player&&<div style={{background:"rgba(0,0,0,0.92)",borderRadius:6,padding:"2px 8px",color:"#facc15",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}>{ghost.player.name.split(" ")[0].toUpperCase()}</div>}
         </div>
@@ -2109,7 +2254,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       // Clean: subtle shadow behind circle
       ctx.save();
       ctx.shadowColor="rgba(0,0,0,0.25)";ctx.shadowBlur=10;ctx.shadowOffsetY=3;
-      ctx.fillStyle=player?(player.jersey||defaultJersey(player.number)).primary:"#d1d5db";
+      ctx.fillStyle=player?getPlayerJersey(team,player).primary:"#d1d5db";
       ctx.beginPath();ctx.arc(cx,cy,R+3,0,Math.PI*2);ctx.fill();
       ctx.restore();
       // White border
@@ -2134,7 +2279,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       const sw=iw*scale,sh=ih*scale;
       ctx.drawImage(cachedImg,cx-(sw/2),cy-(sh/2),sw,sh);
     } else if(player){
-      const jersey=player.jersey||defaultJersey(player.number);
+      const jersey=getPlayerJersey(team,player);
       drawJerseyFill(ctx,cx,cy,R,jersey);
       if(isModern){
         // Subtle gradient sheen
@@ -2538,11 +2683,11 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
 }
 
 // ─── Player Card ──────────────────────────────────────────────────────────────
-function PlayerCard({player,onEdit,onDelete,isCaptain,onToggleCaptain}) {
+function PlayerCard({player,onEdit,onDelete,isCaptain,onToggleCaptain,team}) {
   return (
     <div style={{background:"rgba(255,255,255,0.04)",border:isCaptain?"1px solid rgba(245,158,11,0.4)":"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"12px 13px",display:"flex",alignItems:"center",gap:12}}>
       <div style={{position:"relative",flexShrink:0}}>
-        <PlayerAvatar player={player} size={52} style={{border:"2px solid rgba(255,255,255,0.14)"}}/>
+        <PlayerAvatar player={player} size={52} style={{border:"2px solid rgba(255,255,255,0.14)"}} team={team}/>
         {isCaptain&&(
           <div style={{position:"absolute",top:-4,right:-4,width:20,height:20,borderRadius:"50%",background:"#F59E0B",border:"2px solid #050c0a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Bebas Neue',sans-serif",fontSize:11,fontWeight:900,color:"#1a1a0a"}}>C</div>
         )}
@@ -2594,7 +2739,7 @@ const SORT_OPTIONS = [
 
 const PLAYERS_PAGE_SIZE = 20;
 
-function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onToggleCaptain }) {
+function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onToggleCaptain, team }) {
   const [search, setSearch]     = useState("");
   const [sortBy, setSortBy]     = useState("name");
   const [sortAsc, setSortAsc]   = useState(true);
@@ -2746,6 +2891,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
           onDelete={() => onDelete(p.id)}
           isCaptain={String(captainPlayerId)===String(p.id)}
           onToggleCaptain={() => onToggleCaptain(p.id)}
+          team={team}
         />
       ))}
 
@@ -3198,7 +3344,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                 </button>
               </div>
             </div>
-            <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={handleSlotTap}/>
+            <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={handleSlotTap} team={team}/>
 
             {/* Banco de reservas */}
             <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:7}}>
@@ -3250,6 +3396,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             teamColor={team.colorIdx}
             captainPlayerId={team.captainPlayerId}
             onToggleCaptain={toggleCaptain}
+            team={team}
           />
         )}
       </div>
@@ -3270,7 +3417,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       )}
 
       {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
-      {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)}/>}
+      {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)} team={team}/>}
       {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} coach={activeLineup?.coach||""} benchPlayerIds={activeLineup?.benchPlayerIds||[]} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
       {showLineupMgr&&<LineupManagerModal team={team} onClose={()=>setShowLineupMgr(false)}
@@ -3649,6 +3796,8 @@ function App() {
     const t = makeTeam(form.name, form.colorIdx);
     t.shieldEmoji = form.shieldEmoji || "🛡️";
     t.shieldShapeId = form.shieldShapeId || null;
+    t.kits = form.kits || makeDefaultKits(form.colorIdx);
+    t.activeKitId = form.activeKitId || "titular";
     const fb = getFirebase();
     const uid = fb?.auth?.currentUser?.uid;
     // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
