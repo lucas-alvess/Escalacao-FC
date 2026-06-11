@@ -850,6 +850,84 @@ function migrateLineup(oldLineup, oldSlots, newSlots) {
 
 const POSITIONS = ["Goleiro","Lateral Direito","Lateral Esquerdo","Zagueiro","Volante","Meio-campo","Meia Atacante","Ponta Direita","Ponta Esquerda","Centroavante","Atacante","Segundo Volante","Líbero"];
 const AVATAR_COLORS = ["#1a6b3a","#c8102e","#003087","#6f2c91","#00539f","#e8650a","#b45309","#0e7490","#7c3aed","#be185d"];
+
+// ─── Jersey customization (used as the player avatar when no photo is set) ───
+// "solid"/"stripes"/"hoops"/"sleeves" are the free/basic patterns; "sash" and
+// "gradient" are richer two-tone styles — good premium-pack candidates later.
+const JERSEY_PATTERNS = [
+  { id:"solid",    name:"Liso" },
+  { id:"stripes",  name:"Listrado V" },
+  { id:"hoops",    name:"Listrado H" },
+  { id:"sleeves",  name:"Gola" },
+  { id:"sash",     name:"Faixa" },
+  { id:"gradient", name:"Degradê" },
+];
+const JERSEY_COLOR_SWATCHES = [
+  "#1a6b3a","#c8102e","#003087","#6f2c91","#00539f","#e8650a","#b45309","#0e7490","#7c3aed","#be185d",
+  "#ffffff","#000000","#facc15","#22c55e","#3b82f6","#f97316","#ec4899","#06b6d4","#94a3b8","#16a34a",
+];
+
+/** Returns the default jersey config for a player based on their number (kept stable/backward-compatible with the old solid-color avatar). */
+function defaultJersey(number){
+  return { pattern:"solid", primary: AVATAR_COLORS[(parseInt(number)||0)%AVATAR_COLORS.length], secondary:"#ffffff" };
+}
+
+/** Returns a CSS `background` value for a jersey config — used by PlayerAvatar (React). */
+function getJerseyBackground(jersey){
+  const {pattern="solid",primary="#1a6b3a",secondary="#ffffff"}=jersey||{};
+  switch(pattern){
+    case "stripes":  return `repeating-linear-gradient(90deg, ${primary} 0 25%, ${secondary} 25% 50%)`;
+    case "hoops":    return `repeating-linear-gradient(0deg, ${primary} 0 25%, ${secondary} 25% 50%)`;
+    case "sleeves":  return `linear-gradient(to bottom, ${secondary} 0 18%, ${primary} 18% 100%)`;
+    case "sash":     return `linear-gradient(135deg, ${primary} 0 38%, ${secondary} 38% 58%, ${primary} 58% 100%)`;
+    case "gradient": return `linear-gradient(135deg, ${primary}, ${secondary})`;
+    default:         return primary;
+  }
+}
+
+/**
+ * Fills a square area (cx-R..cx+R, cy-R..cy+R) with the jersey pattern —
+ * the canvas equivalent of getJerseyBackground(), used during export.
+ * Caller is expected to have already clipped to the player avatar circle.
+ */
+function drawJerseyFill(ctx,cx,cy,R,jersey){
+  const {pattern="solid",primary="#1a6b3a",secondary="#ffffff"}=jersey||{};
+  const x0=cx-R,y0=cy-R,d=R*2;
+  switch(pattern){
+    case "stripes": {
+      const bw=d/4;
+      for(let i=0;i<4;i++){ ctx.fillStyle=i%2===0?primary:secondary; ctx.fillRect(x0+i*bw,y0,bw,d); }
+      break;
+    }
+    case "hoops": {
+      const bh=d/4;
+      for(let i=0;i<4;i++){ ctx.fillStyle=i%2===0?primary:secondary; ctx.fillRect(x0,y0+i*bh,d,bh); }
+      break;
+    }
+    case "sleeves": {
+      ctx.fillStyle=primary; ctx.fillRect(x0,y0,d,d);
+      ctx.fillStyle=secondary; ctx.fillRect(x0,y0,d,d*0.18);
+      break;
+    }
+    case "sash": {
+      ctx.fillStyle=primary; ctx.fillRect(x0,y0,d,d);
+      ctx.save();
+      ctx.translate(cx,cy);ctx.rotate(-Math.PI/4);
+      ctx.fillStyle=secondary;
+      ctx.fillRect(-d,-d*0.18,d*2,d*0.36);
+      ctx.restore();
+      break;
+    }
+    case "gradient": {
+      const g=ctx.createLinearGradient(x0,y0,x0+d,y0+d);
+      g.addColorStop(0,primary);g.addColorStop(1,secondary);
+      ctx.fillStyle=g; ctx.fillRect(x0,y0,d,d);
+      break;
+    }
+    default:
+      ctx.fillStyle=primary; ctx.fillRect(x0,y0,d,d);
+  }
+}
 const SHIELD_COLORS = [
   // Base set
   ["#16a34a","#22c55e"],["#dc2626","#f87171"],["#2563eb","#60a5fa"],
@@ -1021,11 +1099,14 @@ function TeamShield({team, size=56}) {
 }
 
 function PlayerAvatar({player,size=44,style:ex={}}) {
-  const col = AVATAR_COLORS[(parseInt(player?.number)||0) % AVATAR_COLORS.length];
   const base = {width:size,height:size,borderRadius:"50%",flexShrink:0,overflow:"hidden",...ex};
   if (player?.photo) return <div style={base}><img src={player.photo} alt={player?.name||""} style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>;
-  return <div style={{...base,background:col,display:"flex",alignItems:"center",justifyContent:"center",
-    fontFamily:"'Bebas Neue',sans-serif",fontSize:size*0.38,color:"#fff"}}>{player?.number||"?"}</div>;
+  const jersey = player?.jersey || defaultJersey(player?.number);
+  return (
+    <div style={{...base,background:getJerseyBackground(jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:size*0.38,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{player?.number||"?"}</span>
+    </div>
+  );
 }
 
 function PhotoPicker({photo,onChange}) {
@@ -1357,11 +1438,13 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 
 // ─── Player Form ──────────────────────────────────────────────────────────────
 function PlayerFormModal({initial,onSave,onClose,teamColor}) {
-  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3});
+  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3,jersey:null});
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=!!(form.name.trim()&&String(form.number).trim()!=="");
   const [c1]=SHIELD_COLORS[teamColor%SHIELD_COLORS.length];
+  const jersey=form.jersey||defaultJersey(form.number);
+  const setJersey=(patch)=>set("jersey",{...jersey,...patch});
   const handleSave=async()=>{
     if(!valid||saving)return;
     setSaving(true);
@@ -1377,6 +1460,50 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
         </div>
         <div style={{padding:"16px 18px 20px",display:"flex",flexDirection:"column",gap:15}}>
           <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
+
+          {/* Uniforme — usado como avatar do jogador quando não há foto */}
+          <div style={{display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",borderRadius:12,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)"}}>
+            <span style={LT}>Uniforme {form.photo&&"(usado se a foto for removida)"}</span>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:6}}>
+              {JERSEY_PATTERNS.map(p=>(
+                <button key={p.id} onClick={()=>setJersey({pattern:p.id})} title={p.name} style={{
+                  aspectRatio:"1",borderRadius:9,border:"2px solid",cursor:"pointer",padding:0,overflow:"hidden",
+                  borderColor:jersey.pattern===p.id?"#34d399":"rgba(255,255,255,0.08)",
+                  transition:"all 0.15s"
+                }}>
+                  <div style={{width:"100%",height:"100%",borderRadius:7,background:getJerseyBackground({...jersey,pattern:p.id}),display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:14,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{form.number||"9"}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:2}}>
+              <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                <span style={{...LT,fontSize:9}}>Cor Principal</span>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+                  {JERSEY_COLOR_SWATCHES.map(col=>(
+                    <button key={col} onClick={()=>setJersey({primary:col})} title={col} style={{
+                      aspectRatio:"1",borderRadius:7,border:"2px solid",cursor:"pointer",background:col,
+                      borderColor:jersey.primary===col?"#34d399":(col==="#ffffff"?"rgba(255,255,255,0.2)":"transparent"),
+                      boxShadow:jersey.primary===col?`0 0 8px ${col}90`:"none",transition:"all 0.15s"
+                    }}/>
+                  ))}
+                </div>
+              </div>
+              <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
+                <span style={{...LT,fontSize:9}}>Cor Secundária</span>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:5}}>
+                  {JERSEY_COLOR_SWATCHES.map(col=>(
+                    <button key={col} onClick={()=>setJersey({secondary:col})} title={col} style={{
+                      aspectRatio:"1",borderRadius:7,border:"2px solid",cursor:"pointer",background:col,
+                      borderColor:jersey.secondary===col?"#34d399":(col==="#ffffff"?"rgba(255,255,255,0.2)":"transparent"),
+                      boxShadow:jersey.secondary===col?`0 0 8px ${col}90`:"none",transition:"all 0.15s"
+                    }}/>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             <label htmlFor="player-name" style={LT}>Nome</label>
             <input id="player-name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Nome do jogador" style={IS}
@@ -1982,7 +2109,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       // Clean: subtle shadow behind circle
       ctx.save();
       ctx.shadowColor="rgba(0,0,0,0.25)";ctx.shadowBlur=10;ctx.shadowOffsetY=3;
-      ctx.fillStyle=player?AVATAR_COLORS[(parseInt(player?.number)||0)%AVATAR_COLORS.length]:"#d1d5db";
+      ctx.fillStyle=player?(player.jersey||defaultJersey(player.number)).primary:"#d1d5db";
       ctx.beginPath();ctx.arc(cx,cy,R+3,0,Math.PI*2);ctx.fill();
       ctx.restore();
       // White border
@@ -2007,18 +2134,21 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       const sw=iw*scale,sh=ih*scale;
       ctx.drawImage(cachedImg,cx-(sw/2),cy-(sh/2),sw,sh);
     } else if(player){
-      const col=AVATAR_COLORS[(parseInt(player.number)||0)%AVATAR_COLORS.length];
-      ctx.fillStyle=col;ctx.fillRect(cx-R,cy-R,R*2,R*2);
+      const jersey=player.jersey||defaultJersey(player.number);
+      drawJerseyFill(ctx,cx,cy,R,jersey);
       if(isModern){
         // Subtle gradient sheen
         const sheen=ctx.createRadialGradient(cx-R*0.3,cy-R*0.3,R*0.05,cx,cy,R);
         sheen.addColorStop(0,"rgba(255,255,255,0.22)");sheen.addColorStop(1,"rgba(0,0,0,0.15)");
         ctx.fillStyle=sheen;ctx.fillRect(cx-R,cy-R,R*2,R*2);
       }
+      ctx.save();
+      ctx.shadowColor="rgba(0,0,0,0.45)";ctx.shadowBlur=4;
       ctx.fillStyle="#fff";
       ctx.font=`bold ${R*0.75}px 'Bebas Neue',sans-serif`;
       ctx.textAlign="center";ctx.textBaseline="middle";
       ctx.fillText(player.number||"?",cx,cy+1);
+      ctx.restore();
     } else {
       ctx.fillStyle=isModern?"rgba(0,0,0,0.4)":"rgba(209,213,219,0.7)";
       ctx.fillRect(cx-R,cy-R,R*2,R*2);
