@@ -530,6 +530,30 @@ async function deleteAllLineupsCloud(uid, teamId) {
 
 // ── Schema versioning ─────────────────────────────────────────────────────────
 
+// ─── Premium / monetization scaffolding ────────────────────────────────────
+// This app is being prepared for a future freemium release on the Play Store.
+// `isPremium` lives on the user's profile doc (users/{uid}.isPremium, default
+// false) so it's available across devices. FREE_* constants define the limits
+// that apply while `isPremium` is false; gating UI (PremiumUpsellModal) and
+// checks live alongside the relevant features (e.g. lineup creation below).
+const FREE_LINEUP_LIMIT = 2; // max saved lineups per team on the free plan
+
+async function getIsPremium(uid) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, "users", uid));
+    if (!snap.exists()) return false;
+    return !!snap.data().isPremium;
+  } catch(e) { return false; }
+}
+
+async function setIsPremiumFlag(uid, value) {
+  const fb = getFirebase(); if (!fb) return;
+  try {
+    await fb.setDoc(fb.doc(fb.db, "users", uid), { isPremium: !!value }, { merge: true });
+  } catch(e) { console.warn("setIsPremiumFlag error:", e); }
+}
+
 async function getSchemaVersion(uid) {
   const fb = getFirebase(); if (!fb) return 1;
   try {
@@ -1583,7 +1607,7 @@ function TeamFormModal({initial,onSave,onClose}) {
 }
 
 // ─── Home / Team List ─────────────────────────────────────────────────────────
-function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync}) {
+function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium}) {
   const [confirmDel,setConfirmDel]=useState(null);
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif"}}>
@@ -1616,6 +1640,14 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           </div>
           {user&&(
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+              {/* TEMPORARY DEV TOGGLE — remove once real Play Billing is wired up.
+                  Lets the team test free vs premium UI before the purchase flow exists. */}
+              <button onClick={onTogglePremium} title="Alternar plano (modo de teste)" style={{
+                display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,cursor:"pointer",
+                border:isPremium?"1px solid rgba(250,204,21,0.4)":"1px solid rgba(255,255,255,0.1)",
+                background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
+                color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800
+              }}>{isPremium?"👑 PRO":"FREE"}</button>
               {user.photoURL?(
                 <img src={user.photoURL} alt={user.displayName||""} style={{width:36,height:36,borderRadius:"50%",border:"2px solid rgba(52,211,153,0.4)"}}/>
               ):(
@@ -3242,19 +3274,49 @@ const LINEUP_TYPES = [
   { key: "personalizada",label: "Personalizada", color: "#f59e0b", emoji: "✏️" },
 ];
 
-function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDelete}) {
+// ─── Premium upsell modal ───────────────────────────────────────────────────
+// Generic paywall placeholder shown whenever a free-plan limit is reached or
+// a premium-only option is tapped. Reusable across features (lineups, export
+// themes, shields, jerseys, watermark, etc.) — just pass a title/description.
+// `onUpgrade` has no real purchase flow yet (that requires Play Billing after
+// the Capacitor wrap); it's left as a hook for that integration.
+function PremiumUpsellModal({title,description,onClose,onUpgrade}) {
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.78)",backdropFilter:"blur(5px)",padding:"16px"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(250,204,21,0.25)",borderRadius:18,width:"100%",maxWidth:380,padding:"24px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:12,textAlign:"center",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
+        <div style={{width:54,height:54,borderRadius:"50%",background:"rgba(250,204,21,0.12)",border:"1px solid rgba(250,204,21,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>👑</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>{title||"Recurso Premium"}</div>
+        <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,color:"#9CA3AF",lineHeight:1.5}}>{description||"Esse recurso faz parte do plano premium."}</div>
+        <button onClick={onUpgrade||onClose} style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",
+          background:"linear-gradient(135deg,#b45309,#facc15)",color:"#1a1305",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,
+          boxShadow:"0 6px 20px rgba(250,204,21,0.3)"}}>⭐ CONHECER O PREMIUM</button>
+        <button onClick={onClose} style={{width:"100%",padding:"11px 0",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Agora não</button>
+      </div>
+    </div>
+  );
+}
+
+function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDelete, isPremium}) {
   const [creatingNew, setCreatingNew] = useState(false);
   const [newName, setNewName] = useState("");
   const [newType, setNewType] = useState("titular");
   const [renamingId, setRenamingId] = useState(null);
   const [renameVal, setRenameVal] = useState("");
   const [confirmDelId, setConfirmDelId] = useState(null);
+  const [showUpsell, setShowUpsell] = useState(false);
   const [c1, c2] = SHIELD_COLORS[(team.colorIdx||0) % SHIELD_COLORS.length];
   const lineups = team.lineups || [];
+  const atLineupLimit = !isPremium && lineups.length >= FREE_LINEUP_LIMIT;
+
+  const handleNewClick = () => {
+    if (atLineupLimit) { setShowUpsell(true); return; }
+    setCreatingNew(true); setNewName(""); setNewType("titular");
+  };
 
   const typeInfo = (type) => LINEUP_TYPES.find(t => t.key === type) || LINEUP_TYPES[0];
 
   return (
+    <>
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.78)",backdropFilter:"blur(5px)"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"22px 22px 0 0",width:"100%",maxWidth:500,maxHeight:"80vh",overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
@@ -3262,10 +3324,13 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
         <div style={{padding:"16px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)",flexShrink:0}}>
           <div>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>Escalações</div>
-            <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#4B5563",marginTop:1}}>{lineups.length} escalação{lineups.length!==1?"s":""} · toque para ativar</div>
+            <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#4B5563",marginTop:1}}>
+              {lineups.length} escalação{lineups.length!==1?"s":""} · toque para ativar
+              {!isPremium&&<span style={{color:"#facc15",marginLeft:6}}>· {Math.min(lineups.length,FREE_LINEUP_LIMIT)}/{FREE_LINEUP_LIMIT} no plano free</span>}
+            </div>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <button onClick={()=>{setCreatingNew(true);setNewName("");setNewType("titular");}} style={{
+            <button onClick={handleNewClick} style={{
               display:"flex",alignItems:"center",gap:5,padding:"7px 11px",borderRadius:9,
               background:`${c1}25`,border:`1px solid ${c1}60`,color:c2,cursor:"pointer",
               fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800
@@ -3295,7 +3360,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
               </div>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>setCreatingNew(false)} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Cancelar</button>
-                <button onClick={()=>{if(!newName.trim())return;onCreate(newType,newName.trim());setCreatingNew(false);}} style={{
+                <button onClick={()=>{if(!newName.trim())return;if(atLineupLimit){setCreatingNew(false);setShowUpsell(true);return;}onCreate(newType,newName.trim());setCreatingNew(false);}} style={{
                   flex:2,padding:"9px 0",borderRadius:9,border:"none",cursor:newName.trim()?"pointer":"not-allowed",
                   background:newName.trim()?"linear-gradient(135deg,#166534,#34d399)":"rgba(255,255,255,0.06)",
                   color:newName.trim()?"#fff":"#4B5563",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
@@ -3382,11 +3447,17 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
         </div>
       </div>
     </div>
+    {showUpsell&&<PremiumUpsellModal
+      title="Limite de escalações"
+      description={`No plano gratuito você pode salvar até ${FREE_LINEUP_LIMIT} escalações por time. Faça upgrade para o premium e crie quantas quiser.`}
+      onClose={()=>setShowUpsell(false)}
+    />}
+    </>
   );
 }
 
 // ─── Team Tactical View (existing app logic) ──────────────────────────────────
-function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud,onSaveLineup,onDeleteLineup,syncStatus}) {
+function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud,onSaveLineup,onDeleteLineup,syncStatus,isPremium}) {
   const [tab,setTab]=useState("field");
   const [editingName,setEditingName]=useState(false);
   const [showForm,setShowForm]=useState(false);
@@ -3741,7 +3812,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)} team={team}/>}
       {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} coach={activeLineup?.coach||""} benchPlayerIds={activeLineup?.benchPlayerIds||[]} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
-      {showLineupMgr&&<LineupManagerModal team={team} onClose={()=>setShowLineupMgr(false)}
+      {showLineupMgr&&<LineupManagerModal team={team} isPremium={isPremium} onClose={()=>setShowLineupMgr(false)}
         onActivate={(lineupId)=>{
           const lu=team.lineups||[];
           const updated=lu.map(l=>({...l,isActive:String(l.id)===String(lineupId)}));
@@ -3871,6 +3942,7 @@ function LoginScreen({onLogin, loading}) {
 function App() {
   const [authState, setAuthState] = useState("loading"); // "loading" | "loggedOut" | "loggedIn"
   const [user, setUser] = useState(null);
+  const [isPremium, setIsPremium] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [migrating, setMigrating] = useState(false);
@@ -3929,6 +4001,11 @@ function App() {
         if (u) {
           setUser(u);
           setAuthState("loggedIn");
+
+          // Non-blocking: fetch the user's premium status. Defaults to false
+          // until/unless a real purchase flow (Play Billing, after the
+          // Capacitor wrap) sets users/{uid}.isPremium = true.
+          getIsPremium(u.uid).then(setIsPremium).catch(()=>{});
 
           const local = loadDataLocal();
           const hasLocalData = local?.teams?.length > 0;
@@ -4002,6 +4079,7 @@ function App() {
           }
         } else {
           setUser(null);
+          setIsPremium(false);
           setAuthState("loggedOut");
           setLoaded(false);
           setMigrating(false);
@@ -4258,6 +4336,7 @@ function App() {
           onSavePlayer={scheduleSavePlayer}
           onSaveLineup={scheduleSaveLineup}
           syncStatus={syncStatus}
+          isPremium={isPremium}
           onDeletePlayerCloud={(teamId, playerId) => {
             const uid = user?.uid;
             if (uid) {
@@ -4283,6 +4362,12 @@ function App() {
           user={user}
           syncStatus={syncStatus}
           onRetrySync={handleForceSave}
+          isPremium={isPremium}
+          onTogglePremium={()=>{
+            const next=!isPremium;
+            setIsPremium(next);
+            if(user?.uid) setIsPremiumFlag(user.uid, next);
+          }}
           onSelectTeam={async (t) => {
             // Lazy-load players + lineups if not yet in memory
             const fb = getFirebase();
