@@ -2154,13 +2154,27 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
 }
 
 // ─── Export Modal ─────────────────────────────────────────────────────────────
+// Export theme options — shown as a horizontal carousel (3 visible at a time)
+const THEME_OPTIONS = [
+  {key:"modern",label:"🌙 Moderno",desc:"Verde escuro"},
+  {key:"clean", label:"☀️ Simples", desc:"Fundo claro"},
+  {key:"retro", label:"📻 Retrô",   desc:"Vintage"},
+  {key:"neon",  label:"⚡ Neon",     desc:"E-sports"},
+  {key:"mono",  label:"⚫ Mono",     desc:"P&B"},
+];
+
 function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPlayerIds,onClose}) {
   const canvasRef=useRef();
   const [generating,setGenerating]=useState(false);
   const [imgUrl,setImgUrl]=useState(null);
   const [exportError,setExportError]=useState(false);
-  const [theme,setTheme]=useState("modern"); // "modern" | "clean"
+  const [theme,setTheme]=useState("modern"); // "modern" | "clean" | "retro" | "neon" | "mono"
+  const [logo,setLogo]=useState("");
+  const logoRef=useRef("");
+  const [logoPosition,setLogoPosition]=useState("br"); // "tl" | "tr" | "bl" | "br"
+  const logoPositionRef=useRef("br");
   const drewRef=useRef(false);
+  const themeCarouselRef=useRef(null);
 
   // Bench players, sorted by jersey number for a predictable export order
   const benchPlayers=useMemo(()=>{
@@ -2256,7 +2270,39 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     }));
     // Also preload team shield photo if present
     if(team?.photo) await loadImg(team.photo);
+    // Also preload the user's custom watermark/logo, if set
+    if(logoRef.current) await loadImg(logoRef.current);
     return cache;
+  };
+
+  // ── Shared: draw the user's custom logo/watermark in a corner ───────────
+  const drawWatermarkLogo=(ctx,imageCache,W,H)=>{
+    const logoVal=logoRef.current;
+    if(!logoVal)return;
+    const img=imageCache[logoVal];
+    if(!img)return;
+    const size=48,pad=14,r=10;
+    let x,y;
+    switch(logoPositionRef.current){
+      case "tl": x=pad;y=pad+6;break;
+      case "tr": x=W-pad-size;y=pad+6;break;
+      case "bl": x=pad;y=H-pad-size;break;
+      default:   x=W-pad-size;y=H-pad-size;
+    }
+    ctx.save();
+    ctx.fillStyle="rgba(255,255,255,0.92)";
+    ctx.shadowColor="rgba(0,0,0,0.35)";ctx.shadowBlur=8;ctx.shadowOffsetY=2;
+    ctx.beginPath();ctx.roundRect(x,y,size,size,r);ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();ctx.roundRect(x,y,size,size,r);ctx.clip();
+    const iw=img.naturalWidth||img.width||1,ih=img.naturalHeight||img.height||1;
+    // Contain (not cover) so the whole logo stays visible, with small padding
+    const inner=size-10;
+    const scale=Math.min(inner/iw,inner/ih);
+    const sw=iw*scale,sh=ih*scale;
+    ctx.drawImage(img,x+(size-sw)/2,y+(size-sh)/2,sw,sh);
+    ctx.restore();
   };
 
   // ── Shared: draw team shield in header ───────────────────────────────────
@@ -2587,6 +2633,9 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.textAlign="center";ctx.textBaseline="bottom";
     ctx.fillText("⚽ ESCALAÇÃO FC",W/2,H-8);
 
+    // User's custom logo/watermark (if set)
+    drawWatermarkLogo(ctx,imageCache,W,H);
+
     return canvas.toDataURL("image/png");
   };
 
@@ -2759,6 +2808,9 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.textAlign="center";ctx.textBaseline="bottom";
     ctx.fillText("Escalação FC",W/2,H-8);
 
+    // User's custom logo/watermark (if set)
+    drawWatermarkLogo(ctx,imageCache,W,H);
+
     return canvas.toDataURL("image/png");
   };
 
@@ -2793,6 +2845,22 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     drewRef.current=true;
   };
 
+  const handleLogoChange=(val)=>{
+    logoRef.current=val;
+    setLogo(val);
+    drewRef.current=false;
+    draw(theme);
+    drewRef.current=true;
+  };
+  const handleLogoPositionChange=(pos)=>{
+    logoPositionRef.current=pos;
+    setLogoPosition(pos);
+    if(!logoRef.current)return;
+    drewRef.current=false;
+    draw(theme);
+    drewRef.current=true;
+  };
+
   const download=()=>{const a=document.createElement("a");a.href=imgUrl;a.download=`${teamName.replace(/\s+/g,"_")}_escalacao_${theme}.png`;a.click();};
   const share=async()=>{if(!imgUrl)return;try{const res=await fetch(imgUrl);const blob=await res.blob();const file=new File([blob],`escalacao.png`,{type:"image/png"});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:`Escalação ${teamName}`,text:`Formação ${formation}`});}else{download();}}catch(e){download();}};
 
@@ -2808,25 +2876,58 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
 
         <div style={{overflowY:"auto",padding:"14px 16px 20px",display:"flex",flexDirection:"column",gap:14,alignItems:"center"}}>
 
-          {/* Theme selector */}
-          <div style={{width:"100%",display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-            {[
-              {key:"modern",label:"🌙 Moderno",desc:"Verde escuro"},
-              {key:"clean", label:"☀️ Simples", desc:"Fundo claro"},
-              {key:"retro", label:"📻 Retrô",   desc:"Vintage"},
-              {key:"neon",  label:"⚡ Neon",     desc:"E-sports"},
-              {key:"mono",  label:"⚫ Mono",     desc:"P&B"},
-            ].map(opt=>(
-              <button key={opt.key} onClick={()=>handleThemeChange(opt.key)} style={{
-                padding:"10px 6px",borderRadius:12,cursor:"pointer",transition:"all 0.18s",
-                border:theme===opt.key?"1.5px solid #34d399":"1px solid rgba(255,255,255,0.1)",
-                background:theme===opt.key?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
-                display:"flex",flexDirection:"column",alignItems:"center",gap:3,
-              }}>
-                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,color:theme===opt.key?"#34d399":"#9CA3AF"}}>{opt.label}</span>
-                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,color:"#6B7280"}}>{opt.desc}</span>
-              </button>
-            ))}
+          {/* Theme selector — carousel: 3 visible, scroll or arrows for the rest */}
+          <div style={{width:"100%",display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={()=>themeCarouselRef.current?.scrollBy({left:-(themeCarouselRef.current.clientWidth/3+6),behavior:"smooth"})}
+              aria-label="Temas anteriores" style={{flexShrink:0,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:9,padding:"8px 6px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
+              <Ico.ChevL/>
+            </button>
+            <div ref={themeCarouselRef} style={{flex:1,display:"flex",gap:8,overflowX:"auto",scrollSnapType:"x mandatory",scrollBehavior:"smooth",paddingBottom:2}}>
+              {THEME_OPTIONS.map(opt=>(
+                <button key={opt.key} onClick={()=>handleThemeChange(opt.key)} style={{
+                  flex:"0 0 calc((100% - 16px)/3)",scrollSnapAlign:"start",
+                  padding:"10px 6px",borderRadius:12,cursor:"pointer",transition:"all 0.18s",
+                  border:theme===opt.key?"1.5px solid #34d399":"1px solid rgba(255,255,255,0.1)",
+                  background:theme===opt.key?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+                }}>
+                  <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,color:theme===opt.key?"#34d399":"#9CA3AF",whiteSpace:"nowrap"}}>{opt.label}</span>
+                  <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,color:"#6B7280",whiteSpace:"nowrap"}}>{opt.desc}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>themeCarouselRef.current?.scrollBy({left:themeCarouselRef.current.clientWidth/3+6,behavior:"smooth"})}
+              aria-label="Mais temas" style={{flexShrink:0,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:9,padding:"8px 6px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
+              <Ico.ChevR/>
+            </button>
+          </div>
+
+          {/* Marca d'água personalizada */}
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",borderRadius:12,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)"}}>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Sua marca/logo (opcional)</span>
+            <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+              <div style={{flexShrink:0}}>
+                <PhotoPicker photo={logo} onChange={handleLogoChange}/>
+              </div>
+              {logo&&(
+                <div style={{display:"flex",flexDirection:"column",gap:6,flex:1}}>
+                  <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Posição na imagem</span>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6,width:"100%",maxWidth:140}}>
+                    {[
+                      {key:"tl",label:"↖"},{key:"tr",label:"↗"},
+                      {key:"bl",label:"↙"},{key:"br",label:"↘"},
+                    ].map(opt=>(
+                      <button key={opt.key} onClick={()=>handleLogoPositionChange(opt.key)} aria-label={`Posicionar marca no canto ${opt.key}`} style={{
+                        aspectRatio:"1",borderRadius:9,border:"2px solid",cursor:"pointer",fontSize:16,
+                        borderColor:logoPosition===opt.key?"#34d399":"rgba(255,255,255,0.1)",
+                        background:logoPosition===opt.key?"rgba(52,211,153,0.12)":"rgba(255,255,255,0.03)",
+                        color:logoPosition===opt.key?"#34d399":"#9CA3AF",transition:"all 0.15s"
+                      }}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <canvas ref={canvasRef} style={{display:"none"}}/>
