@@ -891,12 +891,7 @@ const JERSEY_FONTS = [
 
 /** Returns the default jersey config for a player based on their number (kept stable/backward-compatible with the old solid-color avatar). */
 function defaultJersey(number){
-  return { pattern:"solid", primary: AVATAR_COLORS[(parseInt(number)||0)%AVATAR_COLORS.length], secondary:"#ffffff", numberFont:"bebas", numberColor:"#ffffff" };
-}
-
-/** Returns the effective number color for a jersey (fallback: white). */
-function getJerseyNumberColor(jersey){
-  return jersey?.numberColor || "#ffffff";
+  return { pattern:"solid", primary: AVATAR_COLORS[(parseInt(number)||0)%AVATAR_COLORS.length], secondary:"#ffffff", numberFont:"bebas" };
 }
 
 /** Returns the CSS font-family stack for a jersey's number font (falls back to Bebas Neue). */
@@ -909,6 +904,15 @@ function getJerseyFontName(jersey){
   const f=JERSEY_FONTS.find(f=>f.id===jersey?.numberFont);
   return f?f.name:"Bebas Neue";
 }
+
+/** Converts a "#rrggbb" hex color to an "rgba(r,g,b,a)" string. Used so export
+ *  themes can tint glows/borders/halos with their own accent color. */
+function hexToRgba(hex,alpha=1){
+  const h=(hex||"#34d399").replace("#","");
+  const r=parseInt(h.substring(0,2),16),g=parseInt(h.substring(2,4),16),b=parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 
 /** Returns a CSS `background` value for a jersey config — used by PlayerAvatar (React). */
 function getJerseyBackground(jersey){
@@ -1220,7 +1224,7 @@ function PlayerAvatar({player,size=44,style:ex={},team=null}) {
   const jersey = team ? getPlayerJersey(team,player) : (player?.jersey || defaultJersey(player?.number));
   return (
     <div style={{...base,background:getJerseyBackground(jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <span style={{fontFamily:getJerseyFontFamily(jersey),fontSize:size*0.38,lineHeight:1,color:getJerseyNumberColor(jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
+      <span style={{fontFamily:getJerseyFontFamily(jersey),fontSize:size*0.38,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
     </div>
   );
 }
@@ -1440,7 +1444,7 @@ function TeamFormModal({initial,onSave,onClose}) {
                   }}>
                     {isActive&&<div style={{position:"absolute",top:4,right:4,fontSize:8,fontWeight:900,color:"#1a1a0a",background:"#facc15",borderRadius:4,padding:"1px 4px",fontFamily:"'DM Sans',sans-serif"}}>ATIVO</div>}
                     <div style={{width:38,height:38,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:getJerseyNumberColor(kit.jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
+                      <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
                     </div>
                     <span style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{kit.name}</span>
                   </button>
@@ -1469,7 +1473,7 @@ function TeamFormModal({initial,onSave,onClose}) {
               <div style={{display:"flex",flexDirection:"column",gap:12,padding:"12px 13px",borderRadius:12,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(52,211,153,0.25)"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:48,height:48,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:18,lineHeight:1,color:getJerseyNumberColor(kit.jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                    <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:18,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
                   </div>
                   <input value={kit.name} onChange={e=>updateKit(kit.id,{name:e.target.value})} placeholder="Nome do uniforme" style={{...IS,flex:1}}
                     onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
@@ -1486,7 +1490,7 @@ function TeamFormModal({initial,onSave,onClose}) {
                         transition:"all 0.15s"
                       }}>
                         <div style={{width:"100%",height:"100%",borderRadius:7,background:getJerseyBackground({...kit.jersey,pattern:p.id}),display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          <span style={{fontFamily:getJerseyFontFamily({...kit.jersey,pattern:p.id}),fontSize:14,lineHeight:1,color:getJerseyNumberColor(kit.jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
+                          <span style={{fontFamily:getJerseyFontFamily({...kit.jersey,pattern:p.id}),fontSize:14,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
                         </div>
                       </button>
                     ))}
@@ -1532,53 +1536,10 @@ function TeamFormModal({initial,onSave,onClose}) {
                         background:(kit.jersey.numberFont||"bebas")===fnt.id?"rgba(52,211,153,0.12)":"rgba(255,255,255,0.03)",
                         transition:"all 0.15s"
                       }}>
-                        <span style={{fontFamily:fnt.family,fontSize:18,lineHeight:1,color:getJerseyNumberColor(kit.jersey)}}>10</span>
+                        <span style={{fontFamily:fnt.family,fontSize:18,lineHeight:1,color:"#fff"}}>10</span>
                         <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{fnt.name}</span>
                       </button>
                     ))}
-                  </div>
-                </div>
-
-                {/* Cor da fonte do número */}
-                <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <span style={{...LT,fontSize:9}}>Cor do Número</span>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <div style={{width:22,height:22,borderRadius:6,background:kit.jersey.numberColor||"#ffffff",border:"2px solid rgba(255,255,255,0.25)",flexShrink:0}}/>
-                      <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
-                        {(kit.jersey.numberColor||"#ffffff").toUpperCase()}
-                      </span>
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(10,1fr)",gap:5}}>
-                    {JERSEY_COLOR_SWATCHES.map(col=>(
-                      <button key={col} onClick={()=>updateKit(kit.id,{jersey:{...kit.jersey,numberColor:col}})} title={col} style={{
-                        aspectRatio:"1",borderRadius:7,border:"2px solid",cursor:"pointer",
-                        background:col,
-                        borderColor:(kit.jersey.numberColor||"#ffffff")===col?"#34d399":(col==="#ffffff"?"rgba(255,255,255,0.35)":"transparent"),
-                        boxShadow:(kit.jersey.numberColor||"#ffffff")===col?`0 0 8px ${col}90`:"none",
-                        transition:"all 0.15s",
-                        position:"relative"
-                      }}>
-                        {(kit.jersey.numberColor||"#ffffff")===col&&(
-                          <span style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",
-                            fontSize:10,color:col==="#ffffff"||col==="#facc15"?"#166534":"#fff",fontWeight:900,lineHeight:1}}>✓</span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                  {/* Prévia ao vivo */}
-                  <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:9,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)"}}>
-                    <div style={{width:38,height:38,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 2px 8px rgba(0,0,0,0.3)"}}>
-                      <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:getJerseyNumberColor(kit.jersey),textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{kit.type==="goleiro"?"1":"10"}</span>
-                    </div>
-                    <div style={{flex:1}}>
-                      <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>Prévia do número</div>
-                      <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,marginTop:1}}>
-                        Cor: <span style={{color:kit.jersey.numberColor||"#ffffff"}}>{(kit.jersey.numberColor||"#ffffff").toUpperCase()}</span>
-                        {" · "}Fonte: {JERSEY_FONTS.find(f=>f.id===(kit.jersey.numberFont||"bebas"))?.name||"Bebas Neue"}
-                      </div>
-                    </div>
                   </div>
                 </div>
 
@@ -2193,13 +2154,27 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
 }
 
 // ─── Export Modal ─────────────────────────────────────────────────────────────
+// Export theme options — shown as a horizontal carousel (3 visible at a time)
+const THEME_OPTIONS = [
+  {key:"modern",label:"🌙 Moderno",desc:"Verde escuro"},
+  {key:"clean", label:"☀️ Simples", desc:"Fundo claro"},
+  {key:"retro", label:"📻 Retrô",   desc:"Vintage"},
+  {key:"neon",  label:"⚡ Neon",     desc:"E-sports"},
+  {key:"mono",  label:"⚫ Mono",     desc:"P&B"},
+];
+
 function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPlayerIds,onClose}) {
   const canvasRef=useRef();
   const [generating,setGenerating]=useState(false);
   const [imgUrl,setImgUrl]=useState(null);
   const [exportError,setExportError]=useState(false);
-  const [theme,setTheme]=useState("modern"); // "modern" | "clean"
+  const [theme,setTheme]=useState("modern"); // "modern" | "clean" | "retro" | "neon" | "mono"
+  const [logo,setLogo]=useState("");
+  const logoRef=useRef("");
+  const [logoPosition,setLogoPosition]=useState("br"); // "tl" | "tr" | "bl" | "br"
+  const logoPositionRef=useRef("br");
   const drewRef=useRef(false);
+  const themeCarouselRef=useRef(null);
 
   // Bench players, sorted by jersey number for a predictable export order
   const benchPlayers=useMemo(()=>{
@@ -2212,7 +2187,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   // ── Shared: draw the bench ("Banco de Reservas") player chip list ───────────
   // Wraps chips within `maxWidth`, up to `maxRows` rows. If more players don't
   // fit, shows a "+N" indicator chip instead of overflowing the box.
-  const drawBenchChips=(ctx,x,y,maxWidth,maxRows,isModern)=>{
+  const drawBenchChips=(ctx,x,y,maxWidth,maxRows,isModern,accent="#34d399")=>{
     if(!benchPlayers.length){
       ctx.fillStyle=isModern?"#4B5563":"#9CA3AF";
       ctx.font=`13px 'DM Sans',sans-serif`;
@@ -2240,7 +2215,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
         const mtw=ctx.measureText(moreLabel).width;
         const mChipW=mtw+padX*2;
         ctx.fillStyle=isModern?"rgba(255,255,255,0.06)":"rgba(22,101,52,0.08)";
-        ctx.strokeStyle=isModern?"rgba(255,255,255,0.14)":"rgba(22,101,52,0.2)";
+        ctx.strokeStyle=isModern?hexToRgba(accent,0.25):"rgba(22,101,52,0.2)";
         ctx.lineWidth=1;
         ctx.beginPath();ctx.roundRect(cx,cy,mChipW,chipH,chipH/2);ctx.fill();ctx.stroke();
         ctx.fillStyle=isModern?"#9CA3AF":"#166534";
@@ -2248,7 +2223,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
         return;
       }
       ctx.fillStyle=isModern?"rgba(255,255,255,0.06)":"rgba(22,101,52,0.08)";
-      ctx.strokeStyle=isModern?"rgba(255,255,255,0.14)":"rgba(22,101,52,0.2)";
+      ctx.strokeStyle=isModern?hexToRgba(accent,0.25):"rgba(22,101,52,0.2)";
       ctx.lineWidth=1;
       ctx.beginPath();ctx.roundRect(cx,cy,chipW,chipH,chipH/2);ctx.fill();ctx.stroke();
       ctx.fillStyle=isModern?"#e5e7eb":"#166534";
@@ -2295,11 +2270,43 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     }));
     // Also preload team shield photo if present
     if(team?.photo) await loadImg(team.photo);
+    // Also preload the user's custom watermark/logo, if set
+    if(logoRef.current) await loadImg(logoRef.current);
     return cache;
   };
 
+  // ── Shared: draw the user's custom logo/watermark in a corner ───────────
+  const drawWatermarkLogo=(ctx,imageCache,W,H)=>{
+    const logoVal=logoRef.current;
+    if(!logoVal)return;
+    const img=imageCache[logoVal];
+    if(!img)return;
+    const size=48,pad=14,r=10;
+    let x,y;
+    switch(logoPositionRef.current){
+      case "tl": x=pad;y=pad+6;break;
+      case "tr": x=W-pad-size;y=pad+6;break;
+      case "bl": x=pad;y=H-pad-size;break;
+      default:   x=W-pad-size;y=H-pad-size;
+    }
+    ctx.save();
+    ctx.fillStyle="rgba(255,255,255,0.92)";
+    ctx.shadowColor="rgba(0,0,0,0.35)";ctx.shadowBlur=8;ctx.shadowOffsetY=2;
+    ctx.beginPath();ctx.roundRect(x,y,size,size,r);ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();ctx.roundRect(x,y,size,size,r);ctx.clip();
+    const iw=img.naturalWidth||img.width||1,ih=img.naturalHeight||img.height||1;
+    // Contain (not cover) so the whole logo stays visible, with small padding
+    const inner=size-10;
+    const scale=Math.min(inner/iw,inner/ih);
+    const sw=iw*scale,sh=ih*scale;
+    ctx.drawImage(img,x+(size-sw)/2,y+(size-sh)/2,sw,sh);
+    ctx.restore();
+  };
+
   // ── Shared: draw team shield in header ───────────────────────────────────
-  const drawShieldInHeader=(ctx,imageCache,x,y,size,isModern)=>{
+  const drawShieldInHeader=(ctx,imageCache,x,y,size,isModern,accent="#34d399")=>{
     const [c1s,c2s]=SHIELD_COLORS[(team?.colorIdx||0)%SHIELD_COLORS.length];
     const shape=SHIELD_SHAPES.find(s=>s.id===team?.shieldShapeId);
     const r=size*0.18;
@@ -2332,9 +2339,9 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       // Border glow (un-scaled stroke width/blur)
       ctx.save();
       ctx.translate(x,y);ctx.scale(sc,sc);
-      ctx.strokeStyle=isModern?"rgba(52,211,153,0.5)":"rgba(22,101,52,0.3)";
+      ctx.strokeStyle=isModern?hexToRgba(accent,0.5):"rgba(22,101,52,0.3)";
       ctx.lineWidth=(isModern?2:2.5)/sc;
-      if(isModern){ctx.shadowColor="rgba(52,211,153,0.4)";ctx.shadowBlur=8/sc;}
+      if(isModern){ctx.shadowColor=hexToRgba(accent,0.4);ctx.shadowBlur=8/sc;}
       ctx.stroke(path);
       ctx.restore();
       return;
@@ -2364,9 +2371,9 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.restore();
     // Border glow
     ctx.save();
-    ctx.strokeStyle=isModern?"rgba(52,211,153,0.5)":"rgba(22,101,52,0.3)";
+    ctx.strokeStyle=isModern?hexToRgba(accent,0.5):"rgba(22,101,52,0.3)";
     ctx.lineWidth=isModern?2:2.5;
-    if(isModern){ctx.shadowColor="rgba(52,211,153,0.4)";ctx.shadowBlur=8;}
+    if(isModern){ctx.shadowColor=hexToRgba(accent,0.4);ctx.shadowBlur=8;}
     ctx.beginPath();ctx.roundRect(x,y,size,size,r);ctx.stroke();
     ctx.restore();
   };
@@ -2374,7 +2381,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   // ── Shared: draw one player avatar circle ────────────────────────────────
   // DPR=2 canvas: all coordinates passed in are LOGICAL (pre-scale) pixels.
   // ctx has already been scaled by DPR before this is called.
-  const drawPlayerCircle=(ctx,slot,imageCache,R,isModern,FX,FY,FW)=>{
+  const drawPlayerCircle=(ctx,slot,imageCache,R,isModern,FX,FY,FW,accent="#34d399")=>{
     const entry=lineup.find(l=>l.slotId===slot.id);
     const player=entry?players.find(p=>p.id===entry.playerId):null;
     const FH=FW/0.65;
@@ -2386,16 +2393,16 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       // Outer glow halo
       ctx.save();
       const halo=ctx.createRadialGradient(cx,cy,R*0.8,cx,cy,R*1.9);
-      halo.addColorStop(0,player?"rgba(52,211,153,0.22)":"rgba(255,255,255,0.05)");
+      halo.addColorStop(0,player?hexToRgba(accent,0.22):"rgba(255,255,255,0.05)");
       halo.addColorStop(1,"rgba(0,0,0,0)");
       ctx.fillStyle=halo;
       ctx.beginPath();ctx.arc(cx,cy,R*2,0,Math.PI*2);ctx.fill();
       ctx.restore();
       // Glowing ring
       ctx.save();
-      ctx.strokeStyle=player?"#34d399":"rgba(255,255,255,0.25)";
+      ctx.strokeStyle=player?accent:"rgba(255,255,255,0.25)";
       ctx.lineWidth=player?3:1.5;
-      ctx.shadowColor=player?"rgba(52,211,153,0.7)":"transparent";
+      ctx.shadowColor=player?hexToRgba(accent,0.7):"transparent";
       ctx.shadowBlur=player?10:0;
       ctx.beginPath();ctx.arc(cx,cy,R+2,0,Math.PI*2);ctx.stroke();
       ctx.restore();
@@ -2438,7 +2445,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       }
       ctx.save();
       ctx.shadowColor="rgba(0,0,0,0.45)";ctx.shadowBlur=4;
-      ctx.fillStyle=getJerseyNumberColor(jersey);
+      ctx.fillStyle="#fff";
       ctx.font=`bold ${R*0.75}px '${getJerseyFontName(jersey)}',sans-serif`;
       ctx.textAlign="center";ctx.textBaseline="middle";
       ctx.fillText(player.number||"?",cx,cy+1);
@@ -2479,7 +2486,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       const tw=ctx.measureText(tag).width;
       if(isModern){
         ctx.fillStyle="rgba(3,12,8,0.88)";
-        ctx.strokeStyle="rgba(52,211,153,0.35)";ctx.lineWidth=1;
+        ctx.strokeStyle=hexToRgba(accent,0.35);ctx.lineWidth=1;
         ctx.beginPath();ctx.roundRect(cx-tw/2-9,cy+R+4,tw+18,26,6);ctx.fill();ctx.stroke();
         ctx.fillStyle="#ffffff";
       } else {
@@ -2500,10 +2507,12 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     }
   };
 
-  // ── Theme A: Modern / Dark ───────────────────────────────────────────────
-  const drawModern=async(canvas,imageCache)=>{
+  // ── Generic "card" layout shared by Moderno, Retrô, Neon and Mono ────────
+  // Each theme is just a different color/style configuration over the same
+  // structure: header card (shield, name, técnico, formação), field, players,
+  // bench card, watermark.
+  const drawThemedCard=async(canvas,imageCache,cfg)=>{
     const W=540,H=1072;
-    // Render at 2× for crisp output on all screens (retina-quality export)
     const DPR=2;
     canvas.width=W*DPR;canvas.height=H*DPR;
     canvas.style.width=W+"px";canvas.style.height=H+"px";
@@ -2514,57 +2523,57 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
 
     // Background
     const bg=ctx.createLinearGradient(0,0,W,H);
-    bg.addColorStop(0,"#060e0a");bg.addColorStop(0.45,"#091509");bg.addColorStop(1,"#060c0f");
+    cfg.bg.forEach(([stop,color])=>bg.addColorStop(stop,color));
     ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
 
-    // Subtle radial field glow
+    // Subtle radial glow
     const glow=ctx.createRadialGradient(W/2,H*0.52,0,W/2,H*0.52,W*0.58);
-    glow.addColorStop(0,"rgba(52,211,153,0.07)");glow.addColorStop(1,"rgba(0,0,0,0)");
+    glow.addColorStop(0,cfg.glow);glow.addColorStop(1,"rgba(0,0,0,0)");
     ctx.fillStyle=glow;ctx.fillRect(0,0,W,H);
 
     // Top accent bar (gradient line)
     const topBar=ctx.createLinearGradient(0,0,W,0);
-    topBar.addColorStop(0,"transparent");topBar.addColorStop(0.2,"#34d399");
-    topBar.addColorStop(0.8,"#6ee7b7");topBar.addColorStop(1,"transparent");
+    topBar.addColorStop(0,"transparent");topBar.addColorStop(0.2,cfg.topBar[0]);
+    topBar.addColorStop(0.8,cfg.topBar[1]);topBar.addColorStop(1,"transparent");
     ctx.fillStyle=topBar;ctx.fillRect(0,0,W,3);
 
     // Header card
     ctx.save();
-    ctx.fillStyle="rgba(255,255,255,0.035)";
-    ctx.strokeStyle="rgba(52,211,153,0.18)";ctx.lineWidth=1;
+    ctx.fillStyle=cfg.cardBg;
+    ctx.strokeStyle=cfg.cardBorder;ctx.lineWidth=1;
     ctx.beginPath();ctx.roundRect(14,12,W-28,102,14);ctx.fill();ctx.stroke();
     ctx.restore();
 
     // Shield — real team photo/emoji/color
-    drawShieldInHeader(ctx,imageCache,26,18,60,true);
+    drawShieldInHeader(ctx,imageCache,26,18,60,true,cfg.accent);
 
     // Team name
-    ctx.fillStyle="#ffffff";
+    ctx.fillStyle=cfg.textPrimary;
     ctx.font="bold 30px 'Bebas Neue',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="middle";
     ctx.fillText(teamName.toUpperCase(),94,38);
 
     // Sub info
     const escalados=lineup.filter(l=>l.playerId).length;
-    ctx.fillStyle="#4B5563";
+    ctx.fillStyle=cfg.textSecondary;
     ctx.font="bold 11px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="middle";
     ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,94,61);
 
     // Coach (técnico)
     if(coach&&coach.trim()){
-      ctx.fillStyle="#34d399";
+      ctx.fillStyle=cfg.accent;
       ctx.font="bold 11px 'DM Sans',sans-serif";
       ctx.textAlign="left";ctx.textBaseline="middle";
       ctx.fillText(`TÉCNICO: ${coach.trim().toUpperCase()}`,94,80);
     }
 
     // Formation — no pill background, large & bold for emphasis
-    ctx.fillStyle="#6B7280";
+    ctx.fillStyle=cfg.textSecondary;
     ctx.font="bold 9px 'DM Sans',sans-serif";
     ctx.textAlign="right";ctx.textBaseline="alphabetic";
     ctx.fillText("FORMAÇÃO",W-22,32);
-    ctx.fillStyle="#34d399";
+    ctx.fillStyle=cfg.accent;
     ctx.font="bold 40px 'Bebas Neue',sans-serif";
     ctx.textAlign="right";ctx.textBaseline="middle";
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
@@ -2576,49 +2585,123 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.save();
     ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,14);ctx.clip();
     for(let i=0;i<8;i++){
-      ctx.fillStyle=i%2===0?"#1c7a40":"#18703a";
+      ctx.fillStyle=i%2===0?cfg.fieldStripes[0]:cfg.fieldStripes[1];
       ctx.fillRect(FX,FY+i*(FH/8),FW,FH/8);
     }
-    ctx.strokeStyle="rgba(255,255,255,0.65)";ctx.lineWidth=1.4;
+    ctx.strokeStyle=cfg.fieldLine;ctx.lineWidth=1.4;
     ctx.strokeRect(FX+7,FY+7,FW-14,FH-14);
     ctx.beginPath();ctx.moveTo(FX+7,FY+FH/2);ctx.lineTo(FX+FW-7,FY+FH/2);ctx.stroke();
     ctx.beginPath();ctx.arc(FX+FW/2,FY+FH/2,FW*0.09,0,Math.PI*2);ctx.stroke();
-    ctx.beginPath();ctx.arc(FX+FW/2,FY+FH/2,0.9,0,Math.PI*2);ctx.fillStyle="rgba(255,255,255,0.8)";ctx.fill();
+    ctx.beginPath();ctx.arc(FX+FW/2,FY+FH/2,0.9,0,Math.PI*2);ctx.fillStyle=cfg.fieldLine;ctx.fill();
     // Penalty areas
-    ctx.strokeStyle="rgba(255,255,255,0.55)";ctx.lineWidth=1;
+    ctx.strokeStyle=cfg.fieldPenalty;ctx.lineWidth=1;
     ctx.strokeRect(FX+FW*0.22,FY+7,FW*0.56,FH*0.14);
     ctx.strokeRect(FX+FW*0.22,FY+FH-7-FH*0.14,FW*0.56,FH*0.14);
     ctx.restore();
 
     // Field border glow
     ctx.save();
-    ctx.strokeStyle="rgba(52,211,153,0.3)";ctx.lineWidth=2;
+    ctx.strokeStyle=cfg.fieldGlow;ctx.lineWidth=2;
     ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,14);ctx.stroke();
     ctx.restore();
 
     // Players — R=38 (logical pixels; ctx is pre-scaled by DPR)
     const R=38;
-    for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,true,FX,FY,FW);
+    if(cfg.grayscalePlayers){
+      ctx.save();
+      try{ ctx.filter="grayscale(1)"; }catch(e){}
+      for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,true,FX,FY,FW,cfg.accent);
+      ctx.restore();
+    } else {
+      for(const slot of slots) drawPlayerCircle(ctx,slot,imageCache,R,true,FX,FY,FW,cfg.accent);
+    }
 
     // Bottom card — Banco de Reservas
     const BY=FY+FH+16;
-    ctx.fillStyle="rgba(255,255,255,0.035)";
-    ctx.strokeStyle="rgba(255,255,255,0.07)";ctx.lineWidth=1;
+    ctx.fillStyle=cfg.benchBg;
+    ctx.strokeStyle=cfg.benchBorder;ctx.lineWidth=1;
     ctx.beginPath();ctx.roundRect(14,BY,W-28,112,12);ctx.fill();ctx.stroke();
-    ctx.fillStyle="#34d399";ctx.font="bold 13px 'DM Sans',sans-serif";
+    ctx.fillStyle=cfg.accent;ctx.font="bold 13px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="alphabetic";
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
     ctx.fillText("BANCO DE RESERVAS",28,BY+26);
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
-    drawBenchChips(ctx,28,BY+40,W-56,2,true);
+    drawBenchChips(ctx,28,BY+40,W-56,2,true,cfg.accent);
 
     // Watermark
-    ctx.fillStyle="rgba(52,211,153,0.25)";ctx.font="bold 13px 'DM Sans',sans-serif";
+    ctx.fillStyle=cfg.watermark;ctx.font="bold 13px 'DM Sans',sans-serif";
     ctx.textAlign="center";ctx.textBaseline="bottom";
     ctx.fillText("⚽ ESCALAÇÃO FC",W/2,H-8);
 
+    // User's custom logo/watermark (if set)
+    drawWatermarkLogo(ctx,imageCache,W,H);
+
     return canvas.toDataURL("image/png");
   };
+
+  // ── Theme A: Moderno (verde escuro, padrão) ──────────────────────────────
+  const MODERN_CFG={
+    bg:[[0,"#060e0a"],[0.45,"#091509"],[1,"#060c0f"]],
+    glow:"rgba(52,211,153,0.07)",
+    topBar:["#34d399","#6ee7b7"],
+    cardBg:"rgba(255,255,255,0.035)", cardBorder:"rgba(52,211,153,0.18)",
+    accent:"#34d399",
+    textPrimary:"#ffffff", textSecondary:"#4B5563",
+    fieldStripes:["#1c7a40","#18703a"], fieldLine:"rgba(255,255,255,0.65)", fieldPenalty:"rgba(255,255,255,0.55)",
+    fieldGlow:"rgba(52,211,153,0.3)",
+    benchBg:"rgba(255,255,255,0.035)", benchBorder:"rgba(255,255,255,0.07)",
+    watermark:"rgba(52,211,153,0.25)",
+    grayscalePlayers:false,
+  };
+  const drawModern=(canvas,imageCache)=>drawThemedCard(canvas,imageCache,MODERN_CFG);
+
+  // ── Theme C: Retrô (tons sépia/dourado, estilo vintage) ──────────────────
+  const RETRO_CFG={
+    bg:[[0,"#2a1c10"],[0.45,"#3a2613"],[1,"#1f140a"]],
+    glow:"rgba(245,158,11,0.10)",
+    topBar:["#f59e0b","#fde68a"],
+    cardBg:"rgba(255,237,213,0.06)", cardBorder:"rgba(245,158,11,0.25)",
+    accent:"#f59e0b",
+    textPrimary:"#fef3c7", textSecondary:"#a8907a",
+    fieldStripes:["#5a7c3a","#4d6b32"], fieldLine:"rgba(254,243,199,0.55)", fieldPenalty:"rgba(254,243,199,0.45)",
+    fieldGlow:"rgba(245,158,11,0.3)",
+    benchBg:"rgba(255,237,213,0.05)", benchBorder:"rgba(245,158,11,0.18)",
+    watermark:"rgba(245,158,11,0.3)",
+    grayscalePlayers:false,
+  };
+  const drawRetro=(canvas,imageCache)=>drawThemedCard(canvas,imageCache,RETRO_CFG);
+
+  // ── Theme D: Neon / E-sports (paleta ciano/magenta sobre fundo escuro) ───
+  const NEON_CFG={
+    bg:[[0,"#0a0118"],[0.5,"#13042b"],[1,"#05010d"]],
+    glow:"rgba(34,211,238,0.12)",
+    topBar:["#22d3ee","#ec4899"],
+    cardBg:"rgba(34,211,238,0.05)", cardBorder:"rgba(34,211,238,0.3)",
+    accent:"#22d3ee",
+    textPrimary:"#f0fdff", textSecondary:"#7dd3fc",
+    fieldStripes:["#1a0a2e","#150823"], fieldLine:"rgba(34,211,238,0.5)", fieldPenalty:"rgba(236,72,153,0.4)",
+    fieldGlow:"rgba(236,72,153,0.35)",
+    benchBg:"rgba(34,211,238,0.04)", benchBorder:"rgba(34,211,238,0.2)",
+    watermark:"rgba(34,211,238,0.35)",
+    grayscalePlayers:false,
+  };
+  const drawNeon=(canvas,imageCache)=>drawThemedCard(canvas,imageCache,NEON_CFG);
+
+  // ── Theme E: Mono (preto e branco, minimalista) ──────────────────────────
+  const MONO_CFG={
+    bg:[[0,"#1a1a1a"],[0.5,"#0f0f0f"],[1,"#000000"]],
+    glow:"rgba(255,255,255,0.06)",
+    topBar:["#e5e7eb","#9CA3AF"],
+    cardBg:"rgba(255,255,255,0.04)", cardBorder:"rgba(255,255,255,0.15)",
+    accent:"#e5e7eb",
+    textPrimary:"#ffffff", textSecondary:"#9CA3AF",
+    fieldStripes:["#3a3a3a","#2e2e2e"], fieldLine:"rgba(255,255,255,0.5)", fieldPenalty:"rgba(255,255,255,0.4)",
+    fieldGlow:"rgba(255,255,255,0.2)",
+    benchBg:"rgba(255,255,255,0.03)", benchBorder:"rgba(255,255,255,0.1)",
+    watermark:"rgba(255,255,255,0.25)",
+    grayscalePlayers:true,
+  };
+  const drawMono=(canvas,imageCache)=>drawThemedCard(canvas,imageCache,MONO_CFG);
 
   // ── Theme B: Clean / Light ───────────────────────────────────────────────
   const drawClean=async(canvas,imageCache)=>{
@@ -2725,6 +2808,9 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.textAlign="center";ctx.textBaseline="bottom";
     ctx.fillText("Escalação FC",W/2,H-8);
 
+    // User's custom logo/watermark (if set)
+    drawWatermarkLogo(ctx,imageCache,W,H);
+
     return canvas.toDataURL("image/png");
   };
 
@@ -2737,9 +2823,8 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       // (e.g. unexpected browser quirk), never leave the UI stuck on "Gerando...".
       const url=await withTimeout((async()=>{
         const imageCache=await loadImages();
-        return selectedTheme==="modern"
-          ?await drawModern(canvasRef.current,imageCache)
-          :await drawClean(canvasRef.current,imageCache);
+        const drawFn={modern:drawModern,clean:drawClean,retro:drawRetro,neon:drawNeon,mono:drawMono}[selectedTheme]||drawModern;
+        return await drawFn(canvasRef.current,imageCache);
       })(), 20000);
       if(url){ setImgUrl(url); }
       else { setExportError(true); }
@@ -2760,6 +2845,22 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     drewRef.current=true;
   };
 
+  const handleLogoChange=(val)=>{
+    logoRef.current=val;
+    setLogo(val);
+    drewRef.current=false;
+    draw(theme);
+    drewRef.current=true;
+  };
+  const handleLogoPositionChange=(pos)=>{
+    logoPositionRef.current=pos;
+    setLogoPosition(pos);
+    if(!logoRef.current)return;
+    drewRef.current=false;
+    draw(theme);
+    drewRef.current=true;
+  };
+
   const download=()=>{const a=document.createElement("a");a.href=imgUrl;a.download=`${teamName.replace(/\s+/g,"_")}_escalacao_${theme}.png`;a.click();};
   const share=async()=>{if(!imgUrl)return;try{const res=await fetch(imgUrl);const blob=await res.blob();const file=new File([blob],`escalacao.png`,{type:"image/png"});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:`Escalação ${teamName}`,text:`Formação ${formation}`});}else{download();}}catch(e){download();}};
 
@@ -2775,22 +2876,58 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
 
         <div style={{overflowY:"auto",padding:"14px 16px 20px",display:"flex",flexDirection:"column",gap:14,alignItems:"center"}}>
 
-          {/* Theme selector */}
-          <div style={{width:"100%",display:"flex",gap:8}}>
-            {[
-              {key:"modern",label:"🌙 Moderno",desc:"Fundo escuro"},
-              {key:"clean", label:"☀️ Simples", desc:"Fundo claro"},
-            ].map(opt=>(
-              <button key={opt.key} onClick={()=>handleThemeChange(opt.key)} style={{
-                flex:1,padding:"10px 8px",borderRadius:12,cursor:"pointer",transition:"all 0.18s",
-                border:theme===opt.key?"1.5px solid #34d399":"1px solid rgba(255,255,255,0.1)",
-                background:theme===opt.key?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
-                display:"flex",flexDirection:"column",alignItems:"center",gap:3,
-              }}>
-                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,color:theme===opt.key?"#34d399":"#9CA3AF"}}>{opt.label}</span>
-                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,color:"#6B7280"}}>{opt.desc}</span>
-              </button>
-            ))}
+          {/* Theme selector — carousel: 3 visible, scroll or arrows for the rest */}
+          <div style={{width:"100%",display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={()=>themeCarouselRef.current?.scrollBy({left:-(themeCarouselRef.current.clientWidth/3+6),behavior:"smooth"})}
+              aria-label="Temas anteriores" style={{flexShrink:0,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:9,padding:"8px 6px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
+              <Ico.ChevL/>
+            </button>
+            <div ref={themeCarouselRef} style={{flex:1,display:"flex",gap:8,overflowX:"auto",scrollSnapType:"x mandatory",scrollBehavior:"smooth",paddingBottom:2}}>
+              {THEME_OPTIONS.map(opt=>(
+                <button key={opt.key} onClick={()=>handleThemeChange(opt.key)} style={{
+                  flex:"0 0 calc((100% - 16px)/3)",scrollSnapAlign:"start",
+                  padding:"10px 6px",borderRadius:12,cursor:"pointer",transition:"all 0.18s",
+                  border:theme===opt.key?"1.5px solid #34d399":"1px solid rgba(255,255,255,0.1)",
+                  background:theme===opt.key?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+                }}>
+                  <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,color:theme===opt.key?"#34d399":"#9CA3AF",whiteSpace:"nowrap"}}>{opt.label}</span>
+                  <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,color:"#6B7280",whiteSpace:"nowrap"}}>{opt.desc}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>themeCarouselRef.current?.scrollBy({left:themeCarouselRef.current.clientWidth/3+6,behavior:"smooth"})}
+              aria-label="Mais temas" style={{flexShrink:0,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:9,padding:"8px 6px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
+              <Ico.ChevR/>
+            </button>
+          </div>
+
+          {/* Marca d'água personalizada */}
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",borderRadius:12,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)"}}>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Sua marca/logo (opcional)</span>
+            <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+              <div style={{flexShrink:0}}>
+                <PhotoPicker photo={logo} onChange={handleLogoChange}/>
+              </div>
+              {logo&&(
+                <div style={{display:"flex",flexDirection:"column",gap:6,flex:1}}>
+                  <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Posição na imagem</span>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:6,width:"100%",maxWidth:140}}>
+                    {[
+                      {key:"tl",label:"↖"},{key:"tr",label:"↗"},
+                      {key:"bl",label:"↙"},{key:"br",label:"↘"},
+                    ].map(opt=>(
+                      <button key={opt.key} onClick={()=>handleLogoPositionChange(opt.key)} aria-label={`Posicionar marca no canto ${opt.key}`} style={{
+                        aspectRatio:"1",borderRadius:9,border:"2px solid",cursor:"pointer",fontSize:16,
+                        borderColor:logoPosition===opt.key?"#34d399":"rgba(255,255,255,0.1)",
+                        background:logoPosition===opt.key?"rgba(52,211,153,0.12)":"rgba(255,255,255,0.03)",
+                        color:logoPosition===opt.key?"#34d399":"#9CA3AF",transition:"all 0.15s"
+                      }}>{opt.label}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <canvas ref={canvasRef} style={{display:"none"}}/>
