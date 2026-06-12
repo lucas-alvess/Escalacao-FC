@@ -536,7 +536,11 @@ async function deleteAllLineupsCloud(uid, teamId) {
 // false) so it's available across devices. FREE_* constants define the limits
 // that apply while `isPremium` is false; gating UI (PremiumUpsellModal) and
 // checks live alongside the relevant features (e.g. lineup creation below).
-const FREE_LINEUP_LIMIT = 2; // max saved lineups per team on the free plan
+const FREE_LINEUP_LIMIT = 1;  // max saved lineups per team on the free plan
+const FREE_TEAM_LIMIT = 1;    // max teams on the free plan
+const FREE_PLAYER_LIMIT = 12; // max players per team on the free plan
+const FREE_KIT_IDS = ["titular","goleiro"]; // kit ids/types usable on the free plan
+const FREE_EXPORT_THEMES = ["modern"];      // export themes usable on the free plan
 
 async function getIsPremium(uid) {
   const fb = getFirebase(); if (!fb) return false;
@@ -1302,7 +1306,7 @@ const SHIELD_EMOJIS = ["🛡️","⚽","🏆","🦁","🦅","🐯","🐺","🦊"
 const IS = {background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"10px 14px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,outline:"none",transition:"border-color 0.2s",width:"100%",boxSizing:"border-box"};
 const LT = {color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5};
 
-function TeamFormModal({initial,onSave,onClose}) {
+function TeamFormModal({initial,onSave,onClose,isPremium}) {
   const [form,setForm]=useState(()=>{
     if(initial) return {...initial, kits: initial.kits||makeDefaultKits(initial.colorIdx||0), activeKitId: initial.activeKitId||"titular"};
     return {name:"",colorIdx:0,shieldEmoji:"🛡️",shieldShapeId:null,photo:"",kits:makeDefaultKits(0),activeKitId:"titular"};
@@ -1310,12 +1314,16 @@ function TeamFormModal({initial,onSave,onClose}) {
   const [saving,setSaving]=useState(false);
   const [tab,setTab]=useState("dados"); // "dados" | "uniformes"
   const [editingKitId,setEditingKitId]=useState(null);
+  const [showKitUpsell,setShowKitUpsell]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.name.trim()!=="";
   const [c1,c2]=SHIELD_COLORS[form.colorIdx%SHIELD_COLORS.length];
   const previewIdRef=useRef(null);
   if(!previewIdRef.current) previewIdRef.current=genUUID();
   const previewShape=SHIELD_SHAPES.find(s=>s.id===form.shieldShapeId);
+  // Free plan: only Titular/Goleiro kits are usable. Reserva, Alternativo and
+  // any custom kits require premium.
+  const isKitLocked=(kit)=>!isPremium&&!FREE_KIT_IDS.includes(kit.type);
 
   const updateKit=(id,patch)=>set("kits",form.kits.map(k=>k.id===id?{...k,...patch}:k));
   const addKit=()=>{
@@ -1341,6 +1349,7 @@ function TeamFormModal({initial,onSave,onClose}) {
     setSaving(false);
   };
   return (
+    <>
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(8px)",padding:"12px"}}>
       <div style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:22,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
         <div style={{padding:"18px 20px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
@@ -1458,16 +1467,22 @@ function TeamFormModal({initial,onSave,onClose}) {
               {form.kits.map(kit=>{
                 const isActive=form.activeKitId===kit.id;
                 const isEditing=editingKitId===kit.id;
+                const locked=isKitLocked(kit);
                 const sampleNum=kit.type==="goleiro"?"1":"10";
                 return (
-                  <button key={kit.id} onClick={()=>setEditingKitId(isEditing?null:kit.id)} style={{
+                  <button key={kit.id} onClick={()=>{
+                    if(locked){setShowKitUpsell(true);return;}
+                    setEditingKitId(isEditing?null:kit.id);
+                  }} style={{
                     display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"8px 4px",borderRadius:11,
                     border:"2px solid",cursor:"pointer",position:"relative",
                     borderColor:isEditing?"#34d399":(isActive?"#facc15":"rgba(255,255,255,0.08)"),
                     background:isEditing?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
+                    opacity:locked?0.55:1,
                     transition:"all 0.15s"
                   }}>
                     {isActive&&<div style={{position:"absolute",top:4,right:4,fontSize:8,fontWeight:900,color:"#1a1a0a",background:"#facc15",borderRadius:4,padding:"1px 4px",fontFamily:"'DM Sans',sans-serif"}}>ATIVO</div>}
+                    {locked&&<div style={{position:"absolute",top:4,left:4,fontSize:11}}>🔒</div>}
                     <div style={{width:38,height:38,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
                       <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
                     </div>
@@ -1475,13 +1490,16 @@ function TeamFormModal({initial,onSave,onClose}) {
                   </button>
                 );
               })}
-              <button onClick={addKit} title="Adicionar uniforme" style={{
+              <button onClick={()=>{
+                if(!isPremium){setShowKitUpsell(true);return;}
+                addKit();
+              }} title="Adicionar uniforme" style={{
                 display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:5,padding:"8px 4px",borderRadius:11,
                 border:"2px dashed rgba(255,255,255,0.15)",cursor:"pointer",background:"rgba(255,255,255,0.02)",color:"#6B7280",
                 transition:"all 0.15s"
               }}>
                 <div style={{width:38,height:38,borderRadius:"50%",border:"2px dashed rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Ico.Plus/>
+                  {isPremium?<Ico.Plus/>:"🔒"}
                 </div>
                 <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>Novo</span>
               </button>
@@ -1603,6 +1621,12 @@ function TeamFormModal({initial,onSave,onClose}) {
         </div>
       </div>
     </div>
+    {showKitUpsell&&<PremiumUpsellModal
+      title="Uniformes premium"
+      description="No plano gratuito você tem acesso aos uniformes Titular e Goleiro. Os uniformes Reserva, Alternativo e a criação de uniformes personalizados são exclusivos do plano premium."
+      onClose={()=>setShowKitUpsell(false)}
+    />}
+    </>
   );
 }
 
@@ -2196,7 +2220,7 @@ const THEME_OPTIONS = [
   {key:"mono",  label:"⚫ Mono",     desc:"P&B"},
 ];
 
-function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPlayerIds,onClose}) {
+function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPlayerIds,onClose,isPremium}) {
   const canvasRef=useRef();
   const [generating,setGenerating]=useState(false);
   const [imgUrl,setImgUrl]=useState(null);
@@ -2210,6 +2234,8 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   const themeCarouselRef=useRef(null);
   const [showWatermarkPanel,setShowWatermarkPanel]=useState(false);
   const [showFullPreview,setShowFullPreview]=useState(false);
+  const [showThemeUpsell,setShowThemeUpsell]=useState(false);
+  const [showWatermarkUpsell,setShowWatermarkUpsell]=useState(false);
 
   // Bench players, sorted by jersey number for a predictable export order
   const benchPlayers=useMemo(()=>{
@@ -2874,6 +2900,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   useEffect(()=>{if(!drewRef.current){drewRef.current=true;draw(theme);}},[]);
 
   const handleThemeChange=(t)=>{
+    if(!isPremium&&!FREE_EXPORT_THEMES.includes(t)){ setShowThemeUpsell(true); return; }
     setTheme(t);
     drewRef.current=false;
     draw(t);
@@ -2919,18 +2946,23 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
               <Ico.ChevL/>
             </button>
             <div ref={themeCarouselRef} style={{flex:1,display:"flex",gap:8,overflowX:"auto",scrollSnapType:"x mandatory",scrollBehavior:"smooth",paddingBottom:2}}>
-              {THEME_OPTIONS.map(opt=>(
+              {THEME_OPTIONS.map(opt=>{
+                const locked=!isPremium&&!FREE_EXPORT_THEMES.includes(opt.key);
+                return (
                 <button key={opt.key} onClick={()=>handleThemeChange(opt.key)} style={{
-                  flex:"0 0 calc((100% - 16px)/3)",scrollSnapAlign:"start",
+                  flex:"0 0 calc((100% - 16px)/3)",scrollSnapAlign:"start",position:"relative",
                   padding:"10px 6px",borderRadius:12,cursor:"pointer",transition:"all 0.18s",
                   border:theme===opt.key?"1.5px solid #34d399":"1px solid rgba(255,255,255,0.1)",
                   background:theme===opt.key?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
                   display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+                  opacity:locked?0.55:1,
                 }}>
+                  {locked&&<span style={{position:"absolute",top:4,right:6,fontSize:11}}>🔒</span>}
                   <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,color:theme===opt.key?"#34d399":"#9CA3AF",whiteSpace:"nowrap"}}>{opt.label}</span>
                   <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,color:"#6B7280",whiteSpace:"nowrap"}}>{opt.desc}</span>
                 </button>
-              ))}
+                );
+              })}
             </div>
             <button onClick={()=>themeCarouselRef.current?.scrollBy({left:themeCarouselRef.current.clientWidth/3+6,behavior:"smooth"})}
               aria-label="Mais temas" style={{flexShrink:0,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:9,padding:"8px 6px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
@@ -2940,17 +2972,22 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
 
           {/* Marca d'água personalizada — colapsada por padrão */}
           <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
-            <button onClick={()=>setShowWatermarkPanel(v=>!v)} style={{
+            <button onClick={()=>{
+              if(!isPremium){setShowWatermarkUpsell(true);return;}
+              setShowWatermarkPanel(v=>!v);
+            }} style={{
               width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
               padding:"10px 12px",borderRadius:12,cursor:"pointer",
               background:showWatermarkPanel?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.025)",
               border:showWatermarkPanel?"1px solid rgba(52,211,153,0.25)":"1px solid rgba(255,255,255,0.06)",
-              color:logo?"#34d399":"#9CA3AF",transition:"all 0.15s"
+              color:logo?"#34d399":"#9CA3AF",transition:"all 0.15s",opacity:isPremium?1:0.7
             }}>
               <span style={{display:"flex",alignItems:"center",gap:8,fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
                 🏷️ Marca d'água{logo&&<span style={{background:"rgba(52,211,153,0.18)",color:"#34d399",borderRadius:5,padding:"1px 6px",fontSize:10}}>ativa</span>}
               </span>
-              <span style={{display:"flex",transform:showWatermarkPanel?"rotate(180deg)":"none",transition:"transform 0.2s"}}><Ico.ChevDown/></span>
+              {isPremium
+                ?<span style={{display:"flex",transform:showWatermarkPanel?"rotate(180deg)":"none",transition:"transform 0.2s"}}><Ico.ChevDown/></span>
+                :<span style={{fontSize:13}}>🔒</span>}
             </button>
 
             {showWatermarkPanel&&(
@@ -3031,6 +3068,16 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
         <img src={imgUrl} alt="Escalação - visualização completa" onClick={e=>e.stopPropagation()} style={{width:"100%",display:"block"}}/>
       </div>
     )}
+    {showThemeUpsell&&<PremiumUpsellModal
+      title="Temas premium"
+      description="No plano gratuito a exportação fica disponível apenas no tema Moderno. Desbloqueie os temas Simples, Retrô, Neon e Mono com o premium."
+      onClose={()=>setShowThemeUpsell(false)}
+    />}
+    {showWatermarkUpsell&&<PremiumUpsellModal
+      title="Marca d'água personalizada"
+      description="Adicionar seu próprio logo/marca d'água na exportação é um recurso premium."
+      onClose={()=>setShowWatermarkUpsell(false)}
+    />}
     </>
   );
 }
@@ -3449,7 +3496,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
     </div>
     {showUpsell&&<PremiumUpsellModal
       title="Limite de escalações"
-      description={`No plano gratuito você pode salvar até ${FREE_LINEUP_LIMIT} escalações por time. Faça upgrade para o premium e crie quantas quiser.`}
+      description={`No plano gratuito você pode salvar ${FREE_LINEUP_LIMIT} escalação por time. Faça upgrade para o premium e crie quantas quiser.`}
       onClose={()=>setShowUpsell(false)}
     />}
     </>
@@ -3464,6 +3511,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [editingPlayer,setEditingPlayer]=useState(null);
   const [activeSlot,setActiveSlot]=useState(null);
   const [showExport,setShowExport]=useState(false);
+  const [showPlayerLimitUpsell,setShowPlayerLimitUpsell]=useState(false);
   const [showFList,setShowFList]=useState(false);
   const [toast,setToast]=useState(null);
   const [showEditTeam,setShowEditTeam]=useState(false);
@@ -3795,7 +3843,10 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
       {/* FAB */}
       {tab==="players"&&(
-        <button onClick={()=>{setEditingPlayer(null);setShowForm(true);}} style={{
+        <button onClick={()=>{
+          if(!isPremium&&(team.players||[]).length>=FREE_PLAYER_LIMIT){setShowPlayerLimitUpsell(true);return;}
+          setEditingPlayer(null);setShowForm(true);
+        }} style={{
           position:"fixed",bottom:28,right:20,width:56,height:56,borderRadius:"50%",
           background:`linear-gradient(135deg,${c1},${c2})`,border:"none",cursor:"pointer",
           display:"flex",alignItems:"center",justifyContent:"center",
@@ -3810,7 +3861,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
       {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)} team={team}/>}
-      {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} coach={activeLineup?.coach||""} benchPlayerIds={activeLineup?.benchPlayerIds||[]} onClose={()=>setShowExport(false)}/>}
+      {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} coach={activeLineup?.coach||""} benchPlayerIds={activeLineup?.benchPlayerIds||[]} isPremium={isPremium} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
       {showLineupMgr&&<LineupManagerModal team={team} isPremium={isPremium} onClose={()=>setShowLineupMgr(false)}
         onActivate={(lineupId)=>{
@@ -3849,10 +3900,15 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           setToast("Escalação removida.");
         }}
       />}
-      {showEditTeam&&<TeamFormModal initial={team} onSave={async(f)=>{
+      {showEditTeam&&<TeamFormModal initial={team} isPremium={isPremium} onSave={async(f)=>{
         // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
         upd(f);setShowEditTeam(false);setToast("Time atualizado!");
       }} onClose={()=>setShowEditTeam(false)}/>}
+      {showPlayerLimitUpsell&&<PremiumUpsellModal
+        title="Limite de jogadores"
+        description={`No plano gratuito você pode cadastrar até ${FREE_PLAYER_LIMIT} jogadores por time. Faça upgrade para o premium e cadastre jogadores ilimitados.`}
+        onClose={()=>setShowPlayerLimitUpsell(false)}
+      />}
     </div>
   );
 }
@@ -3949,6 +4005,7 @@ function App() {
   const [teams, setTeams] = useState([]);
   const [activeTeamId, setActiveTeamId] = useState(null);
   const [showNewTeam, setShowNewTeam] = useState(false);
+  const [showTeamLimitUpsell, setShowTeamLimitUpsell] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [toast, setToast] = useState(null);
   // ── Global sync status (auto background saves) ─────────────────────────────
@@ -4382,15 +4439,23 @@ function App() {
             }
             setActiveTeamId(t.id);
           }}
-          onNewTeam={() => setShowNewTeam(true)}
+          onNewTeam={() => {
+            if (!isPremium && teams.length >= FREE_TEAM_LIMIT) { setShowTeamLimitUpsell(true); return; }
+            setShowNewTeam(true);
+          }}
           onDeleteTeam={deleteTeam}
           onEditTeam={(t) => setEditingTeam(t)}
           onLogout={handleLogout}
         />
       )}
 
-      {showNewTeam && <TeamFormModal onSave={createTeam} onClose={() => setShowNewTeam(false)}/>}
-      {editingTeam && <TeamFormModal initial={editingTeam} onSave={editTeam} onClose={() => setEditingTeam(null)}/>}
+      {showNewTeam && <TeamFormModal isPremium={isPremium} onSave={createTeam} onClose={() => setShowNewTeam(false)}/>}
+      {editingTeam && <TeamFormModal initial={editingTeam} isPremium={isPremium} onSave={editTeam} onClose={() => setEditingTeam(null)}/>}
+      {showTeamLimitUpsell && <PremiumUpsellModal
+        title="Limite de times"
+        description={`No plano gratuito você pode cadastrar ${FREE_TEAM_LIMIT} time. Faça upgrade para o premium e gerencie times ilimitados.`}
+        onClose={()=>setShowTeamLimitUpsell(false)}
+      />}
     </div>
   );
 }
