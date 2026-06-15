@@ -528,7 +528,51 @@ async function deleteAllLineupsCloud(uid, teamId) {
   } catch(e) { console.warn("deleteAllLineupsCloud error:", e); return false; }
 }
 
-// ── Schema versioning ─────────────────────────────────────────────────────────
+// ── Matches (calendar / office) ───────────────────────────────────────────────
+async function saveMatchCloud(uid, teamId, match) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "matches", String(match.id));
+    await fb.setDoc(ref, { ...match, updatedAt: fb.serverTimestamp() }, { merge: true });
+    return true;
+  } catch(e) { console.warn("saveMatchCloud error:", e); return false; }
+}
+async function deleteMatchCloud(uid, teamId, matchId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(fb.doc(fb.db, "users", uid, "teams", String(teamId), "matches", String(matchId)));
+    return true;
+  } catch(e) { console.warn("deleteMatchCloud error:", e); return false; }
+}
+async function loadMatchesCloud(uid, teamId) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "matches");
+    const snap = await fb.getDocs(col);
+    return snap.empty ? [] : snap.docs.map(d => d.data());
+  } catch(e) { console.warn("loadMatchesCloud error:", e); return null; }
+}
+
+// ── Player stats ───────────────────────────────────────────────────────────────
+async function savePlayerStatsCloud(uid, teamId, stats) {
+  // stats: { playerId, goals, assists, cleanSheets, updatedAt }
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "stats", String(stats.playerId));
+    await fb.setDoc(ref, { ...stats, updatedAt: fb.serverTimestamp() }, { merge: true });
+    return true;
+  } catch(e) { console.warn("savePlayerStatsCloud error:", e); return false; }
+}
+async function loadAllStatsCloud(uid, teamId) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "stats");
+    const snap = await fb.getDocs(col);
+    return snap.empty ? {} : Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
+  } catch(e) { console.warn("loadAllStatsCloud error:", e); return null; }
+}
+
+
 
 // ─── Premium / monetization scaffolding ────────────────────────────────────
 // This app is being prepared for a future freemium release on the Play Store.
@@ -1149,6 +1193,14 @@ const Ico = {
   Save:    ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>,
   Lineup:  ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><circle cx="8" cy="15" r="1" fill="currentColor"/><circle cx="12" cy="15" r="1" fill="currentColor"/><circle cx="16" cy="15" r="1" fill="currentColor"/></svg>,
   Star2:   ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+  NavHome: ()=><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+  NavTactic:()=><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="2" y="3" width="20" height="18" rx="2"/><line x1="2" y1="12" x2="22" y2="12"/><circle cx="7" cy="7.5" r="1.5" fill="currentColor"/><circle cx="17" cy="7.5" r="1.5" fill="currentColor"/><circle cx="12" cy="16.5" r="1.5" fill="currentColor"/></svg>,
+  NavOffice:()=><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>,
+  Calendar:()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+  Goal:    ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 3v9l5 5"/></svg>,
+  Clock:   ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+  MapPin:  ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+  Trophy:  ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -3994,11 +4046,305 @@ function LoginScreen({onLogin, loading}) {
   );
 }
 
+// ─── Bottom Navigation Bar ────────────────────────────────────────────────────
+function BottomNav({active,onChange}) {
+  const tabs=[
+    {id:"home",   label:"Times",     Icon:Ico.NavHome},
+    {id:"tactic", label:"Escalação", Icon:Ico.NavTactic},
+    {id:"office", label:"Escritório",Icon:Ico.NavOffice},
+  ];
+  return (
+    <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:900,
+      background:"rgba(5,12,10,0.96)",borderTop:"1px solid rgba(255,255,255,0.07)",
+      backdropFilter:"blur(12px)",display:"flex",padding:"6px 0 env(safe-area-inset-bottom,6px)"}}>
+      {tabs.map(({id,label,Icon})=>{
+        const on=active===id;
+        return (
+          <button key={id} onClick={()=>onChange(id)} style={{
+            flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+            background:"none",border:"none",cursor:"pointer",padding:"6px 0",
+            color:on?"#34d399":"#6B7280",transition:"color 0.15s"
+          }}>
+            <Icon/>
+            <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:on?800:600,letterSpacing:0.3}}>{label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Match Modal (add/edit a calendar event) ──────────────────────────────────
+function MatchModal({initial,onSave,onClose}) {
+  const empty={opponent:"",date:"",time:"",location:"",notes:"",result:"",goalsFor:"",goalsAgainst:""};
+  const [form,setForm]=useState(initial||empty);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const valid=form.opponent.trim()&&form.date;
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"18px 18px 0 0",width:"100%",maxWidth:480,maxHeight:"92vh",overflowY:"auto",padding:"18px 18px 32px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>{initial?"Editar Partida":"Nova Partida"}</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {[
+            {k:"opponent",label:"Adversário",placeholder:"Ex: Flamengo",required:true},
+            {k:"date",    label:"Data",placeholder:"",type:"date",required:true},
+            {k:"time",    label:"Horário",placeholder:"",type:"time"},
+            {k:"location",label:"Local",placeholder:"Ex: Estádio Maracanã"},
+            {k:"notes",   label:"Observações",placeholder:"Anotações sobre a partida..."},
+          ].map(({k,label,placeholder,type,required})=>(
+            <div key={k} style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={LT}>{label}{required&&<span style={{color:"#f87171",marginLeft:2}}>*</span>}</label>
+              <input value={form[k]||""} onChange={e=>set(k,e.target.value)} type={type||"text"} placeholder={placeholder}
+                style={{...IS,colorScheme:"dark"}}
+                onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+            </div>
+          ))}
+
+          {/* Result — only shown on existing matches or after date has passed */}
+          <div style={{display:"flex",flexDirection:"column",gap:6,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.06)"}}>
+            <span style={LT}>Resultado (após a partida)</span>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input value={form.goalsFor||""} onChange={e=>set("goalsFor",e.target.value.replace(/\D/,""))} placeholder="Gols"
+                style={{...IS,width:70,textAlign:"center",fontSize:20}} inputMode="numeric"
+                onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+              <span style={{color:"#9CA3AF",fontFamily:"'Bebas Neue',sans-serif",fontSize:24}}>×</span>
+              <input value={form.goalsAgainst||""} onChange={e=>set("goalsAgainst",e.target.value.replace(/\D/,""))} placeholder="Gols"
+                style={{...IS,width:70,textAlign:"center",fontSize:20}} inputMode="numeric"
+                onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+              <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>seu time × adversário</span>
+            </div>
+          </div>
+
+          <button onClick={()=>valid&&onSave(form)} disabled={!valid} style={{
+            padding:"13px 0",borderRadius:12,border:"none",cursor:valid?"pointer":"default",
+            background:valid?"linear-gradient(135deg,#16a34a,#34d399)":"rgba(255,255,255,0.06)",
+            color:valid?"#fff":"#4B5563",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1
+          }}>SALVAR PARTIDA</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stats View (per-player stats within OfficeView) ──────────────────────────
+function StatsView({team,stats,onUpdateStat}) {
+  const players=team.players||[];
+  if(!players.length) return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 20px",gap:10,color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:13,textAlign:"center"}}>
+      <Ico.Users/><span>Cadastre jogadores no time para registrar estatísticas.</span>
+    </div>
+  );
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      {players.map(p=>{
+        const st=stats[String(p.id)]||{goals:0,assists:0,cleanSheets:0};
+        const isGK=p.position==="Goleiro";
+        const statItems=isGK
+          ? [{key:"cleanSheets",label:"Jogos sem tomar gol",emoji:"🧤",color:"#60a5fa"}]
+          : [
+              {key:"goals",   label:"Gols",       emoji:"⚽",color:"#34d399"},
+              {key:"assists", label:"Assistências",emoji:"🎯",color:"#f59e0b"},
+            ];
+        return (
+          <div key={p.id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:12}}>
+            <PlayerAvatar player={p} size={46} team={team}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{p.position} · #{p.number}</div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              {statItems.map(({key,label,emoji,color})=>(
+                <div key={key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                  <span title={label} style={{fontSize:16}}>{emoji}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <button onClick={()=>onUpdateStat(p.id,key,Math.max(0,(st[key]||0)-1))}
+                      style={{width:22,height:22,borderRadius:6,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontFamily:"monospace",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
+                    <span style={{color,fontFamily:"'Bebas Neue',sans-serif",fontSize:20,minWidth:24,textAlign:"center"}}>{st[key]||0}</span>
+                    <button onClick={()=>onUpdateStat(p.id,key,(st[key]||0)+1)}
+                      style={{width:22,height:22,borderRadius:6,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontFamily:"monospace",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>+</button>
+                  </div>
+                  <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700,textTransform:"uppercase"}}>{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Office View ──────────────────────────────────────────────────────────────
+function OfficeView({team,uid}) {
+  const [officeTab,setOfficeTab]=useState("calendar"); // "calendar" | "stats"
+  const [matches,setMatches]=useState(null); // null=loading, []+=loaded
+  const [stats,setStats]=useState({});
+  const [showMatchModal,setShowMatchModal]=useState(false);
+  const [editingMatch,setEditingMatch]=useState(null);
+  const [confirmDelMatch,setConfirmDelMatch]=useState(null);
+  const [c1,c2]=SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length];
+
+  // Load matches + stats on mount / team change
+  useEffect(()=>{
+    if(!uid||!team?.id)return;
+    setMatches(null);
+    loadMatchesCloud(uid,team.id).then(m=>setMatches(m||[]));
+    loadAllStatsCloud(uid,team.id).then(s=>setStats(s||{}));
+  },[uid,team?.id]);
+
+  const saveMatch=async(form)=>{
+    const match={...form,id:form.id||genUUID(),teamId:team.id};
+    setMatches(prev=>{
+      if(!prev)return[match];
+      const idx=prev.findIndex(m=>m.id===match.id);
+      return idx>=0?prev.map(m=>m.id===match.id?match:m):[...prev,match];
+    });
+    setShowMatchModal(false);setEditingMatch(null);
+    if(uid) saveMatchCloud(uid,team.id,match);
+  };
+
+  const deleteMatch=async(id)=>{
+    setMatches(prev=>(prev||[]).filter(m=>m.id!==id));
+    setConfirmDelMatch(null);
+    if(uid) deleteMatchCloud(uid,team.id,id);
+  };
+
+  const updateStat=async(playerId,key,value)=>{
+    const pid=String(playerId);
+    const newSt={...( stats[pid]||{goals:0,assists:0,cleanSheets:0}),[key]:value,playerId:pid};
+    setStats(prev=>({...prev,[pid]:newSt}));
+    if(uid) savePlayerStatsCloud(uid,team.id,newSt);
+  };
+
+  // Sort matches: future first, then past descending
+  const sortedMatches=useMemo(()=>{
+    if(!matches)return[];
+    const now=new Date().toISOString().slice(0,10);
+    const future=(matches||[]).filter(m=>m.date>=now).sort((a,b)=>a.date.localeCompare(b.date));
+    const past=(matches||[]).filter(m=>m.date<now).sort((a,b)=>b.date.localeCompare(a.date));
+    return [...future,...past];
+  },[matches]);
+
+  const formatDate=(d)=>{
+    if(!d)return"";
+    const [y,m,day]=d.split("-");
+    return `${day}/${m}/${y}`;
+  };
+
+  const resultLabel=(m)=>{
+    if(m.goalsFor===""||m.goalsFor===undefined||m.goalsFor===null)return null;
+    const gf=parseInt(m.goalsFor)||0,ga=parseInt(m.goalsAgainst)||0;
+    const outcome=gf>ga?"V":gf<ga?"D":"E";
+    const color=gf>ga?"#34d399":gf<ga?"#f87171":"#f59e0b";
+    return {label:`${gf}–${ga}`,outcome,color};
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"#050c0a",paddingBottom:80}}>
+      {/* Header */}
+      <div style={{padding:"16px 16px 0",display:"flex",alignItems:"center",gap:12}}>
+        <TeamShield team={team} size={40}/>
+        <div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,lineHeight:1}}>{team.name}</div>
+          <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Escritório</div>
+        </div>
+      </div>
+
+      {/* Sub-tabs */}
+      <div style={{display:"flex",gap:0,margin:"14px 16px 0",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:3}}>
+        {[["calendar","📅 Calendário"],["stats","📊 Estatísticas"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setOfficeTab(id)} style={{
+            flex:1,padding:"9px 0",borderRadius:9,border:"none",cursor:"pointer",
+            fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:800,letterSpacing:0.2,
+            background:officeTab===id?`linear-gradient(135deg,${c1},${c2})`:"transparent",
+            color:officeTab===id?"#fff":"#6B7280",transition:"all 0.18s"
+          }}>{label}</button>
+        ))}
+      </div>
+
+      <div style={{padding:"14px 16px"}}>
+        {/* ── Calendar tab ── */}
+        {officeTab==="calendar"&&(
+          <>
+          <button onClick={()=>{setEditingMatch(null);setShowMatchModal(true);}} style={{
+            width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+            padding:"11px 0",borderRadius:12,border:"none",cursor:"pointer",marginBottom:14,
+            background:`linear-gradient(135deg,${c1},${c2})`,color:"#fff",
+            fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
+            boxShadow:`0 4px 16px ${c1}55`
+          }}><Ico.Plus/> NOVA PARTIDA</button>
+
+          {matches===null?(
+            <div style={{display:"flex",justifyContent:"center",padding:32}}>
+              <div style={{width:30,height:30,border:"3px solid #34d399",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            </div>
+          ):sortedMatches.length===0?(
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,padding:"40px 20px",color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:13,textAlign:"center"}}>
+              <span style={{fontSize:36}}>📅</span>
+              <span>Nenhuma partida cadastrada.<br/>Toque em "Nova Partida" para adicionar.</span>
+            </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {sortedMatches.map(m=>{
+                const res=resultLabel(m);
+                const isPast=m.date<new Date().toISOString().slice(0,10);
+                return (
+                  <div key={m.id} style={{
+                    background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",
+                    borderRadius:14,padding:"12px 14px",display:"flex",flexDirection:"column",gap:8
+                  }}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        {res
+                          ?<span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:res.color,letterSpacing:1}}>{res.label}</span>
+                          :<span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,color:isPast?"#6B7280":"#34d399",letterSpacing:1}}>{isPast?"—":"EM BREVE"}</span>}
+                        <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>vs {m.opponent}</span>
+                      </div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>{setEditingMatch(m);setShowMatchModal(true);}} aria-label="Editar partida"
+                          style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:8,padding:"5px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
+                        <button onClick={()=>setConfirmDelMatch(m.id)} aria-label="Excluir partida"
+                          style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,padding:"5px 8px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
+                      {m.date&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.Calendar/>{formatDate(m.date)}{m.time&&` · ${m.time}`}</span>}
+                      {m.location&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.MapPin/>{m.location}</span>}
+                    </div>
+                    {m.notes&&<div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,borderTop:"1px solid rgba(255,255,255,0.05)",paddingTop:6}}>{m.notes}</div>}
+                    {confirmDelMatch===m.id&&(
+                      <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(239,68,68,0.08)",borderRadius:8,padding:"8px 10px"}}>
+                        <span style={{flex:1,color:"#f87171",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Excluir esta partida?</span>
+                        <button onClick={()=>deleteMatch(m.id)} style={{padding:"4px 10px",borderRadius:7,border:"none",background:"#dc2626",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>Sim</button>
+                        <button onClick={()=>setConfirmDelMatch(null)} style={{padding:"4px 10px",borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,cursor:"pointer"}}>Não</button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          </>
+        )}
+
+        {/* ── Stats tab ── */}
+        {officeTab==="stats"&&<StatsView team={team} stats={stats} onUpdateStat={updateStat}/>}
+      </div>
+
+      {showMatchModal&&<MatchModal initial={editingMatch} onSave={saveMatch} onClose={()=>{setShowMatchModal(false);setEditingMatch(null);}}/>}
+    </div>
+  );
+}
+
 // ─── Root App ─────────────────────────────────────────────────────────────────
 function App() {
   const [authState, setAuthState] = useState("loading"); // "loading" | "loggedOut" | "loggedIn"
   const [user, setUser] = useState(null);
   const [isPremium, setIsPremium] = useState(false);
+  const [navSection, setNavSection] = useState("home"); // "home" | "tactic" | "office"
   const [loginLoading, setLoginLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [migrating, setMigrating] = useState(false);
@@ -4369,6 +4715,10 @@ function App() {
   );
 
   const activeTeam = teams.find(t => t.id === activeTeamId);
+  const uid = user?.uid;
+  // When a team is active, sections "tactic" and "office" are available.
+  // If the user navigates to "home", keep activeTeamId so they can come back.
+  const showNav = authState === "loggedIn" && loaded && !!activeTeam;
 
   return (
     <div style={{minHeight:"100vh",background:"#050c0a"}}>
@@ -4384,36 +4734,10 @@ function App() {
 
       {toast && <Toast msg={toast} onDone={() => setToast(null)}/>}
 
-      {activeTeam ? (
-        <TeamView
-          team={activeTeam}
-          onUpdateTeam={updateTeam}
-          onBack={() => setActiveTeamId(null)}
-          onForceSave={handleForceSave}
-          onSavePlayer={scheduleSavePlayer}
-          onSaveLineup={scheduleSaveLineup}
-          syncStatus={syncStatus}
-          isPremium={isPremium}
-          onDeletePlayerCloud={(teamId, playerId) => {
-            const uid = user?.uid;
-            if (uid) {
-              const key = `player_${teamId}_${playerId}`;
-              clearTimeout(saveTimersRef.current[key]);
-              delete saveTimersRef.current[key];
-              deletePlayerCloud(uid, teamId, playerId);
-            }
-          }}
-          onDeleteLineup={(teamId, lineupId) => {
-            const uid = user?.uid;
-            if (uid) {
-              const key = `lineup_${teamId}_${lineupId}`;
-              clearTimeout(saveTimersRef.current[key]);
-              delete saveTimersRef.current[key];
-              deleteLineupCloud(uid, teamId, lineupId);
-            }
-          }}
-        />
-      ) : (
+      {/* ── Section routing ── */}
+
+      {/* Home: team list */}
+      {(navSection === "home" || !activeTeam) && authState === "loggedIn" && (
         <HomePage
           teams={teams}
           user={user}
@@ -4426,18 +4750,18 @@ function App() {
             if(user?.uid) setIsPremiumFlag(user.uid, next);
           }}
           onSelectTeam={async (t) => {
-            // Lazy-load players + lineups if not yet in memory
             const fb = getFirebase();
-            const uid = fb?.auth?.currentUser?.uid;
-            if (uid) {
-              const cacheKey = `${uid}_${t.id}`;
+            const u = fb?.auth?.currentUser?.uid;
+            if (u) {
+              const cacheKey = `${u}_${t.id}`;
               const needsLoad = !_memCache.has(_memCache.players, cacheKey) || !_memCache.has(_memCache.lineups, cacheKey);
               if (needsLoad) {
-                const full = await loadTeamFull(uid, t);
+                const full = await loadTeamFull(u, t);
                 setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
               }
             }
             setActiveTeamId(t.id);
+            setNavSection("tactic");
           }}
           onNewTeam={() => {
             if (!isPremium && teams.length >= FREE_TEAM_LIMIT) { setShowTeamLimitUpsell(true); return; }
@@ -4447,6 +4771,50 @@ function App() {
           onEditTeam={(t) => setEditingTeam(t)}
           onLogout={handleLogout}
         />
+      )}
+
+      {/* Tactic: TeamView (prancheta + elenco) */}
+      {navSection === "tactic" && activeTeam && (
+        <TeamView
+          team={activeTeam}
+          onUpdateTeam={updateTeam}
+          onBack={() => { setNavSection("home"); }}
+          onForceSave={handleForceSave}
+          onSavePlayer={scheduleSavePlayer}
+          onSaveLineup={scheduleSaveLineup}
+          syncStatus={syncStatus}
+          isPremium={isPremium}
+          onDeletePlayerCloud={(teamId, playerId) => {
+            if (uid) {
+              const key = `player_${teamId}_${playerId}`;
+              clearTimeout(saveTimersRef.current[key]);
+              delete saveTimersRef.current[key];
+              deletePlayerCloud(uid, teamId, playerId);
+            }
+          }}
+          onDeleteLineup={(teamId, lineupId) => {
+            if (uid) {
+              const key = `lineup_${teamId}_${lineupId}`;
+              clearTimeout(saveTimersRef.current[key]);
+              delete saveTimersRef.current[key];
+              deleteLineupCloud(uid, teamId, lineupId);
+            }
+          }}
+        />
+      )}
+
+      {/* Office: calendar + stats */}
+      {navSection === "office" && activeTeam && (
+        <OfficeView team={activeTeam} uid={uid}/>
+      )}
+
+      {/* Bottom navigation — only when logged in with a team selected */}
+      {showNav && (
+        <BottomNav active={navSection} onChange={section => {
+          // Office and tactic require an active team
+          if ((section === "office" || section === "tactic") && !activeTeam) return;
+          setNavSection(section);
+        }}/>
       )}
 
       {showNewTeam && <TeamFormModal isPremium={isPremium} onSave={createTeam} onClose={() => setShowNewTeam(false)}/>}
