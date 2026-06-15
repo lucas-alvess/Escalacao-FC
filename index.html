@@ -4084,7 +4084,7 @@ const MATCH_TYPES=[
 const MATCH_TYPES_WITH_NAME=["festival","tournament","league"];
 
 function MatchModal({initial,players,onSave,onClose}) {
-  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{},matchType:"friendly",competitionName:""};
+  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{},matchType:"friendly",competitionName:"",presentPlayerIds:[]};
   const [form,setForm]=useState(()=>initial?{...empty,...initial}:empty);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.opponent.trim()&&form.date;
@@ -4245,6 +4245,52 @@ function MatchModal({initial,players,onSave,onClose}) {
             )}
           </div>
 
+          {/* Attendance */}
+          {(players||[]).length>0&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(255,255,255,0.07)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{...LT,fontSize:9}}>📋 Presença</span>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>set("presentPlayerIds",(players||[]).map(p=>String(p.id)))} style={{
+                    padding:"2px 8px",borderRadius:6,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.08)",
+                    color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,cursor:"pointer"
+                  }}>Todos ✓</button>
+                  <button onClick={()=>set("presentPlayerIds",[])} style={{
+                    padding:"2px 8px",borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.03)",
+                    color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,cursor:"pointer"
+                  }}>Limpar</button>
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                {(players||[]).map(p=>{
+                  const pid=String(p.id);
+                  const present=(form.presentPlayerIds||[]).includes(pid);
+                  return (
+                    <button key={pid} onClick={()=>{
+                      const cur=form.presentPlayerIds||[];
+                      set("presentPlayerIds",present?cur.filter(id=>id!==pid):[...cur,pid]);
+                    }} style={{
+                      display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:9,
+                      border:"1px solid",cursor:"pointer",textAlign:"left",
+                      borderColor:present?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.07)",
+                      background:present?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.02)",
+                      transition:"all 0.12s"
+                    }}>
+                      <PlayerAvatar player={p} size={28}/>
+                      <span style={{flex:1,color:present?"#e5e7eb":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>
+                        {p.name} <span style={{fontSize:10,opacity:0.6}}>#{p.number} · {p.position}</span>
+                      </span>
+                      <span style={{fontSize:14,color:present?"#34d399":"#374151"}}>{present?"✓":"○"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,textAlign:"right"}}>
+                {(form.presentPlayerIds||[]).length}/{(players||[]).length} presentes
+              </div>
+            </div>
+          )}
+
           <button onClick={()=>valid&&onSave(form)} disabled={!valid} style={{
             padding:"13px 0",borderRadius:12,border:"none",cursor:valid?"pointer":"default",
             background:valid?"linear-gradient(135deg,#16a34a,#34d399)":"rgba(255,255,255,0.06)",
@@ -4273,12 +4319,13 @@ function StatsView({team,stats,onUpdateStat}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {sorted.map(p=>{
-        const st=stats[String(p.id)]||{goals:0,assists:0,goalsAgainst:0};
+        const st=stats[String(p.id)]||{goals:0,assists:0,goalsAgainst:0,appearances:0};
         const isGK=p.position==="Goleiro";
-        // All players: goals + assists. GKs additionally: goals conceded.
+        // All players: appearances + goals + assists. GKs additionally: goals conceded.
         const statItems=[
-          {key:"goals",        label:"Gols",        emoji:"⚽",color:"#34d399"},
-          {key:"assists",      label:"Assistências", emoji:"🎯",color:"#f59e0b"},
+          {key:"appearances",  label:"Presenças",     emoji:"📋",color:"#60a5fa"},
+          {key:"goals",        label:"Gols",          emoji:"⚽",color:"#34d399"},
+          {key:"assists",      label:"Assistências",  emoji:"🎯",color:"#f59e0b"},
           ...(isGK?[{key:"goalsAgainst",label:"Gols sofridos",emoji:"🧤",color:"#f87171"}]:[]),
         ];
         return (
@@ -4351,11 +4398,12 @@ function StatsExportModal({team,matches,stats,onClose}) {
   // Compute aggregated stat from filtered matches
   const aggregated=useMemo(()=>{
     const agg={};
-    const ensure=(pid)=>{ if(!agg[pid])agg[pid]={goals:0,assists:0,goalsAgainst:0}; };
+    const ensure=(pid)=>{ if(!agg[pid])agg[pid]={goals:0,assists:0,goalsAgainst:0,appearances:0}; };
     for(const m of filteredMatches){
       (m.scorers||[]).forEach(pid=>{ ensure(pid); agg[pid].goals++; });
       (m.assisters||[]).forEach(pid=>{ ensure(pid); agg[pid].assists++; });
       Object.entries(m.gkGoalsConceded||{}).forEach(([pid,n])=>{ ensure(pid); agg[pid].goalsAgainst+=(parseInt(n)||0); });
+      (m.presentPlayerIds||[]).forEach(pid=>{ ensure(pid); agg[pid].appearances++; });
     }
     // If no filter (showing totals), merge with manually-entered stats
     if(filterType==="all"){
@@ -4364,6 +4412,7 @@ function StatsExportModal({team,matches,stats,onClose}) {
         agg[pid].goals=Math.max(agg[pid].goals,st.goals||0);
         agg[pid].assists=Math.max(agg[pid].assists,st.assists||0);
         agg[pid].goalsAgainst=Math.max(agg[pid].goalsAgainst,st.goalsAgainst||0);
+        agg[pid].appearances=Math.max(agg[pid].appearances||0,st.appearances||0);
       }
     }
     return agg;
@@ -4373,14 +4422,15 @@ function StatsExportModal({team,matches,stats,onClose}) {
   const ranking=useMemo(()=>{
     return players
       .map(p=>({ p, value:(aggregated[String(p.id)]||{})[statType]||0 }))
-      .filter(({value})=>value>0)
+      .filter(({value})=>statType==="appearances"?true:value>0)
       .sort((a,b)=>b.value-a.value);
   },[players,aggregated,statType]);
 
   const STAT_META={
-    goals:      {label:"Gols",          emoji:"⚽"},
-    assists:    {label:"Assistências",   emoji:"🎯"},
-    goalsAgainst:{label:"Gols Sofridos",emoji:"🧤"},
+    appearances: {label:"Presenças",     emoji:"📋"},
+    goals:       {label:"Gols",          emoji:"⚽"},
+    assists:     {label:"Assistências",  emoji:"🎯"},
+    goalsAgainst:{label:"Gols Sofridos", emoji:"🧤"},
   };
 
   // Build the copyable text
@@ -4419,7 +4469,7 @@ function StatsExportModal({team,matches,stats,onClose}) {
         {/* Stat type */}
         <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
           <span style={LT}>Estatística</span>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
             {Object.entries(STAT_META).map(([key,{label,emoji}])=>(
               <button key={key} onClick={()=>setStatType(key)} style={{
                 padding:"9px 4px",borderRadius:10,border:"2px solid",cursor:"pointer",
@@ -4577,11 +4627,12 @@ function OfficeView({team,uid}) {
 
       // Aggregate stats from all (updated) matches
       const agg={};
-      const ensure=(pid)=>{ if(!agg[pid])agg[pid]={goals:0,assists:0,goalsAgainst:0,playerId:pid}; };
+      const ensure=(pid)=>{ if(!agg[pid])agg[pid]={goals:0,assists:0,goalsAgainst:0,appearances:0,playerId:pid}; };
       for(const m of nextList){
         (m.scorers||[]).forEach(pid=>{ ensure(pid); agg[pid].goals++; });
         (m.assisters||[]).forEach(pid=>{ ensure(pid); agg[pid].assists++; });
         Object.entries(m.gkGoalsConceded||{}).forEach(([pid,n])=>{ ensure(pid); agg[pid].goalsAgainst+=(parseInt(n)||0); });
+        (m.presentPlayerIds||[]).forEach(pid=>{ ensure(pid); agg[pid].appearances++; });
       }
 
       // Merge with any stats that only exist in the manual tab (extra goals/assists
@@ -4590,12 +4641,13 @@ function OfficeView({team,uid}) {
       setStats(prev=>{
         const next={...prev};
         for(const [pid,matchSt] of Object.entries(agg)){
-          const manual=prev[pid]||{goals:0,assists:0,goalsAgainst:0};
+          const manual=prev[pid]||{goals:0,assists:0,goalsAgainst:0,appearances:0};
           next[pid]={
             playerId:pid,
-            goals:     Math.max(matchSt.goals,     manual.goals     ||0),
-            assists:   Math.max(matchSt.assists,    manual.assists   ||0),
+            goals:       Math.max(matchSt.goals,       manual.goals       ||0),
+            assists:     Math.max(matchSt.assists,      manual.assists     ||0),
             goalsAgainst:Math.max(matchSt.goalsAgainst,manual.goalsAgainst||0),
+            appearances: Math.max(matchSt.appearances,  manual.appearances  ||0),
           };
         }
         // Persist each modified stat
@@ -4622,7 +4674,7 @@ function OfficeView({team,uid}) {
 
   const updateStat=async(playerId,key,value)=>{
     const pid=String(playerId);
-    const newSt={...(stats[pid]||{goals:0,assists:0,goalsAgainst:0}),[key]:value,playerId:pid};
+    const newSt={...(stats[pid]||{goals:0,assists:0,goalsAgainst:0,appearances:0}),[key]:value,playerId:pid};
     setStats(prev=>({...prev,[pid]:newSt}));
     if(uid) savePlayerStatsCloud(uid,team.id,newSt);
   };
@@ -4725,6 +4777,7 @@ function OfficeView({team,uid}) {
                     <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
                       {m.date&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.Calendar/>{formatDate(m.date)}{m.time&&` · ${m.time}`}</span>}
                       {m.location&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.MapPin/>{m.location}</span>}
+                      {(m.presentPlayerIds||[]).length>0&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>📋 {m.presentPlayerIds.length} presente{m.presentPlayerIds.length!==1?"s":""}</span>}
                     </div>
                     {m.notes&&<div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,borderTop:"1px solid rgba(255,255,255,0.05)",paddingTop:6}}>{m.notes}</div>}
 
