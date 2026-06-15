@@ -555,7 +555,7 @@ async function loadMatchesCloud(uid, teamId) {
 
 // ── Player stats ───────────────────────────────────────────────────────────────
 async function savePlayerStatsCloud(uid, teamId, stats) {
-  // stats: { playerId, goals, assists, cleanSheets, updatedAt }
+  // stats: { playerId, goals, assists, goalsAgainst, updatedAt }
   const fb = getFirebase(); if (!fb) return false;
   try {
     const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "stats", String(stats.playerId));
@@ -4075,19 +4075,33 @@ function BottomNav({active,onChange}) {
 }
 
 // ─── Match Modal (add/edit a calendar event) ──────────────────────────────────
-function MatchModal({initial,onSave,onClose}) {
-  const empty={opponent:"",date:"",time:"",location:"",notes:"",result:"",goalsFor:"",goalsAgainst:""};
-  const [form,setForm]=useState(initial||empty);
+function MatchModal({initial,players,onSave,onClose}) {
+  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{}};
+  const [form,setForm]=useState(()=>initial?{...empty,...initial}:empty);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.opponent.trim()&&form.date;
+  const hasResult=form.goalsFor!==""&&form.goalsFor!==undefined&&form.goalsFor!==null;
+  const outfield=(players||[]).filter(p=>p.position!=="Goleiro");
+  const goalkeepers=(players||[]).filter(p=>p.position==="Goleiro");
+
+  // Increment/decrement a player's count in an array-of-ids (allows repeats)
+  const adjustCount=(arr,pid,delta)=>{
+    const list=[...(arr||[])];
+    if(delta>0) list.push(pid);
+    else { const idx=list.lastIndexOf(pid); if(idx>=0)list.splice(idx,1); }
+    return list;
+  };
+  const countInArr=(arr,pid)=>(arr||[]).filter(x=>x===pid).length;
+
   return (
     <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"18px 18px 0 0",width:"100%",maxWidth:480,maxHeight:"92vh",overflowY:"auto",padding:"18px 18px 32px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>{initial?"Editar Partida":"Nova Partida"}</span>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>{initial?.id?"Editar Partida":"Nova Partida"}</span>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* Basic fields */}
           {[
             {k:"opponent",label:"Adversário",placeholder:"Ex: Flamengo",required:true},
             {k:"date",    label:"Data",placeholder:"",type:"date",required:true},
@@ -4103,19 +4117,93 @@ function MatchModal({initial,onSave,onClose}) {
             </div>
           ))}
 
-          {/* Result — only shown on existing matches or after date has passed */}
-          <div style={{display:"flex",flexDirection:"column",gap:6,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.06)"}}>
+          {/* Score */}
+          <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(255,255,255,0.07)"}}>
             <span style={LT}>Resultado (após a partida)</span>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <input value={form.goalsFor||""} onChange={e=>set("goalsFor",e.target.value.replace(/\D/,""))} placeholder="Gols"
-                style={{...IS,width:70,textAlign:"center",fontSize:20}} inputMode="numeric"
-                onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
-              <span style={{color:"#9CA3AF",fontFamily:"'Bebas Neue',sans-serif",fontSize:24}}>×</span>
-              <input value={form.goalsAgainst||""} onChange={e=>set("goalsAgainst",e.target.value.replace(/\D/,""))} placeholder="Gols"
-                style={{...IS,width:70,textAlign:"center",fontSize:20}} inputMode="numeric"
-                onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
-              <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>seu time × adversário</span>
+            <div style={{display:"flex",gap:8,alignItems:"center",justifyContent:"center"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700}}>SEU TIME</span>
+                <input value={form.goalsFor||""} onChange={e=>set("goalsFor",e.target.value.replace(/\D/,""))} placeholder="0"
+                  style={{...IS,width:72,textAlign:"center",fontSize:28,fontFamily:"'Bebas Neue',sans-serif",padding:"8px 0"}} inputMode="numeric"
+                  onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+              </div>
+              <span style={{color:"#9CA3AF",fontFamily:"'Bebas Neue',sans-serif",fontSize:30,paddingTop:16}}>×</span>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700}}>{form.opponent||"ADVERSÁRIO"}</span>
+                <input value={form.goalsAgainst||""} onChange={e=>set("goalsAgainst",e.target.value.replace(/\D/,""))} placeholder="0"
+                  style={{...IS,width:72,textAlign:"center",fontSize:28,fontFamily:"'Bebas Neue',sans-serif",padding:"8px 0"}} inputMode="numeric"
+                  onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+              </div>
             </div>
+
+            {/* Scorers — available when goalsFor > 0 */}
+            {hasResult&&parseInt(form.goalsFor||0)>0&&(players||[]).length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:6,borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
+                <span style={{...LT,fontSize:9}}>⚽ Gols marcados por</span>
+                {(players||[]).map(p=>{
+                  const cnt=countInArr(form.scorers,String(p.id));
+                  return (
+                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8}}>
+                      <PlayerAvatar player={p} size={28}/>
+                      <span style={{flex:1,color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>{p.name} <span style={{color:"#4B5563",fontSize:10}}>#{p.number}</span></span>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button onClick={()=>set("scorers",adjustCount(form.scorers,String(p.id),-1))} disabled={cnt===0}
+                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:cnt===0?"#374151":"#9CA3AF",cursor:cnt===0?"default":"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:cnt>0?"#34d399":"#6B7280",minWidth:16,textAlign:"center"}}>{cnt}</span>
+                        <button onClick={()=>set("scorers",adjustCount(form.scorers,String(p.id),1))}
+                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Assisters — all players */}
+            {hasResult&&parseInt(form.goalsFor||0)>0&&(players||[]).length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:6,borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
+                <span style={{...LT,fontSize:9}}>🎯 Assistências por</span>
+                {(players||[]).map(p=>{
+                  const cnt=countInArr(form.assisters,String(p.id));
+                  return (
+                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8}}>
+                      <PlayerAvatar player={p} size={28}/>
+                      <span style={{flex:1,color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>{p.name} <span style={{color:"#4B5563",fontSize:10}}>#{p.number}</span></span>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button onClick={()=>set("assisters",adjustCount(form.assisters,String(p.id),-1))} disabled={cnt===0}
+                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:cnt===0?"#374151":"#9CA3AF",cursor:cnt===0?"default":"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:cnt>0?"#f59e0b":"#6B7280",minWidth:16,textAlign:"center"}}>{cnt}</span>
+                        <button onClick={()=>set("assisters",adjustCount(form.assisters,String(p.id),1))}
+                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* GK goals conceded */}
+            {hasResult&&parseInt(form.goalsAgainst||0)>0&&goalkeepers.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:6,borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
+                <span style={{...LT,fontSize:9}}>🧤 Gols sofridos por goleiro</span>
+                {goalkeepers.map(p=>{
+                  const cnt=(form.gkGoalsConceded||{})[String(p.id)]||0;
+                  return (
+                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8}}>
+                      <PlayerAvatar player={p} size={28}/>
+                      <span style={{flex:1,color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>{p.name} <span style={{color:"#4B5563",fontSize:10}}>#{p.number}</span></span>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[String(p.id)]:Math.max(0,cnt-1)})} disabled={cnt===0}
+                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:cnt===0?"#374151":"#9CA3AF",cursor:cnt===0?"default":"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:cnt>0?"#f87171":"#6B7280",minWidth:16,textAlign:"center"}}>{cnt}</span>
+                        <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[String(p.id)]:cnt+1})}
+                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <button onClick={()=>valid&&onSave(form)} disabled={!valid} style={{
@@ -4137,36 +4225,42 @@ function StatsView({team,stats,onUpdateStat}) {
       <Ico.Users/><span>Cadastre jogadores no time para registrar estatísticas.</span>
     </div>
   );
+  // Sort: GKs last, then by number
+  const sorted=[...players].sort((a,b)=>{
+    if(a.position==="Goleiro"&&b.position!=="Goleiro")return 1;
+    if(a.position!=="Goleiro"&&b.position==="Goleiro")return -1;
+    return (parseInt(a.number)||0)-(parseInt(b.number)||0);
+  });
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {players.map(p=>{
-        const st=stats[String(p.id)]||{goals:0,assists:0,cleanSheets:0};
+      {sorted.map(p=>{
+        const st=stats[String(p.id)]||{goals:0,assists:0,goalsAgainst:0};
         const isGK=p.position==="Goleiro";
-        const statItems=isGK
-          ? [{key:"cleanSheets",label:"Jogos sem tomar gol",emoji:"🧤",color:"#60a5fa"}]
-          : [
-              {key:"goals",   label:"Gols",       emoji:"⚽",color:"#34d399"},
-              {key:"assists", label:"Assistências",emoji:"🎯",color:"#f59e0b"},
-            ];
+        // All players: goals + assists. GKs additionally: goals conceded.
+        const statItems=[
+          {key:"goals",        label:"Gols",        emoji:"⚽",color:"#34d399"},
+          {key:"assists",      label:"Assistências", emoji:"🎯",color:"#f59e0b"},
+          ...(isGK?[{key:"goalsAgainst",label:"Gols sofridos",emoji:"🧤",color:"#f87171"}]:[]),
+        ];
         return (
-          <div key={p.id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:12}}>
-            <PlayerAvatar player={p} size={46} team={team}/>
+          <div key={p.id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+            <PlayerAvatar player={p} size={44} team={team}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
               <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{p.position} · #{p.number}</div>
             </div>
-            <div style={{display:"flex",gap:10}}>
+            <div style={{display:"flex",gap:8}}>
               {statItems.map(({key,label,emoji,color})=>(
-                <div key={key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                  <span title={label} style={{fontSize:16}}>{emoji}</span>
-                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <div key={key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                  <span title={label} style={{fontSize:14}}>{emoji}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:3}}>
                     <button onClick={()=>onUpdateStat(p.id,key,Math.max(0,(st[key]||0)-1))}
-                      style={{width:22,height:22,borderRadius:6,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontFamily:"monospace",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>−</button>
-                    <span style={{color,fontFamily:"'Bebas Neue',sans-serif",fontSize:20,minWidth:24,textAlign:"center"}}>{st[key]||0}</span>
+                      style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                    <span style={{color,fontFamily:"'Bebas Neue',sans-serif",fontSize:18,minWidth:20,textAlign:"center"}}>{st[key]||0}</span>
                     <button onClick={()=>onUpdateStat(p.id,key,(st[key]||0)+1)}
-                      style={{width:22,height:22,borderRadius:6,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontFamily:"monospace",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>+</button>
+                      style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
                   </div>
-                  <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700,textTransform:"uppercase"}}>{label}</span>
+                  <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:7,fontWeight:700,textTransform:"uppercase",textAlign:"center",maxWidth:44,lineHeight:1.2}}>{label}</span>
                 </div>
               ))}
             </div>
@@ -4197,11 +4291,50 @@ function OfficeView({team,uid}) {
 
   const saveMatch=async(form)=>{
     const match={...form,id:form.id||genUUID(),teamId:team.id};
+
+    // ── Recompute player stats from all matches (source of truth) ──────────
+    // This ensures manual +/- edits in StatsView are superseded by match data
+    // as a "base", and the manual tab allows adding stats not tied to any match.
     setMatches(prev=>{
-      if(!prev)return[match];
-      const idx=prev.findIndex(m=>m.id===match.id);
-      return idx>=0?prev.map(m=>m.id===match.id?match:m):[...prev,match];
+      const prevList=prev||[];
+      const idx=prevList.findIndex(m=>m.id===match.id);
+      const nextList=idx>=0?prevList.map(m=>m.id===match.id?match:m):[...prevList,match];
+
+      // Aggregate stats from all (updated) matches
+      const agg={};
+      const ensure=(pid)=>{ if(!agg[pid])agg[pid]={goals:0,assists:0,goalsAgainst:0,playerId:pid}; };
+      for(const m of nextList){
+        (m.scorers||[]).forEach(pid=>{ ensure(pid); agg[pid].goals++; });
+        (m.assisters||[]).forEach(pid=>{ ensure(pid); agg[pid].assists++; });
+        Object.entries(m.gkGoalsConceded||{}).forEach(([pid,n])=>{ ensure(pid); agg[pid].goalsAgainst+=(parseInt(n)||0); });
+      }
+
+      // Merge with any stats that only exist in the manual tab (extra goals/assists
+      // the user added directly, which have no match reference). We preserve the
+      // "excess" — whatever the user manually added ABOVE what matches account for.
+      setStats(prev=>{
+        const next={...prev};
+        for(const [pid,matchSt] of Object.entries(agg)){
+          const manual=prev[pid]||{goals:0,assists:0,goalsAgainst:0};
+          next[pid]={
+            playerId:pid,
+            goals:     Math.max(matchSt.goals,     manual.goals     ||0),
+            assists:   Math.max(matchSt.assists,    manual.assists   ||0),
+            goalsAgainst:Math.max(matchSt.goalsAgainst,manual.goalsAgainst||0),
+          };
+        }
+        // Persist each modified stat
+        if(uid){
+          for(const st of Object.values(next)){
+            savePlayerStatsCloud(uid,team.id,st);
+          }
+        }
+        return next;
+      });
+
+      return nextList;
     });
+
     setShowMatchModal(false);setEditingMatch(null);
     if(uid) saveMatchCloud(uid,team.id,match);
   };
@@ -4214,7 +4347,7 @@ function OfficeView({team,uid}) {
 
   const updateStat=async(playerId,key,value)=>{
     const pid=String(playerId);
-    const newSt={...( stats[pid]||{goals:0,assists:0,cleanSheets:0}),[key]:value,playerId:pid};
+    const newSt={...(stats[pid]||{goals:0,assists:0,goalsAgainst:0}),[key]:value,playerId:pid};
     setStats(prev=>({...prev,[pid]:newSt}));
     if(uid) savePlayerStatsCloud(uid,team.id,newSt);
   };
@@ -4315,6 +4448,39 @@ function OfficeView({team,uid}) {
                       {m.location&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.MapPin/>{m.location}</span>}
                     </div>
                     {m.notes&&<div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,borderTop:"1px solid rgba(255,255,255,0.05)",paddingTop:6}}>{m.notes}</div>}
+
+                    {/* Scorer/assister summary */}
+                    {(()=>{
+                      const playerById=Object.fromEntries((team.players||[]).map(p=>[String(p.id),p]));
+                      const scorerIds=[...new Set(m.scorers||[])];
+                      const assisterIds=[...new Set(m.assisters||[])];
+                      const gkEntries=Object.entries(m.gkGoalsConceded||{}).filter(([,n])=>parseInt(n)>0);
+                      if(!scorerIds.length&&!assisterIds.length&&!gkEntries.length)return null;
+                      return (
+                        <div style={{display:"flex",flexDirection:"column",gap:5,borderTop:"1px solid rgba(255,255,255,0.05)",paddingTop:8}}>
+                          {scorerIds.map(pid=>{
+                            const p=playerById[pid];if(!p)return null;
+                            const cnt=(m.scorers||[]).filter(x=>x===pid).length;
+                            return <div key={pid} style={{display:"flex",alignItems:"center",gap:6,fontFamily:"'DM Sans',sans-serif",fontSize:11}}>
+                              <span>⚽</span><span style={{color:"#34d399",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>× {cnt}</span>
+                            </div>;
+                          })}
+                          {assisterIds.map(pid=>{
+                            const p=playerById[pid];if(!p)return null;
+                            const cnt=(m.assisters||[]).filter(x=>x===pid).length;
+                            return <div key={pid} style={{display:"flex",alignItems:"center",gap:6,fontFamily:"'DM Sans',sans-serif",fontSize:11}}>
+                              <span>🎯</span><span style={{color:"#f59e0b",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>× {cnt}</span>
+                            </div>;
+                          })}
+                          {gkEntries.map(([pid,n])=>{
+                            const p=playerById[pid];if(!p)return null;
+                            return <div key={pid} style={{display:"flex",alignItems:"center",gap:6,fontFamily:"'DM Sans',sans-serif",fontSize:11}}>
+                              <span>🧤</span><span style={{color:"#f87171",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>{n} gol{parseInt(n)!==1?"s":""} sofrido{parseInt(n)!==1?"s":""}</span>
+                            </div>;
+                          })}
+                        </div>
+                      );
+                    })()}
                     {confirmDelMatch===m.id&&(
                       <div style={{display:"flex",gap:8,alignItems:"center",background:"rgba(239,68,68,0.08)",borderRadius:8,padding:"8px 10px"}}>
                         <span style={{flex:1,color:"#f87171",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Excluir esta partida?</span>
@@ -4334,7 +4500,7 @@ function OfficeView({team,uid}) {
         {officeTab==="stats"&&<StatsView team={team} stats={stats} onUpdateStat={updateStat}/>}
       </div>
 
-      {showMatchModal&&<MatchModal initial={editingMatch} onSave={saveMatch} onClose={()=>{setShowMatchModal(false);setEditingMatch(null);}}/>}
+      {showMatchModal&&<MatchModal initial={editingMatch} players={team.players||[]} onSave={saveMatch} onClose={()=>{setShowMatchModal(false);setEditingMatch(null);}}/>}
     </div>
   );
 }
