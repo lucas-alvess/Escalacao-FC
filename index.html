@@ -4075,14 +4075,23 @@ function BottomNav({active,onChange}) {
 }
 
 // ─── Match Modal (add/edit a calendar event) ──────────────────────────────────
+const MATCH_TYPES=[
+  {id:"friendly",  label:"Amistoso",    emoji:"🤝"},
+  {id:"festival",  label:"Festival",    emoji:"🎪"},
+  {id:"tournament",label:"Torneio",     emoji:"🏆"},
+  {id:"league",    label:"Campeonato",  emoji:"🥇"},
+];
+const MATCH_TYPES_WITH_NAME=["festival","tournament","league"];
+
 function MatchModal({initial,players,onSave,onClose}) {
-  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{}};
+  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{},matchType:"friendly",competitionName:""};
   const [form,setForm]=useState(()=>initial?{...empty,...initial}:empty);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.opponent.trim()&&form.date;
   const hasResult=form.goalsFor!==""&&form.goalsFor!==undefined&&form.goalsFor!==null;
   const outfield=(players||[]).filter(p=>p.position!=="Goleiro");
   const goalkeepers=(players||[]).filter(p=>p.position==="Goleiro");
+  const needsCompName=MATCH_TYPES_WITH_NAME.includes(form.matchType||"friendly");
 
   // Increment/decrement a player's count in an array-of-ids (allows repeats)
   const adjustCount=(arr,pid,delta)=>{
@@ -4101,6 +4110,36 @@ function MatchModal({initial,players,onSave,onClose}) {
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+          {/* Match type selector */}
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <span style={LT}>Tipo de jogo</span>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+              {MATCH_TYPES.map(t=>(
+                <button key={t.id} onClick={()=>set("matchType",t.id)} style={{
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"8px 4px",
+                  borderRadius:10,border:"2px solid",cursor:"pointer",
+                  borderColor:form.matchType===t.id?"#34d399":"rgba(255,255,255,0.08)",
+                  background:form.matchType===t.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:18}}>{t.emoji}</span>
+                  <span style={{color:form.matchType===t.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Competition name — only for festival/tournament/league */}
+          {needsCompName&&(
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={LT}>Nome do {MATCH_TYPES.find(t=>t.id===form.matchType)?.label}</label>
+              <input value={form.competitionName||""} onChange={e=>set("competitionName",e.target.value)}
+                placeholder={`Ex: Copa São Paulo 2025`} style={IS}
+                onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+            </div>
+          )}
+
           {/* Basic fields */}
           {[
             {k:"opponent",label:"Adversário",placeholder:"Ex: Flamengo",required:true},
@@ -4271,6 +4310,241 @@ function StatsView({team,stats,onUpdateStat}) {
   );
 }
 
+// ─── Stats Export Modal ───────────────────────────────────────────────────────
+function StatsExportModal({team,matches,stats,onClose}) {
+  const [statType,setStatType]=useState("goals"); // goals | assists | goalsAgainst
+  const [filterType,setFilterType]=useState("all"); // all | year | period | matchType | competition
+  const [filterYear,setFilterYear]=useState(new Date().getFullYear().toString());
+  const [filterDateFrom,setFilterDateFrom]=useState("");
+  const [filterDateTo,setFilterDateTo]=useState("");
+  const [filterMatchType,setFilterMatchType]=useState("friendly");
+  const [filterCompetition,setFilterCompetition]=useState("");
+  const [copied,setCopied]=useState(false);
+
+  const players=team.players||[];
+  const playerById=Object.fromEntries(players.map(p=>[String(p.id),p]));
+
+  // All unique competition names from matches
+  const competitionNames=useMemo(()=>[...new Set(
+    (matches||[]).filter(m=>m.competitionName).map(m=>m.competitionName.trim())
+  )].sort(),[matches]);
+
+  // Years with matches
+  const matchYears=useMemo(()=>[...new Set(
+    (matches||[]).filter(m=>m.date).map(m=>m.date.slice(0,4))
+  )].sort((a,b)=>b-a),[matches]);
+
+  // Filter matches based on current filter settings
+  const filteredMatches=useMemo(()=>{
+    let ms=matches||[];
+    if(filterType==="year")
+      ms=ms.filter(m=>(m.date||"").startsWith(filterYear));
+    else if(filterType==="period")
+      ms=ms.filter(m=>(!filterDateFrom||m.date>=filterDateFrom)&&(!filterDateTo||m.date<=filterDateTo));
+    else if(filterType==="matchType")
+      ms=ms.filter(m=>(m.matchType||"friendly")===filterMatchType);
+    else if(filterType==="competition")
+      ms=ms.filter(m=>m.competitionName&&m.competitionName.trim()===filterCompetition);
+    return ms;
+  },[matches,filterType,filterYear,filterDateFrom,filterDateTo,filterMatchType,filterCompetition]);
+
+  // Compute aggregated stat from filtered matches
+  const aggregated=useMemo(()=>{
+    const agg={};
+    const ensure=(pid)=>{ if(!agg[pid])agg[pid]={goals:0,assists:0,goalsAgainst:0}; };
+    for(const m of filteredMatches){
+      (m.scorers||[]).forEach(pid=>{ ensure(pid); agg[pid].goals++; });
+      (m.assisters||[]).forEach(pid=>{ ensure(pid); agg[pid].assists++; });
+      Object.entries(m.gkGoalsConceded||{}).forEach(([pid,n])=>{ ensure(pid); agg[pid].goalsAgainst+=(parseInt(n)||0); });
+    }
+    // If no filter (showing totals), merge with manually-entered stats
+    if(filterType==="all"){
+      for(const [pid,st] of Object.entries(stats||{})){
+        ensure(pid);
+        agg[pid].goals=Math.max(agg[pid].goals,st.goals||0);
+        agg[pid].assists=Math.max(agg[pid].assists,st.assists||0);
+        agg[pid].goalsAgainst=Math.max(agg[pid].goalsAgainst,st.goalsAgainst||0);
+      }
+    }
+    return agg;
+  },[filteredMatches,filterType,stats]);
+
+  // Build sorted ranking for the chosen stat
+  const ranking=useMemo(()=>{
+    return players
+      .map(p=>({ p, value:(aggregated[String(p.id)]||{})[statType]||0 }))
+      .filter(({value})=>value>0)
+      .sort((a,b)=>b.value-a.value);
+  },[players,aggregated,statType]);
+
+  const STAT_META={
+    goals:      {label:"Gols",          emoji:"⚽"},
+    assists:    {label:"Assistências",   emoji:"🎯"},
+    goalsAgainst:{label:"Gols Sofridos",emoji:"🧤"},
+  };
+
+  // Build the copyable text
+  const buildText=()=>{
+    const sm=STAT_META[statType];
+    const filterDesc=(()=>{
+      if(filterType==="year")return `Ano ${filterYear}`;
+      if(filterType==="period")return `${filterDateFrom||"..."} até ${filterDateTo||"..."}`;
+      if(filterType==="matchType"){const mt=MATCH_TYPES.find(t=>t.id===filterMatchType);return mt?`${mt.emoji} ${mt.label}`:"";}
+      if(filterType==="competition")return `🏆 ${filterCompetition}`;
+      return "Geral";
+    })();
+    const header=[`${sm.emoji} RANKING — ${sm.label.toUpperCase()}`,`Time: ${team.name}`,`Filtro: ${filterDesc}`,`${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}`,`─────────────────────`].join("\n");
+    const lines=ranking.map(({p,value},i)=>`${i+1}º ${p.name} (${p.position}) — ${value} ${sm.label.toLowerCase()}`);
+    return lines.length?[header,...lines].join("\n"):[header,"(sem dados para este filtro)"].join("\n");
+  };
+
+  const handleCopy=()=>{
+    const text=buildText();
+    if(navigator.clipboard){
+      navigator.clipboard.writeText(text).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);});
+    } else {
+      const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);
+      setCopied(true);setTimeout(()=>setCopied(false),2000);
+    }
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1300,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"18px 18px 0 0",width:"100%",maxWidth:480,maxHeight:"92vh",overflowY:"auto",padding:"18px 18px 32px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>Exportar Estatísticas</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
+        </div>
+
+        {/* Stat type */}
+        <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+          <span style={LT}>Estatística</span>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+            {Object.entries(STAT_META).map(([key,{label,emoji}])=>(
+              <button key={key} onClick={()=>setStatType(key)} style={{
+                padding:"9px 4px",borderRadius:10,border:"2px solid",cursor:"pointer",
+                borderColor:statType===key?"#34d399":"rgba(255,255,255,0.08)",
+                background:statType===key?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"all 0.15s"
+              }}>
+                <span style={{fontSize:16}}>{emoji}</span>
+                <span style={{color:statType===key?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Filter type */}
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+          <span style={LT}>Filtrar por</span>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+            {[
+              {id:"all",label:"Geral",emoji:"📊"},
+              {id:"year",label:"Ano",emoji:"📅"},
+              {id:"period",label:"Período",emoji:"🗓"},
+              {id:"matchType",label:"Tipo",emoji:"🏟"},
+              {id:"competition",label:"Competição",emoji:"🏆"},
+            ].map(f=>(
+              <button key={f.id} onClick={()=>setFilterType(f.id)} style={{
+                padding:"8px 4px",borderRadius:10,border:"2px solid",cursor:"pointer",
+                borderColor:filterType===f.id?"#34d399":"rgba(255,255,255,0.08)",
+                background:filterType===f.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"all 0.15s"
+              }}>
+                <span style={{fontSize:14}}>{f.emoji}</span>
+                <span style={{color:filterType===f.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{f.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Filter sub-controls */}
+          {filterType==="year"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={LT}>Ano</label>
+              <select value={filterYear} onChange={e=>setFilterYear(e.target.value)}
+                style={{...IS,colorScheme:"dark"}}>
+                {matchYears.length?matchYears.map(y=><option key={y} value={y}>{y}</option>):<option value={filterYear}>{filterYear}</option>}
+              </select>
+            </div>
+          )}
+          {filterType==="period"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <label style={LT}>De</label>
+                <input type="date" value={filterDateFrom} onChange={e=>setFilterDateFrom(e.target.value)} style={{...IS,colorScheme:"dark"}}
+                  onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <label style={LT}>Até</label>
+                <input type="date" value={filterDateTo} onChange={e=>setFilterDateTo(e.target.value)} style={{...IS,colorScheme:"dark"}}
+                  onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+              </div>
+            </div>
+          )}
+          {filterType==="matchType"&&(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+              {MATCH_TYPES.map(t=>(
+                <button key={t.id} onClick={()=>setFilterMatchType(t.id)} style={{
+                  padding:"7px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",
+                  borderColor:filterMatchType===t.id?"#34d399":"rgba(255,255,255,0.08)",
+                  background:filterMatchType===t.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:14}}>{t.emoji}</span>
+                  <span style={{color:filterMatchType===t.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:800,textTransform:"uppercase"}}>{t.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {filterType==="competition"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={LT}>Competição</label>
+              {competitionNames.length?(
+                <select value={filterCompetition} onChange={e=>setFilterCompetition(e.target.value)} style={{...IS,colorScheme:"dark"}}>
+                  <option value="">Selecione...</option>
+                  {competitionNames.map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+              ):(
+                <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12,padding:"8px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9}}>
+                  Nenhuma competição cadastrada ainda.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Preview */}
+        <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"12px 14px",marginBottom:14,minHeight:80}}>
+          <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>
+            {STAT_META[statType].emoji} {STAT_META[statType].label} · {filteredMatches.length} partida{filteredMatches.length!==1?"s":""}
+          </div>
+          {ranking.length===0?(
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12,textAlign:"center",padding:"12px 0"}}>Sem dados para este filtro</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {ranking.map(({p,value},i)=>(
+                <div key={p.id} style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:i<3?"#facc15":"#4B5563",minWidth:22}}>{i+1}º</span>
+                  <PlayerAvatar player={p} size={28} team={team}/>
+                  <span style={{flex:1,color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#34d399"}}>{value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <button onClick={handleCopy} style={{
+          width:"100%",padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",
+          background:copied?"rgba(52,211,153,0.2)":"linear-gradient(135deg,#16a34a,#34d399)",
+          color:copied?"#34d399":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
+          transition:"all 0.2s"
+        }}>{copied?"✓ COPIADO!":"📋 COPIAR LISTA"}</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Office View ──────────────────────────────────────────────────────────────
 function OfficeView({team,uid}) {
   const [officeTab,setOfficeTab]=useState("calendar"); // "calendar" | "stats"
@@ -4279,6 +4553,7 @@ function OfficeView({team,uid}) {
   const [showMatchModal,setShowMatchModal]=useState(false);
   const [editingMatch,setEditingMatch]=useState(null);
   const [confirmDelMatch,setConfirmDelMatch]=useState(null);
+  const [showExportStats,setShowExportStats]=useState(false);
   const [c1,c2]=SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length];
 
   // Load matches + stats on mount / team change
@@ -4430,11 +4705,15 @@ function OfficeView({team,uid}) {
                     borderRadius:14,padding:"12px 14px",display:"flex",flexDirection:"column",gap:8
                   }}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                         {res
                           ?<span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:res.color,letterSpacing:1}}>{res.label}</span>
                           :<span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,color:isPast?"#6B7280":"#34d399",letterSpacing:1}}>{isPast?"—":"EM BREVE"}</span>}
                         <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>vs {m.opponent}</span>
+                        {(()=>{
+                          const mt=MATCH_TYPES.find(t=>t.id===(m.matchType||"friendly"));
+                          return mt&&<span style={{fontSize:10,fontFamily:"'DM Sans',sans-serif",fontWeight:700,color:"#6B7280",background:"rgba(255,255,255,0.05)",borderRadius:5,padding:"1px 6px"}}>{mt.emoji} {mt.label}{m.competitionName?` · ${m.competitionName}`:""}</span>;
+                        })()}
                       </div>
                       <div style={{display:"flex",gap:6}}>
                         <button onClick={()=>{setEditingMatch(m);setShowMatchModal(true);}} aria-label="Editar partida"
@@ -4497,10 +4776,21 @@ function OfficeView({team,uid}) {
         )}
 
         {/* ── Stats tab ── */}
-        {officeTab==="stats"&&<StatsView team={team} stats={stats} onUpdateStat={updateStat}/>}
+        {officeTab==="stats"&&(
+          <>
+          <button onClick={()=>setShowExportStats(true)} style={{
+            width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+            padding:"10px 0",borderRadius:12,border:"1px solid rgba(52,211,153,0.25)",cursor:"pointer",marginBottom:12,
+            background:"rgba(52,211,153,0.07)",color:"#34d399",
+            fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1
+          }}>📋 EXPORTAR / FILTRAR ESTATÍSTICAS</button>
+          <StatsView team={team} stats={stats} onUpdateStat={updateStat}/>
+          </>
+        )}
       </div>
 
       {showMatchModal&&<MatchModal initial={editingMatch} players={team.players||[]} onSave={saveMatch} onClose={()=>{setShowMatchModal(false);setEditingMatch(null);}}/>}
+      {showExportStats&&<StatsExportModal team={team} matches={matches||[]} stats={stats} onClose={()=>setShowExportStats(false)}/>}
     </div>
   );
 }
