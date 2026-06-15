@@ -4262,7 +4262,7 @@ function MatchModal({initial,players,onSave,onClose}) {
                 </div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                {(players||[]).map(p=>{
+                {[...(players||[])].sort((a,b)=>(parseInt(a.number)||0)-(parseInt(b.number)||0)).map(p=>{
                   const pid=String(p.id);
                   const present=(form.presentPlayerIds||[]).includes(pid);
                   return (
