@@ -23,6 +23,7 @@
     #loading{position:fixed;inset:0;background:#050c0a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;}
     .spin{width:40px;height:40px;border:3px solid rgba(52,211,153,0.3);border-top-color:#34d399;border-radius:50%;animation:spin 0.8s linear infinite;}
     .load-text{color:#34d399;font-family:'DM Sans',sans-serif;font-size:14px;letter-spacing:3px;font-weight:700;}
+    .theme-light{filter:none;}@keyframes onboardIn{from{opacity:0;transform:scale(0.94);}to{opacity:1;transform:scale(1);}}
   </style>
 </head>
 <body>
@@ -1228,8 +1229,13 @@ const StarRating = ({value,onChange,readonly,size=14}) => (
 // "syncing" → actively writing to Firestore
 // "synced"  → just finished successfully (auto-hides after 2s)
 // "error"   → last save attempt failed
-function SyncIndicator({status, onRetry}) {
-  if (status === "idle") return null;
+function SyncIndicator({status, onRetry, lastSyncedAt}) {
+  if (status === "idle") {
+    if (!lastSyncedAt) return null;
+    const secs=Math.round((Date.now()-lastSyncedAt)/1000);
+    const label=secs<60?"Salvo agora":secs<3600?`Salvo há ${Math.floor(secs/60)}min`:`Salvo há ${Math.floor(secs/3600)}h`;
+    return <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 8px",borderRadius:20,background:"rgba(52,211,153,0.1)",color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>✓ {label}</div>;
+  }
   const CFG = {
     pending: { color:"#9CA3AF", label:"Alterações pendentes...", spin:false, icon:"●" },
     syncing: { color:"#34d399", label:"Sincronizando...",        spin:true,  icon:null },
@@ -1686,7 +1692,33 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
 }
 
 // ─── Home / Team List ─────────────────────────────────────────────────────────
-function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium}) {
+// ─── Onboarding (first-run wizard) ───────────────────────────────────────────
+const ONBOARD_STEPS=[
+  {emoji:"🏆",title:"Bem-vindo ao Escalação FC!",body:"Gerencie times, monte escalações e acompanhe estatísticas — tudo em um lugar.",cta:"Continuar"},
+  {emoji:"⚽",title:"Crie seu time",body:"Adicione jogadores, escolha uniformes e monte sua escalação na prancheta tática.",cta:"Continuar"},
+  {emoji:"📊",title:"Escritório do técnico",body:"Registre partidas, presenças, gols e assistências. Exporte estatísticas filtradas para compartilhar.",cta:"Começar!"},
+];
+function OnboardingModal({onDone}){
+  const [step,setStep]=useState(0);
+  const s=ONBOARD_STEPS[step];
+  const isLast=step===ONBOARD_STEPS.length-1;
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:9100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.88)",backdropFilter:"blur(8px)",padding:20}}>
+      <div style={{background:"#0d1f17",border:"1px solid rgba(52,211,153,0.25)",borderRadius:22,width:"100%",maxWidth:340,padding:"32px 22px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,textAlign:"center",animation:"onboardIn 0.3s ease",position:"relative"}}>
+        <div style={{display:"flex",gap:6,position:"absolute",top:16,left:"50%",transform:"translateX(-50%)"}}>
+          {ONBOARD_STEPS.map((_,i)=><div key={i} style={{width:i===step?20:6,height:6,borderRadius:3,background:i===step?"#34d399":"rgba(255,255,255,0.15)",transition:"all 0.3s"}}/>)}
+        </div>
+        <div style={{fontSize:52,marginTop:8}}>{s.emoji}</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:0.5}}>{s.title}</div>
+        <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,color:"#9CA3AF",lineHeight:1.6}}>{s.body}</div>
+        <button onClick={()=>isLast?onDone():setStep(v=>v+1)} style={{width:"100%",padding:"12px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,marginTop:6}}>{s.cta}</button>
+        {!isLast&&<button onClick={onDone} style={{background:"none",border:"none",color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12,cursor:"pointer",padding:4}}>Pular introdução</button>}
+      </div>
+    </div>
+  );
+}
+
+function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium,theme,onToggleTheme,lastSyncedAt}) {
   const [confirmDel,setConfirmDel]=useState(null);
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif"}}>
@@ -1714,13 +1746,13 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:"#fff",letterSpacing:2,lineHeight:1}}>ESCALAÇÃO FC</div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2,flexWrap:"wrap",rowGap:4}}>
               <span style={{color:"#4ade80",fontSize:12,fontWeight:700,letterSpacing:1}}>GERENCIE SEUS TIMES</span>
-              <SyncIndicator status={syncStatus} onRetry={onRetrySync}/>
+              <SyncIndicator status={syncStatus} onRetry={onRetrySync} lastSyncedAt={lastSyncedAt}/>
             </div>
           </div>
           {user&&(
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              {/* TEMPORARY DEV TOGGLE — remove once real Play Billing is wired up.
-                  Lets the team test free vs premium UI before the purchase flow exists. */}
+              <button onClick={onToggleTheme} title={theme==="dark"?"Modo claro":"Modo escuro"} style={{width:32,height:32,borderRadius:9,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{theme==="dark"?"☀️":"🌙"}</button>
+              {/* TEMPORARY DEV TOGGLE */}
               <button onClick={onTogglePremium} title="Alternar plano (modo de teste)" style={{
                 display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,cursor:"pointer",
                 border:isPremium?"1px solid rgba(250,204,21,0.4)":"1px solid rgba(255,255,255,0.1)",
@@ -4985,6 +5017,9 @@ function App() {
   const [user, setUser] = useState(null);
   const [isPremium, setIsPremium] = useState(false);
   const [navSection, setNavSection] = useState("home"); // "home" | "tactic" | "office"
+  const [theme, setTheme] = useState(() => { try{return localStorage.getItem("esc_fc_theme")||"dark";}catch(e){return "dark";} });
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [migrating, setMigrating] = useState(false);
@@ -5011,6 +5046,7 @@ function App() {
     if (!success) { setSyncStatus("error"); return; }
     if (pendingOpsRef.current === 0) {
       setSyncStatus("synced");
+      setLastSyncedAt(Date.now());
       clearTimeout(syncedTimerRef.current);
       syncedTimerRef.current = setTimeout(() => {
         setSyncStatus(s => s === "synced" ? "idle" : s);
@@ -5105,6 +5141,8 @@ function App() {
               console.warn("Background cloud sync failed, keeping local data:", e);
             });
           } else {
+            // No local cache — first login on this device
+            try{if(!localStorage.getItem("esc_fc_onboarded_v1"))setShowOnboarding(true);}catch(e){}
             // No local cache (first login on this device) — nothing to show
             // yet, so we must wait for the cloud load (which may include a
             // one-time schema migration).
@@ -5356,12 +5394,15 @@ function App() {
 
   const activeTeam = teams.find(t => t.id === activeTeamId);
   const uid = user?.uid;
+  const handleToggleTheme=()=>{const n=theme==="dark"?"light":"dark";setTheme(n);try{localStorage.setItem("esc_fc_theme",n);}catch(e){}};
+  const handleOnboardingDone=()=>{try{localStorage.setItem("esc_fc_onboarded_v1","1");}catch(e){}setShowOnboarding(false);};
   // When a team is active, sections "tactic" and "office" are available.
   // If the user navigates to "home", keep activeTeamId so they can come back.
   const showNav = authState === "loggedIn" && loaded && !!activeTeam;
 
   return (
-    <div style={{minHeight:"100vh",background:"#050c0a"}}>
+    <div style={{minHeight:"100vh",background:theme==="light"?"#f0fdf4":"#050c0a"}}>
+      {showOnboarding&&<OnboardingModal onDone={handleOnboardingDone}/>}
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;900&family=Anton&family=Oswald:wght@400;700&family=Teko:wght@400;700&family=Russo+One&family=Archivo+Black&family=Squada+One&family=Black+Ops+One&family=Orbitron:wght@400;700&family=Staatliches&family=Bungee&display=swap" rel="stylesheet"/>
       <style>{`
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -5410,6 +5451,9 @@ function App() {
           onDeleteTeam={deleteTeam}
           onEditTeam={(t) => setEditingTeam(t)}
           onLogout={handleLogout}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          lastSyncedAt={lastSyncedAt}
         />
       )}
 
