@@ -23,7 +23,7 @@
       --hero-bg:linear-gradient(180deg,#0a1f12 0%,#050c0a 100%);
       --nav-bg:rgba(5,12,10,0.96); --card-bg:#0d1f17;
       --select-bg:#0d1f17; --scrollbar:rgba(255,255,255,0.15);
-      --shadow:rgba(0,0,0,0.6);
+      --shadow:rgba(0,0,0,0.6); --input-color:#ffffff;
     }
     /* ── Light theme ── */
     .theme-light {
@@ -39,7 +39,7 @@
     .theme-light select option { background:#ffffff; color:#0f172a; }
     .theme-light ::-webkit-scrollbar-thumb { background:var(--scrollbar); }
 
-    select option{background:var(--select-bg);}
+    select option{background:#0d1f17;color:#fff;}
     ::-webkit-scrollbar{width:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--scrollbar);border-radius:4px;}
     @keyframes spin{to{transform:rotate(360deg);}}
     @keyframes fadeUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
@@ -5249,8 +5249,18 @@ function App() {
         }
       });
     };
-    if (window.__firebase) { setup(); }
-    else { window.addEventListener("firebase-ready", setup, { once: true }); }
+    if (window.__firebase) {
+      setup();
+    } else {
+      // Module scripts fire early; poll in case the event already fired
+      // before this effect ran, then fall back to the event listener.
+      let retries = 0;
+      const poll = setInterval(() => {
+        if (window.__firebase) { clearInterval(poll); setup(); }
+        else if (++retries > 20) clearInterval(poll);
+      }, 150);
+      window.addEventListener("firebase-ready", () => { clearInterval(poll); setup(); }, { once: true });
+    }
     return () => { if (unsubAuthRef.current) unsubAuthRef.current(); };
   }, []);
 
