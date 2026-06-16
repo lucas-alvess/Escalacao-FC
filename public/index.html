@@ -5252,14 +5252,15 @@ function App() {
     if (window.__firebase) {
       setup();
     } else {
-      // Module scripts fire early; poll in case the event already fired
-      // before this effect ran, then fall back to the event listener.
-      let retries = 0;
-      const poll = setInterval(() => {
-        if (window.__firebase) { clearInterval(poll); setup(); }
-        else if (++retries > 20) clearInterval(poll);
+      // ES6 module scripts are deferred — the firebase-ready event may have
+      // already fired before this useEffect runs. Poll as a fallback so we
+      // never get stuck on the loading screen.
+      let _retries = 0;
+      const _poll = setInterval(() => {
+        if (window.__firebase) { clearInterval(_poll); setup(); }
+        else if (++_retries > 40) clearInterval(_poll); // give up after 6s
       }, 150);
-      window.addEventListener("firebase-ready", () => { clearInterval(poll); setup(); }, { once: true });
+      window.addEventListener("firebase-ready", () => { clearInterval(_poll); setup(); }, { once: true });
     }
     return () => { if (unsubAuthRef.current) unsubAuthRef.current(); };
   }, []);
