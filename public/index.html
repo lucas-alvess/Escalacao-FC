@@ -23,7 +23,6 @@
     #loading{position:fixed;inset:0;background:#050c0a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;}
     .spin{width:40px;height:40px;border:3px solid rgba(52,211,153,0.3);border-top-color:#34d399;border-radius:50%;animation:spin 0.8s linear infinite;}
     .load-text{color:#34d399;font-family:'DM Sans',sans-serif;font-size:14px;letter-spacing:3px;font-weight:700;}
-    .theme-light{filter:none;}@keyframes onboardIn{from{opacity:0;transform:scale(0.94);}to{opacity:1;transform:scale(1);}}
   </style>
 </head>
 <body>
@@ -1202,9 +1201,6 @@ const Ico = {
   Clock:   ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
   MapPin:  ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
   Trophy:  ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>,
-  Bell:    ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
-  Pdf:     ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg>,
-  Send:    ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1229,13 +1225,8 @@ const StarRating = ({value,onChange,readonly,size=14}) => (
 // "syncing" → actively writing to Firestore
 // "synced"  → just finished successfully (auto-hides after 2s)
 // "error"   → last save attempt failed
-function SyncIndicator({status, onRetry, lastSyncedAt}) {
-  if (status === "idle") {
-    if (!lastSyncedAt) return null;
-    const secs=Math.round((Date.now()-lastSyncedAt)/1000);
-    const label=secs<60?"Salvo agora":secs<3600?`Salvo há ${Math.floor(secs/60)}min`:`Salvo há ${Math.floor(secs/3600)}h`;
-    return <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 8px",borderRadius:20,background:"rgba(52,211,153,0.1)",color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>✓ {label}</div>;
-  }
+function SyncIndicator({status, onRetry}) {
+  if (status === "idle") return null;
   const CFG = {
     pending: { color:"#9CA3AF", label:"Alterações pendentes...", spin:false, icon:"●" },
     syncing: { color:"#34d399", label:"Sincronizando...",        spin:true,  icon:null },
@@ -1692,33 +1683,7 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
 }
 
 // ─── Home / Team List ─────────────────────────────────────────────────────────
-// ─── Onboarding (first-run wizard) ───────────────────────────────────────────
-const ONBOARD_STEPS=[
-  {emoji:"🏆",title:"Bem-vindo ao Escalação FC!",body:"Gerencie times, monte escalações e acompanhe estatísticas — tudo em um lugar.",cta:"Continuar"},
-  {emoji:"⚽",title:"Crie seu time",body:"Adicione jogadores, escolha uniformes e monte sua escalação na prancheta tática.",cta:"Continuar"},
-  {emoji:"📊",title:"Escritório do técnico",body:"Registre partidas, presenças, gols e assistências. Exporte estatísticas filtradas para compartilhar.",cta:"Começar!"},
-];
-function OnboardingModal({onDone}){
-  const [step,setStep]=useState(0);
-  const s=ONBOARD_STEPS[step];
-  const isLast=step===ONBOARD_STEPS.length-1;
-  return(
-    <div style={{position:"fixed",inset:0,zIndex:9100,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.88)",backdropFilter:"blur(8px)",padding:20}}>
-      <div style={{background:"#0d1f17",border:"1px solid rgba(52,211,153,0.25)",borderRadius:22,width:"100%",maxWidth:340,padding:"32px 22px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:14,textAlign:"center",animation:"onboardIn 0.3s ease",position:"relative"}}>
-        <div style={{display:"flex",gap:6,position:"absolute",top:16,left:"50%",transform:"translateX(-50%)"}}>
-          {ONBOARD_STEPS.map((_,i)=><div key={i} style={{width:i===step?20:6,height:6,borderRadius:3,background:i===step?"#34d399":"rgba(255,255,255,0.15)",transition:"all 0.3s"}}/>)}
-        </div>
-        <div style={{fontSize:52,marginTop:8}}>{s.emoji}</div>
-        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:0.5}}>{s.title}</div>
-        <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,color:"#9CA3AF",lineHeight:1.6}}>{s.body}</div>
-        <button onClick={()=>isLast?onDone():setStep(v=>v+1)} style={{width:"100%",padding:"12px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,marginTop:6}}>{s.cta}</button>
-        {!isLast&&<button onClick={onDone} style={{background:"none",border:"none",color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12,cursor:"pointer",padding:4}}>Pular introdução</button>}
-      </div>
-    </div>
-  );
-}
-
-function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium,theme,onToggleTheme,lastSyncedAt}) {
+function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium}) {
   const [confirmDel,setConfirmDel]=useState(null);
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif"}}>
@@ -1746,13 +1711,13 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:"#fff",letterSpacing:2,lineHeight:1}}>ESCALAÇÃO FC</div>
             <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2,flexWrap:"wrap",rowGap:4}}>
               <span style={{color:"#4ade80",fontSize:12,fontWeight:700,letterSpacing:1}}>GERENCIE SEUS TIMES</span>
-              <SyncIndicator status={syncStatus} onRetry={onRetrySync} lastSyncedAt={lastSyncedAt}/>
+              <SyncIndicator status={syncStatus} onRetry={onRetrySync}/>
             </div>
           </div>
           {user&&(
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              <button onClick={onToggleTheme} title={theme==="dark"?"Modo claro":"Modo escuro"} style={{width:32,height:32,borderRadius:9,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{theme==="dark"?"☀️":"🌙"}</button>
-              {/* TEMPORARY DEV TOGGLE */}
+              {/* TEMPORARY DEV TOGGLE — remove once real Play Billing is wired up.
+                  Lets the team test free vs premium UI before the purchase flow exists. */}
               <button onClick={onTogglePremium} title="Alternar plano (modo de teste)" style={{
                 display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,cursor:"pointer",
                 border:isPremium?"1px solid rgba(250,204,21,0.4)":"1px solid rgba(255,255,255,0.1)",
@@ -4392,48 +4357,6 @@ function StatsView({team,stats,onUpdateStat}) {
   );
 }
 
-// ─── Share utilities ─────────────────────────────────────────────────────────
-/** Shares text via Web Share API; falls back to clipboard copy. Returns true on success. */
-async function shareOrCopy(text, title="Escalação FC") {
-  if (navigator.share) {
-    try { await navigator.share({ title, text }); return "shared"; } catch(e) {}
-  }
-  try {
-    await (navigator.clipboard?.writeText(text) || Promise.reject());
-    return "copied";
-  } catch(e) {
-    const ta=document.createElement("textarea");ta.value=text;
-    document.body.appendChild(ta);ta.select();document.execCommand("copy");
-    document.body.removeChild(ta);
-    return "copied";
-  }
-}
-
-/** Builds a convocation message for a match. */
-function buildConvocationText(team, match, presentedPlayers) {
-  const mt = MATCH_TYPES.find(t=>t.id===(match.matchType||"friendly"));
-  const lines = [
-    `⚽ *CONVOCAÇÃO — ${team.name.toUpperCase()}*`,
-    ``,
-    `${mt?.emoji||"🤝"} *${mt?.label||"Amistoso"}*${match.competitionName?` · ${match.competitionName}`:""}`,
-    `🆚 *Adversário:* ${match.opponent}`,
-  ];
-  if (match.date) {
-    const [y,mo,d]=match.date.split("-");
-    lines.push(`📅 *Data:* ${d}/${mo}/${y}${match.time?` · ${match.time}`:""}`);
-  }
-  if (match.location) lines.push(`📍 *Local:* ${match.location}`);
-  if (match.notes)    lines.push(`📝 ${match.notes}`);
-  lines.push(``);
-  if (presentedPlayers && presentedPlayers.length > 0) {
-    lines.push(`👥 *Convocados (${presentedPlayers.length}):*`);
-    presentedPlayers.forEach((p,i)=>lines.push(`  ${i+1}. ${p.name} (#${p.number} · ${p.position})`));
-  }
-  lines.push(``);
-  lines.push(`_Enviado via Escalação FC_ ⚽`);
-  return lines.join("\n");
-}
-
 // ─── Stats Export Modal ───────────────────────────────────────────────────────
 function StatsExportModal({team,matches,stats,onClose}) {
   const [statType,setStatType]=useState("goals"); // goals | assists | goalsAgainst
@@ -4444,7 +4367,6 @@ function StatsExportModal({team,matches,stats,onClose}) {
   const [filterMatchType,setFilterMatchType]=useState("friendly");
   const [filterCompetition,setFilterCompetition]=useState("");
   const [copied,setCopied]=useState(false);
-  const [shared,setShared]=useState(false);
 
   const players=team.players||[];
   const playerById=Object.fromEntries(players.map(p=>[String(p.id),p]));
@@ -4534,39 +4456,6 @@ function StatsExportModal({team,matches,stats,onClose}) {
       const ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand("copy");document.body.removeChild(ta);
       setCopied(true);setTimeout(()=>setCopied(false),2000);
     }
-  };
-
-  const handleShare=async()=>{
-    const text=buildText();
-    const result=await shareOrCopy(text,"Estatísticas – "+team.name);
-    if(result==="shared"||result==="copied"){ setShared(true); setTimeout(()=>setShared(false),2000); }
-  };
-
-  const handlePdf=()=>{
-    const sm=STAT_META[statType];
-    const filterDesc=(()=>{
-      if(filterType==="year")return `Ano ${filterYear}`;
-      if(filterType==="period")return `${filterDateFrom||"..."} até ${filterDateTo||"..."}`;
-      if(filterType==="matchType"){const mt=MATCH_TYPES.find(t=>t.id===filterMatchType);return mt?`${mt.emoji} ${mt.label}`:"Tipo";}
-      if(filterType==="competition")return filterCompetition||"Competição";
-      return "Geral";
-    })();
-    const lines=ranking.map(({p,value},i)=>`<tr><td>${i+1}º</td><td>${p.name}</td><td>${p.position}</td><td>#${p.number}</td><td style="text-align:center;font-size:1.1em;color:#16a34a;font-weight:bold;">${value}</td></tr>`);
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Estatísticas – ${team.name}</title>
-    <style>body{font-family:Arial,sans-serif;padding:24px;max-width:600px;margin:auto;}
-    h1{font-size:1.4em;margin:0;}h2{font-size:1em;color:#555;font-weight:normal;margin:4px 0 18px;}
-    table{width:100%;border-collapse:collapse;}th,td{padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:left;}
-    th{background:#f3f4f6;font-size:.85em;text-transform:uppercase;letter-spacing:.05em;}
-    tr:last-child td{border:none;}@media print{button{display:none;}}</style></head>
-    <body>
-    <h1>${sm.emoji} Ranking — ${sm.label} · ${team.name}</h1>
-    <h2>Filtro: ${filterDesc} &nbsp;|&nbsp; ${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}</h2>
-    <table><thead><tr><th>#</th><th>Jogador</th><th>Posição</th><th>Camisa</th><th>${sm.label}</th></tr></thead>
-    <tbody>${lines.length?lines.join(""):"<tr><td colspan='5' style='text-align:center;color:#999;'>Sem dados</td></tr>"}</tbody></table>
-    <p style="margin-top:24px;color:#aaa;font-size:.75em;">Gerado em ${new Date().toLocaleDateString("pt-BR")} via Escalação FC</p>
-    <script>window.onload=()=>window.print()<\/script></body></html>`;
-    const w=window.open("","_blank","width=700,height=600");
-    if(w){w.document.write(html);w.document.close();}
   };
 
   return (
@@ -4695,27 +4584,12 @@ function StatsExportModal({team,matches,stats,onClose}) {
           )}
         </div>
 
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          <button onClick={handleCopy} style={{
-            width:"100%",padding:"12px 0",borderRadius:12,border:"none",cursor:"pointer",
-            background:copied?"rgba(52,211,153,0.2)":"linear-gradient(135deg,#16a34a,#34d399)",
-            color:copied?"#34d399":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,
-            display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s"
-          }}><Ico.List/>{copied?"✓ COPIADO!":"COPIAR LISTA"}</button>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <button onClick={handleShare} style={{
-              padding:"11px 0",borderRadius:12,border:"1px solid rgba(96,165,250,0.3)",cursor:"pointer",
-              background:shared?"rgba(96,165,250,0.2)":"rgba(96,165,250,0.08)",
-              color:shared?"#93c5fd":"#60a5fa",fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,
-              display:"flex",alignItems:"center",justifyContent:"center",gap:6,transition:"all 0.2s"
-            }}><Ico.Share/>{shared?"COMPARTILHADO!":"COMPARTILHAR"}</button>
-            <button onClick={handlePdf} style={{
-              padding:"11px 0",borderRadius:12,border:"1px solid rgba(251,191,36,0.3)",cursor:"pointer",
-              background:"rgba(251,191,36,0.08)",color:"#fbbf24",fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,
-              display:"flex",alignItems:"center",justifyContent:"center",gap:6
-            }}><Ico.Pdf/>ABRIR PDF</button>
-          </div>
-        </div>
+        <button onClick={handleCopy} style={{
+          width:"100%",padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",
+          background:copied?"rgba(52,211,153,0.2)":"linear-gradient(135deg,#16a34a,#34d399)",
+          color:copied?"#34d399":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
+          transition:"all 0.2s"
+        }}>{copied?"✓ COPIADO!":"📋 COPIAR LISTA"}</button>
       </div>
     </div>
   );
@@ -4730,25 +4604,7 @@ function OfficeView({team,uid}) {
   const [editingMatch,setEditingMatch]=useState(null);
   const [confirmDelMatch,setConfirmDelMatch]=useState(null);
   const [showExportStats,setShowExportStats]=useState(false);
-  const [toast,setToast]=useState(null);
   const [c1,c2]=SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length];
-
-  // Build match summary share text (result + details)
-  const buildMatchShareText=(team,m)=>{
-    const mt=MATCH_TYPES.find(t=>t.id===(m.matchType||"friendly"));
-    const playerById=Object.fromEntries((team.players||[]).map(p=>[String(p.id),p]));
-    const lines=[`⚽ *${team.name.toUpperCase()} ${m.goalsFor!==""&&m.goalsFor!==undefined?`${m.goalsFor}–${m.goalsAgainst} vs ${m.opponent}`:`vs ${m.opponent}`}*`,``];
-    if(mt) lines.push(`${mt.emoji} ${mt.label}${m.competitionName?` · ${m.competitionName}`:""}`);
-    if(m.date){const [y,mo,d]=m.date.split("-");lines.push(`📅 ${d}/${mo}/${y}${m.time?` · ${m.time}`:""}`);}
-    if(m.location) lines.push(`📍 ${m.location}`);
-    const scorerUniq=[...new Set(m.scorers||[])];
-    if(scorerUniq.length){lines.push(``);lines.push(`⚽ Gols: ${scorerUniq.map(pid=>{const p=playerById[pid];const cnt=(m.scorers||[]).filter(x=>x===pid).length;return p?`${p.name}${cnt>1?` (${cnt})`:""}`:null;}).filter(Boolean).join(", ")}`);}
-    const assUniq=[...new Set(m.assisters||[])];
-    if(assUniq.length){lines.push(`🎯 Assist.: ${assUniq.map(pid=>{const p=playerById[pid];const cnt=(m.assisters||[]).filter(x=>x===pid).length;return p?`${p.name}${cnt>1?` (${cnt})`:""}`:null;}).filter(Boolean).join(", ")}`);}
-    if(m.notes){lines.push(``);lines.push(`📝 ${m.notes}`);}
-    lines.push(``);lines.push(`_Escalação FC_ ⚽`);
-    return lines.join("\n");
-  };
 
   // Load matches + stats on mount / team change
   useEffect(()=>{
@@ -4912,24 +4768,6 @@ function OfficeView({team,uid}) {
                         })()}
                       </div>
                       <div style={{display:"flex",gap:6}}>
-                        {!isPast&&(m.presentPlayerIds||[]).length>0&&(
-                          <button onClick={async()=>{
-                            const presented=(team.players||[]).filter(p=>(m.presentPlayerIds||[]).includes(String(p.id)))
-                              .sort((a,b)=>(parseInt(a.number)||0)-(parseInt(b.number)||0));
-                            const text=buildConvocationText(team,m,presented);
-                            const r=await shareOrCopy(text,"Convocação – "+team.name);
-                            if(r)setToast(r==="shared"?"✅ Convocação compartilhada!":"✅ Convocação copiada!");
-                          }} aria-label="Compartilhar convocação" title="Compartilhar convocação"
-                          style={{background:"rgba(52,211,153,0.12)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"5px 8px",color:"#34d399",cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
-                            <Ico.Bell/> CONVOCAR
-                          </button>
-                        )}
-                        <button onClick={async()=>{
-                          const text=buildMatchShareText(team,m);
-                          const r=await shareOrCopy(text,"Partida – "+team.name);
-                          if(r)setToast(r==="shared"?"✅ Partida compartilhada!":"✅ Copiado!");
-                        }} aria-label="Compartilhar partida"
-                        style={{background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:8,padding:"5px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Share/></button>
                         <button onClick={()=>{setEditingMatch(m);setShowMatchModal(true);}} aria-label="Editar partida"
                           style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:8,padding:"5px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
                         <button onClick={()=>setConfirmDelMatch(m.id)} aria-label="Excluir partida"
@@ -5006,7 +4844,6 @@ function OfficeView({team,uid}) {
 
       {showMatchModal&&<MatchModal initial={editingMatch} players={team.players||[]} onSave={saveMatch} onClose={()=>{setShowMatchModal(false);setEditingMatch(null);}}/>}
       {showExportStats&&<StatsExportModal team={team} matches={matches||[]} stats={stats} onClose={()=>setShowExportStats(false)}/>}
-      {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
     </div>
   );
 }
@@ -5017,9 +4854,6 @@ function App() {
   const [user, setUser] = useState(null);
   const [isPremium, setIsPremium] = useState(false);
   const [navSection, setNavSection] = useState("home"); // "home" | "tactic" | "office"
-  const [theme, setTheme] = useState(() => { try{return localStorage.getItem("esc_fc_theme")||"dark";}catch(e){return "dark";} });
-  const [showOnboarding, setShowOnboarding] = useState(false);
-  const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [migrating, setMigrating] = useState(false);
@@ -5046,7 +4880,6 @@ function App() {
     if (!success) { setSyncStatus("error"); return; }
     if (pendingOpsRef.current === 0) {
       setSyncStatus("synced");
-      setLastSyncedAt(Date.now());
       clearTimeout(syncedTimerRef.current);
       syncedTimerRef.current = setTimeout(() => {
         setSyncStatus(s => s === "synced" ? "idle" : s);
@@ -5141,8 +4974,6 @@ function App() {
               console.warn("Background cloud sync failed, keeping local data:", e);
             });
           } else {
-            // No local cache — first login on this device
-            try{if(!localStorage.getItem("esc_fc_onboarded_v1"))setShowOnboarding(true);}catch(e){}
             // No local cache (first login on this device) — nothing to show
             // yet, so we must wait for the cloud load (which may include a
             // one-time schema migration).
@@ -5394,15 +5225,12 @@ function App() {
 
   const activeTeam = teams.find(t => t.id === activeTeamId);
   const uid = user?.uid;
-  const handleToggleTheme=()=>{const n=theme==="dark"?"light":"dark";setTheme(n);try{localStorage.setItem("esc_fc_theme",n);}catch(e){}};
-  const handleOnboardingDone=()=>{try{localStorage.setItem("esc_fc_onboarded_v1","1");}catch(e){}setShowOnboarding(false);};
   // When a team is active, sections "tactic" and "office" are available.
   // If the user navigates to "home", keep activeTeamId so they can come back.
   const showNav = authState === "loggedIn" && loaded && !!activeTeam;
 
   return (
-    <div style={{minHeight:"100vh",background:theme==="light"?"#f0fdf4":"#050c0a"}}>
-      {showOnboarding&&<OnboardingModal onDone={handleOnboardingDone}/>}
+    <div style={{minHeight:"100vh",background:"#050c0a"}}>
       <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700;900&family=Anton&family=Oswald:wght@400;700&family=Teko:wght@400;700&family=Russo+One&family=Archivo+Black&family=Squada+One&family=Black+Ops+One&family=Orbitron:wght@400;700&family=Staatliches&family=Bungee&display=swap" rel="stylesheet"/>
       <style>{`
         *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -5451,9 +5279,6 @@ function App() {
           onDeleteTeam={deleteTeam}
           onEditTeam={(t) => setEditingTeam(t)}
           onLogout={handleLogout}
-          theme={theme}
-          onToggleTheme={handleToggleTheme}
-          lastSyncedAt={lastSyncedAt}
         />
       )}
 
