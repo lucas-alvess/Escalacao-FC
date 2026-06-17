@@ -3386,7 +3386,6 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
           isCaptain={String(captainPlayerId)===String(p.id)}
           onToggleCaptain={() => onToggleCaptain(p.id)}
           team={team}
-          appearances={appearances?.[String(p.id)]||0}
         />
       ))}
 
@@ -3953,7 +3952,6 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             captainPlayerId={team.captainPlayerId}
             onToggleCaptain={toggleCaptain}
             team={team}
-            appearances={teamAppearances}
           />
         )}
       </div>
