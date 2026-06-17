@@ -3233,16 +3233,15 @@ const SORT_OPTIONS = [
 
 const PLAYERS_PAGE_SIZE = 20;
 
-function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onToggleCaptain, team, appearances }) {
+function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onToggleCaptain, team }) {
   const [search, setSearch]     = useState("");
   const [sortBy, setSortBy]     = useState("name");
   const [sortAsc, setSortAsc]   = useState(true);
   const [filterPos, setFilterPos] = useState("Todas");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage]         = useState(1);
   const [c1, c2] = SHIELD_COLORS[teamColor % SHIELD_COLORS.length];
   // Reset to page 1 whenever filter/sort changes
-  useEffect(() => { setPage(1); }, [search, sortBy, sortAsc, filterPos, statusFilter]);
+  useEffect(() => { setPage(1); }, [search, sortBy, sortAsc, filterPos]);
 
   const allPositions = useMemo(
     () => ["Todas", ...Array.from(new Set(players.map(p => p.position)))],
@@ -3253,8 +3252,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
     .filter(p => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || String(p.number).includes(search);
       const matchPos    = filterPos === "Todas" || p.position === filterPos;
-      const matchStatus = statusFilter === "all" || (p.status||"active") === statusFilter;
-      return matchSearch && matchPos && matchStatus;
+      return matchSearch && matchPos;
     })
     .sort((a, b) => {
       let va, vb;
@@ -3265,7 +3263,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
       if (va < vb) return sortAsc ? -1 : 1;
       if (va > vb) return sortAsc ? 1 : -1;
       return 0;
-    }), [players, search, filterPos, statusFilter, sortBy, sortAsc]);
+    }), [players, search, filterPos, sortBy, sortAsc]);
 
   const totalPages = Math.ceil(allFiltered.length / PLAYERS_PAGE_SIZE);
   const filtered = useMemo(
@@ -3281,19 +3279,6 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-      {/* Status filter chips */}
-      <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
-        {[{id:"all",label:"Todos",emoji:"👥",color:"#34d399"},...PLAYER_STATUSES].map(s=>(
-          <button key={s.id} onClick={()=>setStatusFilter(s.id)} style={{
-            flexShrink:0,display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
-            borderRadius:20,border:"1.5px solid",cursor:"pointer",
-            borderColor:statusFilter===s.id?s.color:"rgba(255,255,255,0.1)",
-            background:statusFilter===s.id?`${s.color}18`:"rgba(255,255,255,0.03)",
-            color:statusFilter===s.id?s.color:"#6B7280",
-            fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,transition:"all 0.15s"
-          }}>{s.emoji} {s.label}</button>
-        ))}
-      </div>
       {/* Search bar */}
       <div style={{ position:"relative" }}>
         <svg style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}
@@ -4767,16 +4752,284 @@ function StatsExportModal({team,matches,stats,onClose}) {
 }
 
 // ─── Office View ──────────────────────────────────────────────────────────────
-function OfficeView({team,uid}) {
-  const [officeTab,setOfficeTab]=useState("calendar"); // "calendar" | "stats"
+// ─── Import Players Modal ─────────────────────────────────────────────────────
+// Parses CSV/TSV pasted by the user and maps columns to player fields.
+// Expected columns (any order, detected by header):
+//   nome/name, numero/number, posicao/position, posicao2/position2,
+//   pe/foot, estrelas/stars, status
+// Any unrecognised columns are ignored.
+const IMPORT_COL_MAP = {
+  nome:"name", name:"name",
+  numero:"number", number:"number", camisa:"number",
+  posicao:"position", posição:"position", position:"position",
+  posicao2:"position2", posição2:"position2", position2:"position2", "pos.sec":"position2",
+  pe:"foot", pé:"foot", foot:"foot", "pé dominante":"foot", "pe dominante":"foot",
+  estrelas:"stars", stars:"stars", nivel:"stars", nível:"stars",
+  status:"status",
+};
+const IMPORT_FOOT_MAP = {
+  "destro":"Destro","direito":"Destro","right":"Destro","r":"Destro",
+  "canhoto":"Canhoto","esquerdo":"Canhoto","left":"Canhoto","l":"Canhoto",
+  "ambidestro":"Ambidestro","ambidextro":"Ambidestro","both":"Ambidestro","a":"Ambidestro",
+};
+const IMPORT_STATUS_MAP = {
+  "ativo":"active","active":"active","ok":"active",
+  "lesionado":"injured","lesão":"injured","injured":"injured","lesao":"injured",
+  "suspenso":"suspended","suspended":"suspended",
+  "inativo":"inactive","inactive":"inactive",
+};
+
+function parseCSV(text) {
+  // Auto-detect delimiter: semicolon, comma, tab
+  const delim = text.includes(";") ? ";" : text.includes("\t") ? "\t" : ",";
+  const lines = text.trim().split(/\r?\n/).filter(l=>l.trim());
+  if (lines.length < 2) return { error:"O arquivo precisa ter pelo menos um cabeçalho e uma linha de dados." };
+  const headers = lines[0].split(delim).map(h=>h.trim().toLowerCase().replace(/['"]/g,""));
+  const colMap = headers.map(h=>IMPORT_COL_MAP[h]||null);
+  const rows = [];
+  for (let i=1;i<lines.length;i++) {
+    const cells = lines[i].split(delim).map(c=>c.trim().replace(/^["']|["']$/g,""));
+    if (cells.every(c=>!c)) continue;
+    const row = {};
+    colMap.forEach((field,j)=>{ if(field && cells[j]!==undefined) row[field]=cells[j]; });
+    rows.push(row);
+  }
+  return { rows, colMap, headers, delim };
+}
+
+function normalisePlayer(raw, existingPlayers) {
+  const name = (raw.name||"").trim();
+  const number = String(raw.number||"").trim();
+  if (!name || !number) return null;
+  // Map position to known POSITIONS list (case-insensitive partial match)
+  let position = (raw.position||"").trim();
+  const posMatch = POSITIONS.find(p=>p.toLowerCase()===position.toLowerCase())||
+    POSITIONS.find(p=>p.toLowerCase().includes(position.toLowerCase()));
+  if (posMatch) position=posMatch; else if(!position) position="Goleiro";
+  let position2 = (raw.position2||"").trim();
+  const pos2Match = POSITIONS.find(p=>p.toLowerCase()===position2.toLowerCase())||
+    POSITIONS.find(p=>p.toLowerCase().includes(position2.toLowerCase()));
+  if (pos2Match) position2=pos2Match; else position2="";
+  const foot = IMPORT_FOOT_MAP[(raw.foot||"").toLowerCase().trim()]||"Destro";
+  const stars = Math.min(5,Math.max(1,parseInt(raw.stars)||3));
+  const status = IMPORT_STATUS_MAP[(raw.status||"").toLowerCase().trim()]||"active";
+  // Check if player already exists (by number or name)
+  const existing = existingPlayers.find(p=>String(p.number)===number||p.name.toLowerCase()===name.toLowerCase());
+  return { name, number, position, position2, foot, stars, status, _existing: existing||null };
+}
+
+function ImportPlayersModal({team, onClose, onImport}) {
+  const [step, setStep] = useState("paste"); // "paste" | "preview" | "done"
+  const [raw, setRaw] = useState("");
+  const [parsed, setParsed] = useState(null);
+  const [parseError, setParseError] = useState("");
+  const [importMode, setImportMode] = useState("merge"); // "merge" | "overwrite"
+  const [importing, setImporting] = useState(false);
+  const [results, setResults] = useState(null);
+  const fileInputRef = useRef();
+
+  const handleParse = () => {
+    setParseError("");
+    const result = parseCSV(raw);
+    if (result.error) { setParseError(result.error); return; }
+    const normalised = result.rows.map(r=>normalisePlayer(r, team.players||[])).filter(Boolean);
+    if (!normalised.length) { setParseError("Nenhuma linha válida encontrada. Verifique se os dados têm nome e número."); return; }
+    setParsed({...result, players: normalised});
+    setStep("preview");
+  };
+
+  const handleFile = (file) => {
+    const reader = new FileReader();
+    reader.onload = e => { setRaw(e.target.result); };
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const handleImport = async () => {
+    if (!parsed) return;
+    setImporting(true);
+    const added=[], updated=[], skipped=[];
+    const newPlayers = [...(team.players||[])];
+
+    for (const p of parsed.players) {
+      const {_existing, ...fields} = p;
+      if (_existing && importMode==="merge") {
+        // Merge: update only non-empty fields
+        const idx = newPlayers.findIndex(pl=>pl.id===_existing.id);
+        if (idx>=0) {
+          newPlayers[idx] = { ...newPlayers[idx], ...Object.fromEntries(Object.entries(fields).filter(([,v])=>v!=="")) };
+          updated.push(newPlayers[idx]);
+        }
+      } else if (_existing && importMode==="overwrite") {
+        const idx = newPlayers.findIndex(pl=>pl.id===_existing.id);
+        if (idx>=0) { newPlayers[idx] = {...newPlayers[idx], ...fields}; updated.push(newPlayers[idx]); }
+      } else if (!_existing) {
+        const np = { ...fields, id:genUUID(), photo:"" };
+        newPlayers.push(np);
+        added.push(np);
+      }
+    }
+    await onImport(newPlayers, added, updated);
+    setResults({ added:added.length, updated:updated.length });
+    setStep("done");
+    setImporting(false);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"18px 18px 0 0",width:"100%",maxWidth:500,maxHeight:"92vh",overflowY:"auto",padding:"18px 18px 32px"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>📥 Importar Jogadores</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer"}}><Ico.Close/></button>
+        </div>
+
+        {step==="paste"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            {/* Instructions */}
+            <div style={{background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"10px 12px"}}>
+              <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>📋 FORMATO ESPERADO</div>
+              <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.6}}>
+                Planilha (Excel/Sheets) salva como <b style={{color:"#e5e7eb"}}>.CSV</b> ou texto copiado diretamente. Colunas reconhecidas:<br/>
+                <code style={{color:"#34d399",fontSize:10}}>nome, numero, posicao, posicao2, pe, estrelas, status</code>
+              </div>
+              <div style={{marginTop:8,padding:"6px 8px",background:"rgba(0,0,0,0.3)",borderRadius:7,fontFamily:"monospace",fontSize:10,color:"#6B7280"}}>
+                nome;numero;posicao;pe;estrelas<br/>
+                João Silva;10;Atacante;Destro;4<br/>
+                Pedro Lima;1;Goleiro;Destro;5
+              </div>
+            </div>
+
+            {/* File upload */}
+            <input ref={fileInputRef} type="file" accept=".csv,.tsv,.txt" style={{display:"none"}}
+              onChange={e=>{ if(e.target.files[0]) handleFile(e.target.files[0]); }}/>
+            <button onClick={()=>fileInputRef.current?.click()} style={{
+              width:"100%",padding:"11px 0",borderRadius:11,border:"1.5px dashed rgba(52,211,153,0.35)",
+              background:"rgba(52,211,153,0.04)",color:"#34d399",cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8
+            }}>📂 Carregar arquivo CSV</button>
+
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,textAlign:"center"}}>— ou cole os dados abaixo —</div>
+
+            <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={8}
+              placeholder={"nome;numero;posicao;pe;estrelas\nJoão Silva;10;Atacante;Destro;4"}
+              style={{...IS,resize:"vertical",fontFamily:"monospace",fontSize:11,lineHeight:1.5}}
+              onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
+
+            {parseError&&<div style={{color:"#f87171",fontFamily:"'DM Sans',sans-serif",fontSize:12,padding:"8px 10px",background:"rgba(239,68,68,0.08)",borderRadius:8}}>{parseError}</div>}
+
+            <button onClick={handleParse} disabled={!raw.trim()} style={{
+              padding:"12px 0",borderRadius:12,border:"none",cursor:raw.trim()?"pointer":"default",
+              background:raw.trim()?"linear-gradient(135deg,#166534,#34d399)":"rgba(255,255,255,0.06)",
+              color:raw.trim()?"#fff":"#4B5563",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1
+            }}>ANALISAR DADOS</button>
+          </div>
+        )}
+
+        {step==="preview"&&parsed&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{flex:1,background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"8px 12px",fontFamily:"'DM Sans',sans-serif",fontSize:12,color:"#34d399",fontWeight:700}}>
+                ✓ {parsed.players.length} jogadores detectados
+                {parsed.players.filter(p=>p._existing).length>0&&<span style={{color:"#f59e0b",marginLeft:8}}>· {parsed.players.filter(p=>p._existing).length} já existem</span>}
+              </div>
+              <button onClick={()=>setStep("paste")} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"7px 10px",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>✏️ Editar</button>
+            </div>
+
+            {/* Merge mode */}
+            {parsed.players.some(p=>p._existing)&&(
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <span style={LT}>Para jogadores que já existem</span>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                  {[{id:"merge",label:"Mesclar",desc:"Atualiza só campos preenchidos",emoji:"🔀"},
+                    {id:"overwrite",label:"Substituir",desc:"Sobrescreve todos os campos",emoji:"⬆️"}].map(m=>(
+                    <button key={m.id} onClick={()=>setImportMode(m.id)} style={{
+                      padding:"9px 8px",borderRadius:10,border:"2px solid",cursor:"pointer",
+                      borderColor:importMode===m.id?"#34d399":"rgba(255,255,255,0.08)",
+                      background:importMode===m.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:3
+                    }}>
+                      <span style={{fontSize:18}}>{m.emoji}</span>
+                      <span style={{color:importMode===m.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800}}>{m.label}</span>
+                      <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9}}>{m.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Preview list */}
+            <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:240,overflowY:"auto"}}>
+              {parsed.players.map((p,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:9,
+                  background:p._existing?"rgba(245,158,11,0.06)":"rgba(52,211,153,0.04)",
+                  border:`1px solid ${p._existing?"rgba(245,158,11,0.2)":"rgba(52,211,153,0.15)"}`}}>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:16,color:p._existing?"#f59e0b":"#34d399",minWidth:28}}>#{p.number}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                    <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10}}>{p.position}{p.position2?` / ${p.position2}`:""} · {p.foot} · ⭐{p.stars}</div>
+                  </div>
+                  <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,color:p._existing?"#f59e0b":"#34d399",flexShrink:0}}>{p._existing?"ATUALIZAR":"NOVO"}</span>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={handleImport} disabled={importing} style={{
+              padding:"13px 0",borderRadius:12,border:"none",cursor:importing?"default":"pointer",
+              background:importing?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#166534,#34d399)",
+              color:importing?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
+              display:"flex",alignItems:"center",justifyContent:"center",gap:8
+            }}>
+              {importing&&<div style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>}
+              {importing?"IMPORTANDO...":"✅ CONFIRMAR IMPORTAÇÃO"}
+            </button>
+          </div>
+        )}
+
+        {step==="done"&&results&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"20px 0",textAlign:"center"}}>
+            <div style={{fontSize:52}}>✅</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:0.5}}>Importação concluída!</div>
+            <div style={{display:"flex",gap:12}}>
+              {results.added>0&&<div style={{padding:"10px 16px",borderRadius:10,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.2)"}}>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#34d399"}}>{results.added}</div>
+                <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>adicionado{results.added!==1?"s":""}</div>
+              </div>}
+              {results.updated>0&&<div style={{padding:"10px 16px",borderRadius:10,background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.2)"}}>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#f59e0b"}}>{results.updated}</div>
+                <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>atualizado{results.updated!==1?"s":""}</div>
+              </div>}
+            </div>
+            <button onClick={onClose} style={{
+              padding:"12px 32px",borderRadius:12,border:"none",cursor:"pointer",
+              background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1
+            }}>FECHAR</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
+  const [officeTab,setOfficeTab]=useState("calendar"); // "calendar" | "stats" | "import"
   const [matches,setMatches]=useState(null); // null=loading, []+=loaded
   const [stats,setStats]=useState({});
   const [showMatchModal,setShowMatchModal]=useState(false);
   const [editingMatch,setEditingMatch]=useState(null);
   const [confirmDelMatch,setConfirmDelMatch]=useState(null);
   const [showExportStats,setShowExportStats]=useState(false);
+  const [showImport,setShowImport]=useState(false);
   const [toast,setToast]=useState(null);
   const [c1,c2]=SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length];
+
+  const handleImportPlayers=async(newPlayers,added,updated)=>{
+    onUpdateTeam({...team,players:newPlayers});
+    if(uid&&onSavePlayer){
+      for(const p of [...added,...updated]) await onSavePlayer(team.id,p);
+    }
+    setToast(`Importação concluída: ${added.length} adicionado(s), ${updated.length} atualizado(s).`);
+  };
+
 
   // Build match summary share text (result + details)
   const buildMatchShareText=(team,m)=>{
@@ -4904,10 +5157,10 @@ function OfficeView({team,uid}) {
 
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:0,margin:"14px 16px 0",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:3}}>
-        {[["calendar","📅 Calendário"],["stats","📊 Estatísticas"]].map(([id,label])=>(
+        {[["calendar","📅 Calendário"],["stats","📊 Estatísticas"],["import","📥 Importar"]].map(([id,label])=>(
           <button key={id} onClick={()=>setOfficeTab(id)} style={{
             flex:1,padding:"9px 0",borderRadius:9,border:"none",cursor:"pointer",
-            fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:800,letterSpacing:0.2,
+            fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800,letterSpacing:0.2,
             background:officeTab===id?`linear-gradient(135deg,${c1},${c2})`:"transparent",
             color:officeTab===id?"#fff":"#6B7280",transition:"all 0.18s"
           }}>{label}</button>
@@ -5047,10 +5300,56 @@ function OfficeView({team,uid}) {
           <StatsView team={team} stats={stats} onUpdateStat={updateStat}/>
           </>
         )}
+        {/* ── Import tab ── */}
+        {officeTab==="import"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14}}>
+              <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,marginBottom:8}}>Importar jogadores de planilha</div>
+              <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,lineHeight:1.6,marginBottom:12}}>
+                Importe um arquivo CSV exportado do Excel, Google Sheets ou similar para adicionar ou atualizar jogadores do seu elenco em massa.
+              </div>
+              <button onClick={()=>setShowImport(true)} style={{
+                width:"100%",padding:"12px 0",borderRadius:12,border:"none",cursor:"pointer",
+                background:`linear-gradient(135deg,${c1},${c2})`,color:"#fff",
+                fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
+                display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+                boxShadow:`0 4px 16px ${c1}40`
+              }}>📥 INICIAR IMPORTAÇÃO</button>
+            </div>
+            <div style={{padding:"12px 14px",background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:12}}>
+              <div style={{color:"#f59e0b",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>📌 COMO EXPORTAR DO EXCEL / GOOGLE SHEETS</div>
+              <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.7}}>
+                <b style={{color:"#e5e7eb"}}>Excel:</b> Arquivo → Salvar como → CSV (separado por vírgulas ou ponto-e-vírgula)<br/>
+                <b style={{color:"#e5e7eb"}}>Google Sheets:</b> Arquivo → Fazer download → Valores separados por vírgula (.csv)<br/>
+                <b style={{color:"#e5e7eb"}}>Dica:</b> Garanta que a primeira linha seja o cabeçalho com os nomes das colunas.
+              </div>
+            </div>
+            <div style={{padding:"12px 14px",background:"rgba(52,211,153,0.04)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:12}}>
+              <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>✅ COLUNAS SUPORTADAS</div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                {[
+                  ["nome / name","Nome do jogador (obrigatório)"],
+                  ["numero / number / camisa","Número da camisa (obrigatório)"],
+                  ["posicao / position","Posição principal"],
+                  ["posicao2 / position2","Posição secundária"],
+                  ["pe / foot","Destro, Canhoto ou Ambidestro"],
+                  ["estrelas / stars / nivel","1 a 5"],
+                  ["status","ativo, lesionado, suspenso, inativo"],
+                ].map(([col,desc])=>(
+                  <div key={col} style={{display:"flex",gap:8}}>
+                    <code style={{color:"#34d399",fontFamily:"monospace",fontSize:10,minWidth:140,flexShrink:0}}>{col}</code>
+                    <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10}}>{desc}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {showMatchModal&&<MatchModal initial={editingMatch} players={team.players||[]} onSave={saveMatch} onClose={()=>{setShowMatchModal(false);setEditingMatch(null);}}/>}
       {showExportStats&&<StatsExportModal team={team} matches={matches||[]} stats={stats} onClose={()=>setShowExportStats(false)}/>}
+      {showImport&&<ImportPlayersModal team={team} onClose={()=>setShowImport(false)} onImport={handleImportPlayers}/>}
       {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
     </div>
   );
@@ -5523,7 +5822,7 @@ function App() {
 
       {/* Office: calendar + stats */}
       {navSection === "office" && activeTeam && (
-        <OfficeView team={activeTeam} uid={uid}/>
+        <OfficeView team={activeTeam} uid={uid} onUpdateTeam={updateTeam} onSavePlayer={scheduleSavePlayer}/>
       )}
 
       {/* Bottom navigation — only when logged in with a team selected */}
