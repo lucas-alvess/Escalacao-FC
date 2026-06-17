@@ -3233,15 +3233,16 @@ const SORT_OPTIONS = [
 
 const PLAYERS_PAGE_SIZE = 20;
 
-function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onToggleCaptain, team }) {
+function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onToggleCaptain, team, appearances }) {
   const [search, setSearch]     = useState("");
   const [sortBy, setSortBy]     = useState("name");
   const [sortAsc, setSortAsc]   = useState(true);
   const [filterPos, setFilterPos] = useState("Todas");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [page, setPage]         = useState(1);
   const [c1, c2] = SHIELD_COLORS[teamColor % SHIELD_COLORS.length];
   // Reset to page 1 whenever filter/sort changes
-  useEffect(() => { setPage(1); }, [search, sortBy, sortAsc, filterPos]);
+  useEffect(() => { setPage(1); }, [search, sortBy, sortAsc, filterPos, statusFilter]);
 
   const allPositions = useMemo(
     () => ["Todas", ...Array.from(new Set(players.map(p => p.position)))],
@@ -3252,7 +3253,8 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
     .filter(p => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || String(p.number).includes(search);
       const matchPos    = filterPos === "Todas" || p.position === filterPos;
-      return matchSearch && matchPos;
+      const matchStatus = statusFilter === "all" || (p.status||"active") === statusFilter;
+      return matchSearch && matchPos && matchStatus;
     })
     .sort((a, b) => {
       let va, vb;
@@ -3263,7 +3265,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
       if (va < vb) return sortAsc ? -1 : 1;
       if (va > vb) return sortAsc ? 1 : -1;
       return 0;
-    }), [players, search, filterPos, sortBy, sortAsc]);
+    }), [players, search, filterPos, statusFilter, sortBy, sortAsc]);
 
   const totalPages = Math.ceil(allFiltered.length / PLAYERS_PAGE_SIZE);
   const filtered = useMemo(
@@ -3279,6 +3281,19 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
 
   return (
     <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+      {/* Status filter chips */}
+      <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
+        {[{id:"all",label:"Todos",emoji:"👥",color:"#34d399"},...PLAYER_STATUSES].map(s=>(
+          <button key={s.id} onClick={()=>setStatusFilter(s.id)} style={{
+            flexShrink:0,display:"flex",alignItems:"center",gap:4,padding:"4px 10px",
+            borderRadius:20,border:"1.5px solid",cursor:"pointer",
+            borderColor:statusFilter===s.id?s.color:"rgba(255,255,255,0.1)",
+            background:statusFilter===s.id?`${s.color}18`:"rgba(255,255,255,0.03)",
+            color:statusFilter===s.id?s.color:"#6B7280",
+            fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,transition:"all 0.15s"
+          }}>{s.emoji} {s.label}</button>
+        ))}
+      </div>
       {/* Search bar */}
       <div style={{ position:"relative" }}>
         <svg style={{ position:"absolute", left:11, top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}
