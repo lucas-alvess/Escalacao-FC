@@ -4599,6 +4599,26 @@ function StatsExportModal({team,matches,stats,onClose}) {
     if(w){w.document.write(html);w.document.close();}
   };
 
+  // ── Export full stats table as CSV ────────────────────────────────────────
+  const handleExportCsv=()=>{
+    const headers=["Nome","Camisa","Posição","Gols","Assistências","Gols Sofridos","Presenças"];
+    const rows=players.map(p=>{
+      const a=aggregated[String(p.id)]||{};
+      return [
+        p.name, p.number, p.position,
+        a.goals||0, a.assists||0, a.goalsAgainst||0, a.appearances||0
+      ];
+    }).sort((a,b)=>(b[3]+b[4]+b[6])-(a[3]+a[4]+a[6]));
+    const CRLF="\r\n";
+    const csv=[headers,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";")).join(CRLF);
+    const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url;a.download=`${team.name.replace(/\s+/g,"_")}_estatisticas.csv`;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div style={{position:"fixed",inset:0,zIndex:1300,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"18px 18px 0 0",width:"100%",maxWidth:480,maxHeight:"92vh",overflowY:"auto",padding:"18px 18px 32px"}}>
@@ -4732,18 +4752,23 @@ function StatsExportModal({team,matches,stats,onClose}) {
             color:copied?"#34d399":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,
             display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s"
           }}><Ico.List/>{copied?"✓ COPIADO!":"COPIAR LISTA"}</button>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
             <button onClick={handleShare} style={{
               padding:"11px 0",borderRadius:12,border:"1px solid rgba(96,165,250,0.3)",cursor:"pointer",
               background:shared?"rgba(96,165,250,0.2)":"rgba(96,165,250,0.08)",
-              color:shared?"#93c5fd":"#60a5fa",fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,
-              display:"flex",alignItems:"center",justifyContent:"center",gap:6,transition:"all 0.2s"
-            }}><Ico.Share/>{shared?"COMPARTILHADO!":"COMPARTILHAR"}</button>
+              color:shared?"#93c5fd":"#60a5fa",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,
+              display:"flex",alignItems:"center",justifyContent:"center",gap:5,transition:"all 0.2s"
+            }}><Ico.Share/>{shared?"OK!":"COMPARTILHAR"}</button>
             <button onClick={handlePdf} style={{
               padding:"11px 0",borderRadius:12,border:"1px solid rgba(251,191,36,0.3)",cursor:"pointer",
-              background:"rgba(251,191,36,0.08)",color:"#fbbf24",fontFamily:"'Bebas Neue',sans-serif",fontSize:14,letterSpacing:1,
-              display:"flex",alignItems:"center",justifyContent:"center",gap:6
-            }}><Ico.Pdf/>ABRIR PDF</button>
+              background:"rgba(251,191,36,0.08)",color:"#fbbf24",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,
+              display:"flex",alignItems:"center",justifyContent:"center",gap:5
+            }}><Ico.Pdf/>PDF</button>
+            <button onClick={handleExportCsv} style={{
+              padding:"11px 0",borderRadius:12,border:"1px solid rgba(52,211,153,0.3)",cursor:"pointer",
+              background:"rgba(52,211,153,0.08)",color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,
+              display:"flex",alignItems:"center",justifyContent:"center",gap:5
+            }}>📊 CSV</button>
           </div>
         </div>
       </div>
@@ -4766,6 +4791,11 @@ const IMPORT_COL_MAP = {
   pe:"foot", pé:"foot", foot:"foot", "pé dominante":"foot", "pe dominante":"foot",
   estrelas:"stars", stars:"stars", nivel:"stars", nível:"stars",
   status:"status",
+  // Stats columns
+  gols:"goals", goals:"goals",
+  assistencias:"assists", assistências:"assists", assists:"assists",
+  "gols sofridos":"goalsAgainst", "gols tomados":"goalsAgainst", goalsagainst:"goalsAgainst",
+  presencas:"appearances", presenças:"appearances", appearances:"appearances", jogos:"appearances",
 };
 const IMPORT_FOOT_MAP = {
   "destro":"Destro","direito":"Destro","right":"Destro","r":"Destro",
@@ -4813,9 +4843,17 @@ function normalisePlayer(raw, existingPlayers) {
   const foot = IMPORT_FOOT_MAP[(raw.foot||"").toLowerCase().trim()]||"Destro";
   const stars = Math.min(5,Math.max(1,parseInt(raw.stars)||3));
   const status = IMPORT_STATUS_MAP[(raw.status||"").toLowerCase().trim()]||"active";
+  // Stats (optional — only imported if column is present and non-empty)
+  const goals     = raw.goals!==undefined&&raw.goals!==""     ? Math.max(0,parseInt(raw.goals)||0)     : undefined;
+  const assists   = raw.assists!==undefined&&raw.assists!==""   ? Math.max(0,parseInt(raw.assists)||0)   : undefined;
+  const goalsAgainst = raw.goalsAgainst!==undefined&&raw.goalsAgainst!=="" ? Math.max(0,parseInt(raw.goalsAgainst)||0) : undefined;
+  const appearances  = raw.appearances!==undefined&&raw.appearances!==""   ? Math.max(0,parseInt(raw.appearances)||0)  : undefined;
+  const hasStats = goals!==undefined||assists!==undefined||goalsAgainst!==undefined||appearances!==undefined;
   // Check if player already exists (by number or name)
   const existing = existingPlayers.find(p=>String(p.number)===number||p.name.toLowerCase()===name.toLowerCase());
-  return { name, number, position, position2, foot, stars, status, _existing: existing||null };
+  return { name, number, position, position2, foot, stars, status,
+    ...(hasStats?{goals,assists,goalsAgainst,appearances}:{}),
+    _existing: existing||null };
 }
 
 function ImportPlayersModal({team, onClose, onImport}) {
@@ -4849,27 +4887,40 @@ function ImportPlayersModal({team, onClose, onImport}) {
     setImporting(true);
     const added=[], updated=[], skipped=[];
     const newPlayers = [...(team.players||[])];
+    const statsToSave = []; // [{playerId, goals, assists, goalsAgainst, appearances}]
 
     for (const p of parsed.players) {
-      const {_existing, ...fields} = p;
+      const {_existing, goals, assists, goalsAgainst, appearances, ...fields} = p;
+      const hasStats = goals!==undefined||assists!==undefined||goalsAgainst!==undefined||appearances!==undefined;
+
       if (_existing && importMode==="merge") {
-        // Merge: update only non-empty fields
         const idx = newPlayers.findIndex(pl=>pl.id===_existing.id);
         if (idx>=0) {
           newPlayers[idx] = { ...newPlayers[idx], ...Object.fromEntries(Object.entries(fields).filter(([,v])=>v!=="")) };
           updated.push(newPlayers[idx]);
+          if(hasStats) statsToSave.push({playerId:String(_existing.id),
+            goals: goals!==undefined?goals:undefined,
+            assists: assists!==undefined?assists:undefined,
+            goalsAgainst: goalsAgainst!==undefined?goalsAgainst:undefined,
+            appearances: appearances!==undefined?appearances:undefined,
+          });
         }
       } else if (_existing && importMode==="overwrite") {
         const idx = newPlayers.findIndex(pl=>pl.id===_existing.id);
-        if (idx>=0) { newPlayers[idx] = {...newPlayers[idx], ...fields}; updated.push(newPlayers[idx]); }
+        if (idx>=0) {
+          newPlayers[idx] = {...newPlayers[idx], ...fields};
+          updated.push(newPlayers[idx]);
+          if(hasStats) statsToSave.push({playerId:String(_existing.id),goals,assists,goalsAgainst,appearances});
+        }
       } else if (!_existing) {
         const np = { ...fields, id:genUUID(), photo:"" };
         newPlayers.push(np);
         added.push(np);
+        if(hasStats) statsToSave.push({playerId:String(np.id),goals,assists,goalsAgainst,appearances});
       }
     }
-    await onImport(newPlayers, added, updated);
-    setResults({ added:added.length, updated:updated.length });
+    await onImport(newPlayers, added, updated, statsToSave);
+    setResults({ added:added.length, updated:updated.length, statsCount:statsToSave.length });
     setStep("done");
     setImporting(false);
   };
@@ -4988,7 +5039,7 @@ function ImportPlayersModal({team, onClose, onImport}) {
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"20px 0",textAlign:"center"}}>
             <div style={{fontSize:52}}>✅</div>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:0.5}}>Importação concluída!</div>
-            <div style={{display:"flex",gap:12}}>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center"}}>
               {results.added>0&&<div style={{padding:"10px 16px",borderRadius:10,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.2)"}}>
                 <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#34d399"}}>{results.added}</div>
                 <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>adicionado{results.added!==1?"s":""}</div>
@@ -4996,6 +5047,10 @@ function ImportPlayersModal({team, onClose, onImport}) {
               {results.updated>0&&<div style={{padding:"10px 16px",borderRadius:10,background:"rgba(245,158,11,0.1)",border:"1px solid rgba(245,158,11,0.2)"}}>
                 <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#f59e0b"}}>{results.updated}</div>
                 <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>atualizado{results.updated!==1?"s":""}</div>
+              </div>}
+              {results.statsCount>0&&<div style={{padding:"10px 16px",borderRadius:10,background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.2)"}}>
+                <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#60a5fa"}}>{results.statsCount}</div>
+                <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>estat. importada{results.statsCount!==1?"s":""}</div>
               </div>}
             </div>
             <button onClick={onClose} style={{
@@ -5022,12 +5077,31 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
   const [toast,setToast]=useState(null);
   const [c1,c2]=SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length];
 
-  const handleImportPlayers=async(newPlayers,added,updated)=>{
+  const handleImportPlayers=async(newPlayers,added,updated,statsToSave=[])=>{
     onUpdateTeam({...team,players:newPlayers});
     if(uid&&onSavePlayer){
       for(const p of [...added,...updated]) await onSavePlayer(team.id,p);
     }
-    setToast(`Importação concluída: ${added.length} adicionado(s), ${updated.length} atualizado(s).`);
+    // Save stats entries if any stats were included in the import
+    if(uid&&statsToSave.length>0){
+      const currentStats=stats;
+      const nextStats={...currentStats};
+      for(const s of statsToSave){
+        const existing=nextStats[s.playerId]||{goals:0,assists:0,goalsAgainst:0,appearances:0};
+        const merged={
+          ...existing,
+          playerId:s.playerId,
+          ...(s.goals!==undefined?{goals:s.goals}:{}),
+          ...(s.assists!==undefined?{assists:s.assists}:{}),
+          ...(s.goalsAgainst!==undefined?{goalsAgainst:s.goalsAgainst}:{}),
+          ...(s.appearances!==undefined?{appearances:s.appearances}:{}),
+        };
+        nextStats[s.playerId]=merged;
+        savePlayerStatsCloud(uid,team.id,merged);
+      }
+      setStats(nextStats);
+    }
+    setToast(`Importação: ${added.length} adicionado(s), ${updated.length} atualizado(s)${statsToSave.length?`, ${statsToSave.length} estatística(s) importada(s)`:""}.`);
   };
 
 
@@ -5335,6 +5409,10 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
                   ["pe / foot","Destro, Canhoto ou Ambidestro"],
                   ["estrelas / stars / nivel","1 a 5"],
                   ["status","ativo, lesionado, suspenso, inativo"],
+                  ["gols / goals","Quantidade de gols"],
+                  ["assistencias / assists","Quantidade de assistências"],
+                  ["gols sofridos","Gols sofridos (goleiros)"],
+                  ["presencas / jogos","Número de presenças"],
                 ].map(([col,desc])=>(
                   <div key={col} style={{display:"flex",gap:8}}>
                     <code style={{color:"#34d399",fontFamily:"monospace",fontSize:10,minWidth:140,flexShrink:0}}>{col}</code>
