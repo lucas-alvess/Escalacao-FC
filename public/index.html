@@ -921,6 +921,16 @@ function migrateLineup(oldLineup, oldSlots, newSlots) {
 }
 
 const POSITIONS = ["Goleiro","Lateral Direito","Lateral Esquerdo","Zagueiro","Volante","Meio-campo","Meia Atacante","Ponta Direita","Ponta Esquerda","Centroavante","Atacante","Segundo Volante","Líbero"];
+
+const PLAYER_STATUSES = [
+  { id:"active",    label:"Ativo",      emoji:"🟢", color:"#34d399" },
+  { id:"injured",   label:"Lesionado",  emoji:"🤕", color:"#f97316" },
+  { id:"suspended", label:"Suspenso",   emoji:"🟥", color:"#f87171" },
+  { id:"inactive",  label:"Inativo",    emoji:"⚫", color:"#6B7280" },
+];
+function getPlayerStatus(player) {
+  return PLAYER_STATUSES.find(s=>s.id===(player?.status||"active"))||PLAYER_STATUSES[0];
+}
 const AVATAR_COLORS = ["#1a6b3a","#c8102e","#003087","#6f2c91","#00539f","#e8650a","#b45309","#0e7490","#7c3aed","#be185d"];
 
 // ─── Jersey customization (used as the player avatar when no photo is set) ───
@@ -1850,7 +1860,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 
 // ─── Player Form ──────────────────────────────────────────────────────────────
 function PlayerFormModal({initial,onSave,onClose,teamColor}) {
-  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",stars:3});
+  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",position2:"",status:"active",stars:3});
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=!!(form.name.trim()&&String(form.number).trim()!=="");
@@ -1899,6 +1909,30 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
                   background:form.foot===f?`${c1}25`:"rgba(255,255,255,0.03)",
                   color:form.foot===f?"#34d399":"#9CA3AF",
                 }}>{f==="Ambidestro"?"Ambidex.":f}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <label style={LT}>Posição Secundária <span style={{color:"#4B5563",fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
+            <select value={form.position2||""} onChange={e=>set("position2",e.target.value)} style={{...IS,appearance:"none"}}>
+              <option value="">— Nenhuma —</option>
+              {POSITIONS.filter(p=>p!==form.position).map(p=><option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <span style={LT}>Status</span>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+              {PLAYER_STATUSES.map(s=>(
+                <button key={s.id} onClick={()=>set("status",s.id)} style={{
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"8px 4px",
+                  borderRadius:10,border:"2px solid",cursor:"pointer",
+                  borderColor:(form.status||"active")===s.id?s.color:"rgba(255,255,255,0.08)",
+                  background:(form.status||"active")===s.id?`${s.color}18`:"rgba(255,255,255,0.02)",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:16}}>{s.emoji}</span>
+                  <span style={{color:(form.status||"active")===s.id?s.color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:800,textTransform:"uppercase"}}>{s.label}</span>
+                </button>
               ))}
             </div>
           </div>
@@ -2236,7 +2270,12 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
             {player?(
               <>
                 <div style={{width:54,height:54,borderRadius:"50%",overflow:"hidden",border:isHL?"3px solid #facc15":"2.5px solid #34d399",boxShadow:isHL?"0 0 22px rgba(250,204,21,0.9)":"0 0 16px rgba(52,211,153,0.6)",transition:"border 0.12s,box-shadow 0.12s",flexShrink:0}}>
-                  <PlayerAvatar player={player} size={54} team={team}/>
+                  <div style={{position:"relative"}}>
+                    <PlayerAvatar player={player} size={54} team={team} style={player?.status&&player.status!=="active"?{opacity:0.65}:{}}/>
+                    {player?.status&&player.status!=="active"&&(
+                      <div style={{position:"absolute",top:-3,right:-3,fontSize:12,lineHeight:1}} title={getPlayerStatus(player).label}>{getPlayerStatus(player).emoji}</div>
+                    )}
+                  </div>
                 </div>
                 <div style={{background:"rgba(0,0,0,0.88)",borderRadius:6,padding:"2px 7px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,whiteSpace:"nowrap",maxWidth:72,overflow:"hidden",textOverflow:"ellipsis"}}>
                   {player.name.split(" ")[0].toUpperCase()}
@@ -3347,6 +3386,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
           isCaptain={String(captainPlayerId)===String(p.id)}
           onToggleCaptain={() => onToggleCaptain(p.id)}
           team={team}
+          appearances={appearances?.[String(p.id)]||0}
         />
       ))}
 
@@ -3559,7 +3599,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
 }
 
 // ─── Team Tactical View (existing app logic) ──────────────────────────────────
-function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud,onSaveLineup,onDeleteLineup,syncStatus,isPremium}) {
+function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePlayerCloud,onSaveLineup,onDeleteLineup,syncStatus,isPremium,uid}) {
   const [tab,setTab]=useState("field");
   const [editingName,setEditingName]=useState(false);
   const [showForm,setShowForm]=useState(false);
@@ -3572,6 +3612,16 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [showEditTeam,setShowEditTeam]=useState(false);
   const [showLineupMgr,setShowLineupMgr]=useState(false);
   const [saveStatus,setSaveStatus]=useState("idle"); // "idle" | "saving" | "saved" | "error"
+  // Appearances per player (computed from match presentPlayerIds, loaded lazily)
+  const [teamAppearances,setTeamAppearances]=useState({});
+  useEffect(()=>{
+    if(!uid||!team?.id)return;
+    loadMatchesCloud(uid,team.id).then(matches=>{
+      const agg={};
+      (matches||[]).forEach(m=>(m.presentPlayerIds||[]).forEach(pid=>{ agg[pid]=(agg[pid]||0)+1; }));
+      setTeamAppearances(agg);
+    }).catch(()=>{});
+  },[uid,team?.id]);
   // ID generation: crypto.randomUUID() (with fallback) avoids any chance of
   // collision, even across teams/components remounted in quick succession.
   const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
@@ -3819,8 +3869,19 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       <div style={{padding:tab==="field"?"12px 11px 100px":"12px 14px 100px"}}>
         {tab==="field"&&(
           <>
-            <div style={{marginBottom:9,padding:"6px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#6B7280",textAlign:"center"}}>
-              💡 <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar · <b style={{color:"#9CA3AF"}}>Deslize</b> para rolar
+            <div style={{marginBottom:9,display:"flex",alignItems:"center",gap:8}}>
+              <div style={{flex:1,padding:"6px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#6B7280"}}>
+                💡 <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar
+              </div>
+              <button onClick={()=>{
+                const updatedLineups=(team.lineups||[]).map(l=>String(l.id)===String(activeLineup?.id)?{...l,entries:[]}:l);
+                upd({lineup:[],lineups:updatedLineups});
+                if(onSaveLineup){const al=updatedLineups.find(l=>String(l.id)===String(activeLineup?.id));if(al)onSaveLineup(team.id,al);}
+              }} title="Limpar escalação" aria-label="Limpar todos os jogadores escalados" style={{
+                flexShrink:0,padding:"7px 12px",borderRadius:9,border:"1px solid rgba(239,68,68,0.25)",
+                background:"rgba(239,68,68,0.08)",color:"#f87171",cursor:"pointer",
+                fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"
+              }}>🔄 Resetar</button>
             </div>
             <div style={{marginBottom:9,display:"flex",flexDirection:"column",gap:5}}>
               <label htmlFor="coach-name" style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Técnico</label>
@@ -3892,6 +3953,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             captainPlayerId={team.captainPlayerId}
             onToggleCaptain={toggleCaptain}
             team={team}
+            appearances={teamAppearances}
           />
         )}
       </div>
@@ -5424,6 +5486,7 @@ function App() {
           onSaveLineup={scheduleSaveLineup}
           syncStatus={syncStatus}
           isPremium={isPremium}
+          uid={uid}
           onDeletePlayerCloud={(teamId, playerId) => {
             if (uid) {
               const key = `player_${teamId}_${playerId}`;
