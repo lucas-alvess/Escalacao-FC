@@ -3962,7 +3962,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           if(!isPremium&&(team.players||[]).length>=FREE_PLAYER_LIMIT){setShowPlayerLimitUpsell(true);return;}
           setEditingPlayer(null);setShowForm(true);
         }} style={{
-          position:"fixed",bottom:28,right:20,width:56,height:56,borderRadius:"50%",
+          position:"fixed",bottom:80,right:20,width:56,height:56,borderRadius:"50%",
           background:`linear-gradient(135deg,${c1},${c2})`,border:"none",cursor:"pointer",
           display:"flex",alignItems:"center",justifyContent:"center",
           boxShadow:`0 6px 24px ${c1}70`,zIndex:100,transition:"transform 0.15s"
