@@ -793,6 +793,162 @@ async function saveAllTeamsCloud(uid, teams) {
   } catch(e) { console.warn("saveAllTeamsCloud error:", e); return false; }
 }
 
+// ── Team Sharing via invite code ──────────────────────────────────────────────
+// Structure: shared_teams/{code} → { ownerUid, ownerName, teamSnapshot, expiresAt, createdAt }
+// teamSnapshot = { meta, players, lineups, matches, stats }
+// Codes expire after 24h. Anyone who has the code can read and import a copy.
+
+function generateShareCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I,O,0,1 for readability
+  let code = "";
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+/** Publish a team snapshot to shared_teams/{code}. Returns the code or null on error. */
+async function publishTeamShare(uid, userName, team, options = {}) {
+  // options: { includeStats, includeMatches, includeLineups }
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    // Load full data
+    const [players, lineups, matches, stats] = await Promise.all([
+      loadPlayersCloud(uid, team.id, { force: true }),
+      options.includeLineups ? loadLineupsCloud(uid, team.id, { force: true }) : Promise.resolve([]),
+      options.includeMatches ? loadMatchesCloud(uid, team.id) : Promise.resolve([]),
+      options.includeStats   ? loadAllStatsCloud(uid, team.id) : Promise.resolve({}),
+    ]);
+
+    // Strip photo data URLs (too large) from players to keep doc lean
+    const safePlayers = (players || []).map(p => ({ ...p, photo: p.photo && p.photo.startsWith("data:") ? "" : (p.photo || "") }));
+
+    const code = generateShareCode();
+    const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24h
+
+    // Team meta (no subcollection refs)
+    const { players: _p, lineups: _l, lineup: _li, ...teamMeta } = team;
+
+    const snapshot = {
+      meta: teamMeta,
+      players: safePlayers,
+      lineups: options.includeLineups ? (lineups || []) : [],
+      matches: options.includeMatches ? (matches || []) : [],
+      stats:   options.includeStats   ? (stats || {}) : {},
+    };
+
+    await fb.setDoc(fb.doc(fb.db, "shared_teams", code), {
+      ownerUid: uid,
+      ownerName: userName || "Usuário",
+      teamName: team.name || "Time",
+      teamSnapshot: JSON.stringify(snapshot),
+      expiresAt,
+      createdAt: fb.serverTimestamp(),
+    });
+
+    return code;
+  } catch(e) { console.warn("publishTeamShare error:", e); return null; }
+}
+
+/** Fetch a share doc by code. Returns null if not found or expired. */
+async function fetchTeamShare(code) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, "shared_teams", code.trim().toUpperCase()));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    if (data.expiresAt && Date.now() > data.expiresAt) return null; // expired
+    return { ...data, teamSnapshot: JSON.parse(data.teamSnapshot || "{}") };
+  } catch(e) { console.warn("fetchTeamShare error:", e); return null; }
+}
+
+/** Import a shared team snapshot into the current user's account. */
+async function importTeamShare(uid, shareData, options = {}) {
+  // options: { includeStats, includeMatches, includeLineups }
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const snap = shareData.teamSnapshot;
+    const newTeamId = String(Date.now());
+    const now = fb.serverTimestamp();
+
+    // Remap IDs: players get new IDs (preserve mapping for stats/lineups)
+    const idMap = {}; // oldPlayerId → newPlayerId
+    const newPlayers = (snap.players || []).map(p => {
+      const newId = String(Date.now() + Math.random()).replace(".","");
+      idMap[String(p.id)] = newId;
+      return { ...p, id: newId };
+    });
+
+    // Team meta with new id + name suffix
+    const newMeta = {
+      ...snap.meta,
+      id: newTeamId,
+      name: (snap.meta?.name || "Time") + " (cópia)",
+      updatedAt: now,
+    };
+    delete newMeta.activeLineupId; // will be set after lineups saved
+
+    // Save team doc
+    await fb.setDoc(fb.doc(fb.db, "users", uid, "teams", newTeamId), newMeta);
+
+    // Save players
+    await Promise.all(newPlayers.map(p =>
+      fb.setDoc(fb.doc(fb.db, "users", uid, "teams", newTeamId, "players", String(p.id)), { ...p, updatedAt: now })
+    ));
+
+    // Lineups (remap player ids inside entries)
+    let activeLineupId = null;
+    if (options.includeLineups && (snap.lineups || []).length > 0) {
+      const newLineups = snap.lineups.map(l => {
+        const newLid = String(Date.now() + Math.random()).replace(".","");
+        if (l.isActive) activeLineupId = newLid;
+        return {
+          ...l,
+          id: newLid,
+          entries: (l.entries || []).map(e => ({ ...e, playerId: idMap[String(e.playerId)] || e.playerId })),
+          benchPlayerIds: (l.benchPlayerIds || []).map(pid => idMap[String(pid)] || pid),
+          updatedAt: now,
+        };
+      });
+      await Promise.all(newLineups.map(l =>
+        fb.setDoc(fb.doc(fb.db, "users", uid, "teams", newTeamId, "lineups", String(l.id)), l)
+      ));
+      if (activeLineupId) {
+        await fb.setDoc(fb.doc(fb.db, "users", uid, "teams", newTeamId), { activeLineupId }, { merge: true });
+      }
+    }
+
+    // Matches (remap player ids in scorers/assisters/gkGoalsConceded/presentPlayerIds)
+    if (options.includeMatches && (snap.matches || []).length > 0) {
+      await Promise.all(snap.matches.map(m => {
+        const newMatch = {
+          ...m,
+          id: String(Date.now() + Math.random()).replace(".",""),
+          scorers: (m.scorers || []).map(pid => idMap[String(pid)] || pid),
+          assisters: (m.assisters || []).map(pid => idMap[String(pid)] || pid),
+          presentPlayerIds: (m.presentPlayerIds || []).map(pid => idMap[String(pid)] || pid),
+          gkGoalsConceded: Object.fromEntries(
+            Object.entries(m.gkGoalsConceded || {}).map(([k,v]) => [idMap[k] || k, v])
+          ),
+          updatedAt: now,
+        };
+        return fb.setDoc(fb.doc(fb.db, "users", uid, "teams", newTeamId, "matches", String(newMatch.id)), newMatch);
+      }));
+    }
+
+    // Stats (remap player ids)
+    if (options.includeStats && Object.keys(snap.stats || {}).length > 0) {
+      await Promise.all(Object.entries(snap.stats).map(([oldPid, statData]) => {
+        const newPid = idMap[oldPid] || oldPid;
+        return fb.setDoc(
+          fb.doc(fb.db, "users", uid, "teams", newTeamId, "stats", newPid),
+          { ...statData, playerId: newPid, updatedAt: now }
+        );
+      }));
+    }
+
+    return newTeamId;
+  } catch(e) { console.warn("importTeamShare error:", e); return false; }
+}
+
 // Local fallback (used while offline / before auth)
 const STORAGE_KEY = "escalacao_fc_v6";
 function loadDataLocal() {
@@ -1878,8 +2034,10 @@ function ComingSoonScreen({onBack}) {
   );
 }
 
-function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium,onBackToMenu}) {
+function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium,onBackToMenu,onImportDone}) {
   const [confirmDel,setConfirmDel]=useState(null);
+  const [shareTeam,setShareTeam]=useState(null);
+  const [showImport,setShowImport]=useState(false);
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif"}}>
       <style>{`
@@ -1945,17 +2103,30 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:42,color:"#fff",lineHeight:1}}>{teams.length}</div>
             <div style={{color:"#6B7280",fontSize:12,fontWeight:600}}>{teams.length===1?"TIME CADASTRADO":"TIMES CADASTRADOS"}</div>
           </div>
-          <button onClick={onNewTeam} style={{
-            display:"flex",alignItems:"center",gap:8,padding:"13px 20px",
-            background:"linear-gradient(135deg,#166534,#34d399)",border:"none",
-            borderRadius:14,color:"#fff",cursor:"pointer",
-            fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,
-            boxShadow:"0 6px 20px rgba(52,211,153,0.4)",transition:"transform 0.15s"
-          }}
-            onMouseEnter={e=>e.currentTarget.style.transform="scale(1.04)"}
-            onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-            <Ico.Plus/> NOVO TIME
-          </button>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setShowImport(true)} title="Importar time via código" style={{
+              display:"flex",alignItems:"center",gap:6,padding:"11px 14px",
+              background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.3)",
+              borderRadius:12,color:"#34d399",cursor:"pointer",
+              fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,transition:"all 0.15s"
+            }}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.18)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.1)";}}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+              IMPORTAR
+            </button>
+            <button onClick={onNewTeam} style={{
+              display:"flex",alignItems:"center",gap:8,padding:"13px 20px",
+              background:"linear-gradient(135deg,#166534,#34d399)",border:"none",
+              borderRadius:14,color:"#fff",cursor:"pointer",
+              fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,
+              boxShadow:"0 6px 20px rgba(52,211,153,0.4)",transition:"transform 0.15s"
+            }}
+              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.04)"}
+              onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+              <Ico.Plus/> NOVO TIME
+            </button>
+          </div>
         </div>
       </div>
 
@@ -2011,6 +2182,12 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                     background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",
                     borderRadius:9,padding:"8px 10px",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
                   }}><Ico.Edit/></button>
+                  <button onClick={e=>{e.stopPropagation();setShareTeam(team);}} aria-label={`Compartilhar ${team.name}`} title="Compartilhar time" style={{
+                    background:"rgba(52,211,153,0.10)",border:"1px solid rgba(52,211,153,0.25)",
+                    borderRadius:9,padding:"8px 10px",color:"#34d399",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                  </button>
                   <button onClick={e=>{e.stopPropagation();setConfirmDel(team.id);}} aria-label={`Excluir ${team.name}`} style={{
                     background:"rgba(239,68,68,0.10)",border:"1px solid rgba(239,68,68,0.22)",
                     borderRadius:9,padding:"8px 10px",color:"#f87171",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
@@ -2045,6 +2222,309 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           </div>
         </div>
       )}
+
+      {/* Share modal */}
+      {shareTeam&&(
+        <ShareTeamModal
+          team={shareTeam}
+          user={user}
+          onClose={()=>setShareTeam(null)}
+        />
+      )}
+
+      {/* Import modal */}
+      {showImport&&(
+        <ImportTeamModal
+          user={user}
+          onClose={()=>setShowImport(false)}
+          onImported={(newTeamId)=>{setShowImport(false);onImportDone&&onImportDone(newTeamId);}}
+        />
+      )}
+    </div>
+  );
+}
+
+
+// ─── Share Team Modal ─────────────────────────────────────────────────────────
+function ShareTeamModal({team, user, onClose}) {
+  const [options, setOptions] = useState({includeStats:true, includeMatches:true, includeLineups:true});
+  const [step, setStep] = useState("options"); // "options" | "loading" | "done" | "error"
+  const [code, setCode] = useState("");
+  const [copied, setCopied] = useState(false);
+  const toggle = k => setOptions(o => ({...o, [k]:!o[k]}));
+
+  const handleGenerate = async () => {
+    setStep("loading");
+    const result = await publishTeamShare(user.uid, user.displayName || user.email, team, options);
+    if (result) { setCode(result); setStep("done"); }
+    else setStep("error");
+  };
+
+  const handleCopy = async () => {
+    const msg = `Oi! Te convido para ver meu time no Escalação FC 🏆
+Time: ${team.name}
+Código: ${code}
+Válido por 24h — abra o app e clique em IMPORTAR!`;
+    try {
+      if (navigator.share) { await navigator.share({title:"Escalação FC",text:msg}); }
+      else { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(()=>setCopied(false),2500); }
+    } catch {
+      try { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(()=>setCopied(false),2500); } catch {}
+    }
+  };
+
+  const OptionRow = ({k, emoji, label, desc}) => (
+    <button onClick={()=>toggle(k)} style={{
+      display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:11,border:"1px solid",cursor:"pointer",textAlign:"left",
+      borderColor:options[k]?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.08)",
+      background:options[k]?"rgba(52,211,153,0.07)":"rgba(255,255,255,0.02)",transition:"all 0.12s"
+    }}>
+      <span style={{fontSize:20}}>{emoji}</span>
+      <div style={{flex:1}}>
+        <div style={{color:options[k]?"#e5e7eb":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>{label}</div>
+        <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{desc}</div>
+      </div>
+      <div style={{width:20,height:20,borderRadius:6,border:"2px solid",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+        borderColor:options[k]?"#34d399":"rgba(255,255,255,0.15)",background:options[k]?"#34d399":"transparent"}}>
+        {options[k]&&<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+      </div>
+    </button>
+  );
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1100,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"20px 18px 36px",display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>COMPARTILHAR TIME</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
+        </div>
+
+        {step==="options"&&(<>
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(52,211,153,0.06)",borderRadius:11,border:"1px solid rgba(52,211,153,0.15)"}}>
+            <TeamShield team={team} size={40}/>
+            <div>
+              <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:0.5}}>{team.name}</div>
+              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{(team.players||[]).length} jogadores · {team.formation}</div>
+            </div>
+          </div>
+
+          <div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>O que incluir na cópia?</div>
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              <div style={{padding:"9px 12px",borderRadius:11,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
+                <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                  <span>👕</span> Elenco (sempre incluído)
+                </div>
+                <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Nome, posição, pé, estrelas e status de todos os jogadores</div>
+              </div>
+              <OptionRow k="includeLineups" emoji="📋" label="Escalações salvas" desc="Todas as formações e posições definidas"/>
+              <OptionRow k="includeStats" emoji="📊" label="Estatísticas" desc="Gols, assistências e presenças dos jogadores"/>
+              <OptionRow k="includeMatches" emoji="📅" label="Calendário de partidas" desc="Histórico de jogos e resultados"/>
+            </div>
+          </div>
+
+          <div style={{padding:"10px 12px",background:"rgba(250,204,21,0.06)",borderRadius:10,border:"1px solid rgba(250,204,21,0.15)"}}>
+            <div style={{color:"#fbbf24",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>⏱ Código válido por 24 horas</div>
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>O outro usuário receberá uma cópia independente — alterações dele não afetam seu time.</div>
+          </div>
+
+          <button onClick={handleGenerate} style={{
+            padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",
+            background:"linear-gradient(135deg,#166534,#34d399)",
+            color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,
+            boxShadow:"0 6px 20px rgba(52,211,153,0.35)"
+          }}>GERAR CÓDIGO DE CONVITE</button>
+        </>)}
+
+        {step==="loading"&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
+            <div style={{width:40,height:40,border:"3px solid rgba(52,211,153,0.2)",borderTopColor:"#34d399",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Publicando snapshot do time...</span>
+          </div>
+        )}
+
+        {step==="done"&&(<>
+          <div style={{textAlign:"center",padding:"8px 0"}}>
+            <div style={{fontSize:48,marginBottom:8}}>🔗</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>CÓDIGO GERADO!</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Envie para o outro usuário do Escalação FC</div>
+          </div>
+
+          <div style={{display:"flex",justifyContent:"center"}}>
+            <div style={{
+              fontFamily:"'Bebas Neue',sans-serif",fontSize:44,letterSpacing:8,color:"#34d399",
+              background:"rgba(52,211,153,0.08)",border:"2px dashed rgba(52,211,153,0.35)",
+              borderRadius:16,padding:"14px 28px",textAlign:"center"
+            }}>{code}</div>
+          </div>
+
+          <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
+            <span style={{color:"#f87171",fontSize:12}}>⏱</span>
+            <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Expira em 24h · cópia independente do seu time</span>
+          </div>
+
+          <button onClick={handleCopy} style={{
+            padding:"14px 0",borderRadius:13,border:"1px solid rgba(52,211,153,0.35)",cursor:"pointer",
+            background:copied?"rgba(52,211,153,0.15)":"rgba(52,211,153,0.08)",
+            color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,transition:"all 0.15s"
+          }}>{copied?"✓ COPIADO!":"📤 COMPARTILHAR CONVITE"}</button>
+          <button onClick={onClose} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#6B7280",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600}}>Fechar</button>
+        </>)}
+
+        {step==="error"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:44,marginBottom:8}}>⚠️</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>ERRO AO GERAR CÓDIGO</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Verifique sua conexão e tente novamente.</div>
+          </div>
+          <button onClick={()=>setStep("options")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+// ─── Import Team Modal ────────────────────────────────────────────────────────
+function ImportTeamModal({user, onClose, onImported}) {
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState("input"); // "input"|"preview"|"options"|"loading"|"done"|"error"
+  const [shareData, setShareData] = useState(null);
+  const [options, setOptions] = useState({includeStats:true, includeMatches:true, includeLineups:true});
+  const [errMsg, setErrMsg] = useState("");
+  const toggle = k => setOptions(o => ({...o, [k]:!o[k]}));
+
+  const handleLookup = async () => {
+    if (!code.trim()) return;
+    setStep("loading");
+    const data = await fetchTeamShare(code);
+    if (!data) { setErrMsg("Código não encontrado ou expirado. Verifique e tente novamente."); setStep("error"); return; }
+    setShareData(data);
+    const snap = data.teamSnapshot || {};
+    setOptions({
+      includeStats: Object.keys(snap.stats||{}).length > 0,
+      includeMatches: (snap.matches||[]).length > 0,
+      includeLineups: (snap.lineups||[]).length > 0,
+    });
+    setStep("preview");
+  };
+
+  const handleImport = async () => {
+    setStep("loading");
+    const newId = await importTeamShare(user.uid, shareData, options);
+    if (newId) setStep("done");
+    else { setErrMsg("Erro ao importar. Verifique sua conexão."); setStep("error"); }
+  };
+
+  const snap = shareData?.teamSnapshot || {};
+  const OptionCheck = ({k, emoji, label, count}) => (
+    <button onClick={()=>toggle(k)} style={{
+      display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,border:"1px solid",cursor:"pointer",textAlign:"left",
+      borderColor:options[k]?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.08)",
+      background:options[k]?"rgba(52,211,153,0.06)":"rgba(255,255,255,0.02)",transition:"all 0.12s"
+    }}>
+      <span style={{fontSize:18}}>{emoji}</span>
+      <div style={{flex:1}}>
+        <div style={{color:options[k]?"#e5e7eb":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>{label}</div>
+        <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{count}</div>
+      </div>
+      <div style={{width:18,height:18,borderRadius:5,border:"2px solid",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+        borderColor:options[k]?"#34d399":"rgba(255,255,255,0.15)",background:options[k]?"#34d399":"transparent"}}>
+        {options[k]&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none"><polyline points="2,6 5,9 10,3" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+      </div>
+    </button>
+  );
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1100,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"20px 18px 36px",display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>IMPORTAR TIME</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
+        </div>
+
+        {step==="input"&&(<>
+          <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>
+            Peça o código de convite para o dono do time. Você receberá uma cópia independente para editar.
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <label style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Código de convite</label>
+            <input
+              value={code}
+              onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6))}
+              placeholder="Ex: ABC123"
+              maxLength={6}
+              style={{...{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:12,padding:"12px 14px",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:28,letterSpacing:8,textAlign:"center"},colorScheme:"dark"}}
+              onFocus={e=>e.target.style.borderColor="#34d399"}
+              onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.12)"}
+              autoCapitalize="characters"
+            />
+          </div>
+          <button onClick={handleLookup} disabled={code.length<6} style={{
+            padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<6?"default":"pointer",
+            background:code.length<6?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#166534,#34d399)",
+            color:code.length<6?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5
+          }}>BUSCAR TIME</button>
+        </>)}
+
+        {step==="loading"&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
+            <div style={{width:40,height:40,border:"3px solid rgba(52,211,153,0.2)",borderTopColor:"#34d399",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Buscando time...</span>
+          </div>
+        )}
+
+        {step==="preview"&&(<>
+          <div style={{padding:"12px",background:"rgba(52,211,153,0.05)",borderRadius:12,border:"1px solid rgba(52,211,153,0.15)"}}>
+            <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>TIME ENCONTRADO</div>
+            <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:0.5}}>{shareData?.teamName || "Time"}</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>
+              Compartilhado por {shareData?.ownerName || "Usuário"} · {(snap.players||[]).length} jogadores
+            </div>
+          </div>
+
+          <div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>O que importar?</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <div style={{padding:"9px 12px",borderRadius:10,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
+                <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>👕 Elenco — {(snap.players||[]).length} jogadores (sempre incluído)</div>
+              </div>
+              {(snap.lineups||[]).length>0&&<OptionCheck k="includeLineups" emoji="📋" label="Escalações" count={`${(snap.lineups||[]).length} formação(ões) salva(s)`}/>}
+              {Object.keys(snap.stats||{}).length>0&&<OptionCheck k="includeStats" emoji="📊" label="Estatísticas" count="Gols, assistências e presenças"/>}
+              {(snap.matches||[]).length>0&&<OptionCheck k="includeMatches" emoji="📅" label="Partidas" count={`${(snap.matches||[]).length} partida(s) no calendário`}/>}
+            </div>
+          </div>
+
+          <div style={{padding:"10px 12px",background:"rgba(59,130,246,0.06)",borderRadius:10,border:"1px solid rgba(59,130,246,0.15)"}}>
+            <div style={{color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>ℹ️ Cópia independente</div>
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Você receberá o time como "{shareData?.teamName} (cópia)". Suas edições não afetam o time original.</div>
+          </div>
+
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setStep("input")} style={{flex:1,padding:"12px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Voltar</button>
+            <button onClick={handleImport} style={{flex:2,padding:"12px 0",borderRadius:11,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,boxShadow:"0 4px 14px rgba(52,211,153,0.3)"}}>IMPORTAR AGORA</button>
+          </div>
+        </>)}
+
+        {step==="done"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:52,marginBottom:8}}>🎉</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:6}}>TIME IMPORTADO!</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>
+              "{shareData?.teamName} (cópia)" foi adicionado à sua lista de times. É totalmente seu para editar!
+            </div>
+          </div>
+          <button onClick={()=>onImported()} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,boxShadow:"0 6px 20px rgba(52,211,153,0.35)"}}>VER MEUS TIMES</button>
+        </>)}
+
+        {step==="error"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:44,marginBottom:8}}>😕</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:6}}>OPS!</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>{errMsg}</div>
+          </div>
+          <button onClick={()=>setStep("input")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
+        </>)}
+      </div>
     </div>
   );
 }
@@ -6188,6 +6668,12 @@ function App() {
           onDeleteTeam={deleteTeam}
           onEditTeam={(t) => setEditingTeam(t)}
           onLogout={handleLogout}
+          onImportDone={async () => {
+            if (uid) {
+              const refreshed = await loadAllTeamsFull(uid);
+              if (refreshed) setTeams(refreshed);
+            }
+          }}
         />
       )}
 
