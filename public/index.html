@@ -5324,7 +5324,7 @@ function StatsExportModal({team,matches,stats,onClose}) {
       return "Geral";
     })();
     const header=[`${sm.emoji} RANKING — ${sm.label.toUpperCase()}`,`Time: ${team.name}`,`Filtro: ${filterDesc}`,`${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}`,`─────────────────────`].join("\n");
-    const lines=ranking.map(({p,value},i)=>`${i+1}º ${p.name} (${p.position}) — ${value} ${sm.label.toLowerCase()}`);
+    const lines=ranking.map(({p,value},i)=>`${i+1}º ${p.name} — ${value} ${sm.label.toLowerCase()}`);
     return lines.length?[header,...lines].join("\n"):[header,"(sem dados para este filtro)"].join("\n");
   };
 
@@ -5353,18 +5353,30 @@ function StatsExportModal({team,matches,stats,onClose}) {
       if(filterType==="competition")return filterCompetition||"Competição";
       return "Geral";
     })();
-    const lines=ranking.map(({p,value},i)=>`<tr><td>${i+1}º</td><td>${p.name}</td><td>${p.position}</td><td>#${p.number}</td><td style="text-align:center;font-size:1.1em;color:#16a34a;font-weight:bold;">${value}</td></tr>`);
+    const lines=ranking.map(({p,value},i)=>{
+      const photoSrc=p.photo||"";
+      const photoHtml=photoSrc
+        ? `<img src="${photoSrc}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #d1fae5;flex-shrink:0;" onerror="this.style.display='none'"/>`
+        : `<div style="width:44px;height:44px;border-radius:50%;background:#d1fae5;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;color:#16a34a;font-weight:bold;">${(p.name||"?")[0].toUpperCase()}</div>`;
+      const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":"";
+      return `<tr><td style="width:20px;text-align:center;font-size:1.1em;">${medal||`<span style='color:#999;font-size:.85em;'>${i+1}º</span>`}</td><td><div style="display:flex;align-items:center;gap:10px;">${photoHtml}<div><div style="font-weight:600;font-size:.95em;">${p.name}</div><div style="color:#6b7280;font-size:.78em;">${p.position}${p.number?` · #${p.number}`:""}</div></div></div></td><td style="text-align:center;font-size:1.5em;font-weight:bold;color:#16a34a;">${value}</td></tr>`;
+    });
     const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Estatísticas – ${team.name}</title>
-    <style>body{font-family:Arial,sans-serif;padding:24px;max-width:600px;margin:auto;}
-    h1{font-size:1.4em;margin:0;}h2{font-size:1em;color:#555;font-weight:normal;margin:4px 0 18px;}
-    table{width:100%;border-collapse:collapse;}th,td{padding:8px 10px;border-bottom:1px solid #e5e7eb;text-align:left;}
-    th{background:#f3f4f6;font-size:.85em;text-transform:uppercase;letter-spacing:.05em;}
-    tr:last-child td{border:none;}@media print{button{display:none;}}</style></head>
+    <style>body{font-family:Arial,sans-serif;padding:24px;max-width:640px;margin:auto;background:#fff;}
+    h1{font-size:1.4em;margin:0;color:#111;}h2{font-size:.95em;color:#6b7280;font-weight:normal;margin:4px 0 18px;}
+    table{width:100%;border-collapse:collapse;}
+    th,td{padding:10px 12px;border-bottom:1px solid #f3f4f6;vertical-align:middle;}
+    th{background:#f9fafb;font-size:.78em;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:700;}
+    tr:last-child td{border:none;}
+    tr:hover td{background:#f9fafb;}
+    .stat-val{text-align:center;}
+    .rank-col{text-align:center;width:36px;}
+    @media print{button{display:none;}}</style></head>
     <body>
     <h1>${sm.emoji} Ranking — ${sm.label} · ${team.name}</h1>
     <h2>Filtro: ${filterDesc} &nbsp;|&nbsp; ${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}</h2>
-    <table><thead><tr><th>#</th><th>Jogador</th><th>Posição</th><th>Camisa</th><th>${sm.label}</th></tr></thead>
-    <tbody>${lines.length?lines.join(""):"<tr><td colspan='5' style='text-align:center;color:#999;'>Sem dados</td></tr>"}</tbody></table>
+    <table><thead><tr><th class="rank-col">#</th><th>Jogador</th><th class="stat-val">${sm.label}</th></tr></thead>
+    <tbody>${lines.length?lines.join(""):"<tr><td colspan='3' style='text-align:center;color:#999;padding:24px;'>Sem dados</td></tr>"}</tbody></table>
     <p style="margin-top:24px;color:#aaa;font-size:.75em;">Gerado em ${new Date().toLocaleDateString("pt-BR")} via Escalação FC</p>
     <script>window.onload=()=>window.print()<\/script></body></html>`;
     const w=window.open("","_blank","width=700,height=600");
