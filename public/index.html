@@ -4350,6 +4350,8 @@ const MATCH_TYPES_WITH_NAME=["festival","tournament","league"];
 function MatchModal({initial,players,onSave,onClose}) {
   const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{},matchType:"friendly",competitionName:"",presentPlayerIds:[]};
   const [form,setForm]=useState(()=>initial?{...empty,...initial}:empty);
+  const [playerSearch,setPlayerSearch]=useState("");
+  const [expandedPlayer,setExpandedPlayer]=useState(null);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.opponent.trim()&&form.date;
   const hasResult=form.goalsFor!==""&&form.goalsFor!==undefined&&form.goalsFor!==null;
@@ -4357,7 +4359,6 @@ function MatchModal({initial,players,onSave,onClose}) {
   const goalkeepers=(players||[]).filter(p=>p.position==="Goleiro");
   const needsCompName=MATCH_TYPES_WITH_NAME.includes(form.matchType||"friendly");
 
-  // Increment/decrement a player's count in an array-of-ids (allows repeats)
   const adjustCount=(arr,pid,delta)=>{
     const list=[...(arr||[])];
     if(delta>0) list.push(pid);
@@ -4365,6 +4366,143 @@ function MatchModal({initial,players,onSave,onClose}) {
     return list;
   };
   const countInArr=(arr,pid)=>(arr||[]).filter(x=>x===pid).length;
+
+  // Filter + sort alphabetically
+  const filterPlayers=(list)=>{
+    const q=playerSearch.trim().toLowerCase();
+    return [...list]
+      .filter(p=>!q||p.name.toLowerCase().includes(q))
+      .sort((a,b)=>a.name.localeCompare(b.name,"pt-BR"));
+  };
+
+  // Compute per-player summary badges for collapsed card
+  const getPlayerBadges=(p,isGK)=>{
+    const pid=String(p.id);
+    const badges=[];
+    const goals=countInArr(form.scorers,pid);
+    const assists=countInArr(form.assisters,pid);
+    const present=(form.presentPlayerIds||[]).includes(pid);
+    const gkGA=(form.gkGoalsConceded||{})[pid]||0;
+    if(present) badges.push({emoji:"📋",val:null,color:"#34d399"});
+    if(goals>0) badges.push({emoji:"⚽",val:goals,color:"#34d399"});
+    if(assists>0) badges.push({emoji:"🎯",val:assists,color:"#f59e0b"});
+    if(isGK&&gkGA>0) badges.push({emoji:"🧤",val:gkGA,color:"#f87171"});
+    return badges;
+  };
+
+  // Render a unified player card (outfield or GK)
+  const renderPlayerCard=(p,isGK)=>{
+    const pid=String(p.id);
+    const isExpanded=expandedPlayer===pid;
+    const present=(form.presentPlayerIds||[]).includes(pid);
+    const goals=countInArr(form.scorers,pid);
+    const assists=countInArr(form.assisters,pid);
+    const gkGA=(form.gkGoalsConceded||{})[pid]||0;
+    const badges=getPlayerBadges(p,isGK);
+    const hasActivity=present||goals>0||assists>0||(isGK&&gkGA>0);
+
+    return (
+      <div key={pid} style={{borderRadius:11,border:"1px solid",overflow:"hidden",transition:"all 0.15s",
+        borderColor:hasActivity?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.07)",
+        background:hasActivity?"rgba(52,211,153,0.04)":"rgba(255,255,255,0.02)"}}>
+        {/* Collapsed header — click to expand */}
+        <button onClick={()=>setExpandedPlayer(isExpanded?null:pid)} style={{
+          width:"100%",display:"flex",alignItems:"center",gap:8,padding:"8px 10px",
+          background:"none",border:"none",cursor:"pointer",textAlign:"left"
+        }}>
+          <PlayerAvatar player={p} size={30}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:hasActivity?"#e5e7eb":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div>
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10}}>{p.position}{p.number?" · #"+p.number:""}</div>
+          </div>
+          {badges.length>0&&(
+            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+              {badges.map((b,i)=>(
+                <span key={i} style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,color:b.color,background:"rgba(0,0,0,0.25)",borderRadius:6,padding:"1px 5px",display:"flex",alignItems:"center",gap:2}}>
+                  <span style={{fontSize:11}}>{b.emoji}</span>{b.val!==null&&<span>{b.val}</span>}
+                </span>
+              ))}
+            </div>
+          )}
+          <span style={{color:"#4B5563",fontSize:14,marginLeft:2,transition:"transform 0.15s",display:"inline-block",transform:isExpanded?"rotate(180deg)":"rotate(0deg)"}}>▾</span>
+        </button>
+
+        {/* Expanded panel */}
+        {isExpanded&&(
+          <div style={{borderTop:"1px solid rgba(255,255,255,0.06)",padding:"10px 12px",display:"flex",flexDirection:"column",gap:10,background:"rgba(0,0,0,0.15)"}}>
+
+            {/* Presença toggle */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+                <span style={{fontSize:13}}>📋</span> Presença
+              </span>
+              <button onClick={()=>{
+                const cur=form.presentPlayerIds||[];
+                set("presentPlayerIds",present?cur.filter(id=>id!==pid):[...cur,pid]);
+              }} style={{
+                padding:"4px 14px",borderRadius:8,border:"1px solid",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,
+                borderColor:present?"rgba(52,211,153,0.5)":"rgba(255,255,255,0.12)",
+                background:present?"rgba(52,211,153,0.15)":"rgba(255,255,255,0.04)",
+                color:present?"#34d399":"#6B7280"
+              }}>{present?"✓ Presente":"○ Ausente"}</button>
+            </div>
+
+            {/* Gols (only if hasResult && goalsFor > 0) */}
+            {hasResult&&parseInt(form.goalsFor||0)>0&&(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:13}}>⚽</span> Gols
+                </span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <button onClick={()=>set("scorers",adjustCount(form.scorers,pid,-1))} disabled={goals===0}
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:goals===0?"#2d3748":"#9CA3AF",cursor:goals===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:goals>0?"#34d399":"#4B5563",minWidth:22,textAlign:"center"}}>{goals}</span>
+                  <button onClick={()=>set("scorers",adjustCount(form.scorers,pid,1))}
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                </div>
+              </div>
+            )}
+
+            {/* Assistências (only if hasResult && goalsFor > 0) */}
+            {hasResult&&parseInt(form.goalsFor||0)>0&&(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:13}}>🎯</span> Assistências
+                </span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <button onClick={()=>set("assisters",adjustCount(form.assisters,pid,-1))} disabled={assists===0}
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:assists===0?"#2d3748":"#9CA3AF",cursor:assists===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:assists>0?"#f59e0b":"#4B5563",minWidth:22,textAlign:"center"}}>{assists}</span>
+                  <button onClick={()=>set("assisters",adjustCount(form.assisters,pid,1))}
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                </div>
+              </div>
+            )}
+
+            {/* Gols sofridos — apenas goleiros, quando goalsAgainst > 0 */}
+            {isGK&&hasResult&&parseInt(form.goalsAgainst||0)>0&&(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+                  <span style={{fontSize:13}}>🧤</span> Gols sofridos
+                </span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[pid]:Math.max(0,gkGA-1)})} disabled={gkGA===0}
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:gkGA===0?"#2d3748":"#9CA3AF",cursor:gkGA===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                  <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:gkGA>0?"#f87171":"#4B5563",minWidth:22,textAlign:"center"}}>{gkGA}</span>
+                  <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[pid]:gkGA+1})}
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const filteredOutfield=filterPlayers(outfield);
+  const filteredGK=filterPlayers(goalkeepers);
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)"}} onClick={onClose}>
@@ -4394,7 +4532,7 @@ function MatchModal({initial,players,onSave,onClose}) {
             </div>
           </div>
 
-          {/* Competition name — only for festival/tournament/league */}
+          {/* Competition name */}
           {needsCompName&&(
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
               <label style={LT}>Nome do {MATCH_TYPES.find(t=>t.id===form.matchType)?.label}</label>
@@ -4438,82 +4576,15 @@ function MatchModal({initial,players,onSave,onClose}) {
                   onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
               </div>
             </div>
-
-            {/* Scorers — available when goalsFor > 0 */}
-            {hasResult&&parseInt(form.goalsFor||0)>0&&(players||[]).length>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:6,borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
-                <span style={{...LT,fontSize:9}}>⚽ Gols marcados por</span>
-                {[...(players||[])].sort((a,b)=>(parseInt(a.number)||0)-(parseInt(b.number)||0)).map(p=>{
-                  const cnt=countInArr(form.scorers,String(p.id));
-                  return (
-                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8}}>
-                      <PlayerAvatar player={p} size={28}/>
-                      <span style={{flex:1,color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>{p.name} <span style={{color:"#4B5563",fontSize:10}}>#{p.number}</span></span>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <button onClick={()=>set("scorers",adjustCount(form.scorers,String(p.id),-1))} disabled={cnt===0}
-                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:cnt===0?"#374151":"#9CA3AF",cursor:cnt===0?"default":"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:cnt>0?"#34d399":"#6B7280",minWidth:16,textAlign:"center"}}>{cnt}</span>
-                        <button onClick={()=>set("scorers",adjustCount(form.scorers,String(p.id),1))}
-                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Assisters — all players */}
-            {hasResult&&parseInt(form.goalsFor||0)>0&&(players||[]).length>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:6,borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
-                <span style={{...LT,fontSize:9}}>🎯 Assistências por</span>
-                {[...(players||[])].sort((a,b)=>(parseInt(a.number)||0)-(parseInt(b.number)||0)).map(p=>{
-                  const cnt=countInArr(form.assisters,String(p.id));
-                  return (
-                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8}}>
-                      <PlayerAvatar player={p} size={28}/>
-                      <span style={{flex:1,color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>{p.name} <span style={{color:"#4B5563",fontSize:10}}>#{p.number}</span></span>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <button onClick={()=>set("assisters",adjustCount(form.assisters,String(p.id),-1))} disabled={cnt===0}
-                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:cnt===0?"#374151":"#9CA3AF",cursor:cnt===0?"default":"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:cnt>0?"#f59e0b":"#6B7280",minWidth:16,textAlign:"center"}}>{cnt}</span>
-                        <button onClick={()=>set("assisters",adjustCount(form.assisters,String(p.id),1))}
-                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* GK goals conceded */}
-            {hasResult&&parseInt(form.goalsAgainst||0)>0&&goalkeepers.length>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:6,borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
-                <span style={{...LT,fontSize:9}}>🧤 Gols sofridos por goleiro</span>
-                {[...goalkeepers].sort((a,b)=>(parseInt(a.number)||0)-(parseInt(b.number)||0)).map(p=>{
-                  const cnt=(form.gkGoalsConceded||{})[String(p.id)]||0;
-                  return (
-                    <div key={p.id} style={{display:"flex",alignItems:"center",gap:8}}>
-                      <PlayerAvatar player={p} size={28}/>
-                      <span style={{flex:1,color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>{p.name} <span style={{color:"#4B5563",fontSize:10}}>#{p.number}</span></span>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[String(p.id)]:Math.max(0,cnt-1)})} disabled={cnt===0}
-                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:cnt===0?"#374151":"#9CA3AF",cursor:cnt===0?"default":"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-                        <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:cnt>0?"#f87171":"#6B7280",minWidth:16,textAlign:"center"}}>{cnt}</span>
-                        <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[String(p.id)]:cnt+1})}
-                          style={{width:24,height:24,borderRadius:7,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
           </div>
 
-          {/* Attendance */}
+          {/* ── Jogadores unificados ── */}
           {(players||[]).length>0&&(
-            <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(255,255,255,0.07)"}}>
+            <div style={{display:"flex",flexDirection:"column",gap:10,padding:"12px",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(255,255,255,0.07)"}}>
+
+              {/* Header + contadores */}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{...LT,fontSize:9}}>📋 Presença</span>
+                <span style={{...LT,fontSize:9}}>👥 Jogadores</span>
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={()=>set("presentPlayerIds",(players||[]).map(p=>String(p.id)))} style={{
                     padding:"2px 8px",borderRadius:6,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.08)",
@@ -4525,33 +4596,55 @@ function MatchModal({initial,players,onSave,onClose}) {
                   }}>Limpar</button>
                 </div>
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                {[...(players||[])].sort((a,b)=>(parseInt(a.number)||0)-(parseInt(b.number)||0)).map(p=>{
-                  const pid=String(p.id);
-                  const present=(form.presentPlayerIds||[]).includes(pid);
-                  return (
-                    <button key={pid} onClick={()=>{
-                      const cur=form.presentPlayerIds||[];
-                      set("presentPlayerIds",present?cur.filter(id=>id!==pid):[...cur,pid]);
-                    }} style={{
-                      display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:9,
-                      border:"1px solid",cursor:"pointer",textAlign:"left",
-                      borderColor:present?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.07)",
-                      background:present?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.02)",
-                      transition:"all 0.12s"
-                    }}>
-                      <PlayerAvatar player={p} size={28}/>
-                      <span style={{flex:1,color:present?"#e5e7eb":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>
-                        {p.name} <span style={{fontSize:10,opacity:0.6}}>#{p.number} · {p.position}</span>
-                      </span>
-                      <span style={{fontSize:14,color:present?"#34d399":"#374151"}}>{present?"✓":"○"}</span>
-                    </button>
-                  );
-                })}
+
+              {/* Busca */}
+              <div style={{position:"relative"}}>
+                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>🔍</span>
+                <input
+                  value={playerSearch}
+                  onChange={e=>{setPlayerSearch(e.target.value);setExpandedPlayer(null);}}
+                  placeholder="Buscar jogador..."
+                  style={{...IS,paddingLeft:32,fontSize:12}}
+                  onFocus={e=>e.target.style.borderColor="#34d399"}
+                  onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}
+                />
               </div>
+
+              {/* Presença total */}
               <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,textAlign:"right"}}>
                 {(form.presentPlayerIds||[]).length}/{(players||[]).length} presentes
               </div>
+
+              {/* Lista: Jogadores de linha */}
+              {filteredOutfield.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5,paddingLeft:2}}>
+                    ⚽ Jogadores de linha ({filteredOutfield.length})
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                    {filteredOutfield.map(p=>renderPlayerCard(p,false))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lista: Goleiros */}
+              {filteredGK.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:0,marginTop:filteredOutfield.length>0?8:0}}>
+                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5,paddingLeft:2}}>
+                    🧤 Goleiros ({filteredGK.length})
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                    {filteredGK.map(p=>renderPlayerCard(p,true))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sem resultados na busca */}
+              {filteredOutfield.length===0&&filteredGK.length===0&&(
+                <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12,textAlign:"center",padding:"12px 0"}}>
+                  Nenhum jogador encontrado para "{playerSearch}"
+                </div>
+              )}
             </div>
           )}
 
