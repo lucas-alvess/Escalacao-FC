@@ -21,6 +21,8 @@
     @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(-8px);}to{opacity:1;transform:translateX(-50%) translateY(0);}}
     @keyframes shimmer{0%{background-position:-200% 0;}100%{background-position:200% 0;}}
     @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}
+    button{-webkit-tap-highlight-color:transparent;}
+    *:focus-visible{outline:2px solid rgba(52,211,153,0.6);outline-offset:2px;}
     #loading{position:fixed;inset:0;background:#050c0a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:9999;}
     .spin{width:40px;height:40px;border:3px solid rgba(52,211,153,0.3);border-top-color:#34d399;border-radius:50%;animation:spin 0.8s linear infinite;}
     .load-text{color:#34d399;font-family:'DM Sans',sans-serif;font-size:14px;letter-spacing:3px;font-weight:700;}
@@ -1918,13 +1920,12 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
       {/* Header */}
-      <div style={{padding:"48px 24px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-        {/* Logo / title */}
-        <div style={{width:64,height:64,borderRadius:16,overflow:"hidden",boxShadow:"0 8px 28px rgba(52,211,153,0.35)"}}>
+      <div style={{padding:"56px 24px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+        <div style={{width:72,height:72,borderRadius:20,overflow:"hidden",boxShadow:"0 8px 32px rgba(52,211,153,0.4),0 2px 8px rgba(0,0,0,0.5)"}}>
           <img src={LOGO_URI} alt="Escalação FC" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
         </div>
-        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#fff",letterSpacing:2,lineHeight:1}}>ESCALAÇÃO FC</div>
-        <div style={{color:"#4B5563",fontSize:12,fontWeight:600,letterSpacing:0.5}}>Escolha o modo de gerenciamento</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:"#fff",letterSpacing:2.5,lineHeight:1}}>ESCALAÇÃO FC</div>
+        <div style={{color:"#374151",fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase"}}>Selecione o modo</div>
       </div>
 
       {/* Mode cards — premium photo style */}
@@ -2013,17 +2014,31 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
       </div>
 
       {/* Footer: user info + logout */}
-      <div style={{padding:"0 20px 40px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
+      <div style={{padding:"0 20px 44px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
           {user?.photoURL
-            ?<img src={user.photoURL} alt="" style={{width:32,height:32,borderRadius:"50%",objectFit:"cover"}}/>
-            :<div style={{width:32,height:32,borderRadius:"50%",background:"#16a34a",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13}}>{(user?.displayName||user?.email||"?")[0].toUpperCase()}</div>}
-          <div>
-            <div style={{color:"#e5e7eb",fontSize:12,fontWeight:700}}>{user?.displayName||user?.email||""}</div>
-            <button onClick={onTogglePremium} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:700}}>{isPremium?"👑 PRO":"FREE"}</button>
+            ?<img src={user.photoURL} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(52,211,153,0.3)",flexShrink:0}}/>
+            :<div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#166534,#34d399)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,flexShrink:0}}>{(user?.displayName||user?.email||"?")[0].toUpperCase()}</div>}
+          <div style={{minWidth:0}}>
+            <div style={{color:"#e5e7eb",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.displayName||user?.email||""}</div>
+            <button onClick={onTogglePremium} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3}}>
+              {isPremium
+                ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
+                :"FREE"}
+            </button>
           </div>
         </div>
-        <button onClick={onLogout} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:9,padding:"7px 14px",color:"#f87171",cursor:"pointer",fontSize:11,fontWeight:700}}>Sair</button>
+        <button onClick={onLogout} style={{
+          display:"flex",alignItems:"center",gap:5,
+          background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.18)",
+          borderRadius:10,padding:"8px 14px",color:"#f87171",cursor:"pointer",
+          fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,flexShrink:0,transition:"background 0.15s"
+        }}
+          onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}
+          onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.08)"}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          Sair
+        </button>
       </div>
     </div>
   );
@@ -2069,13 +2084,15 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
       `}</style>
 
       {/* Header hero */}
-      <div style={{padding:"44px 20px 28px",background:"linear-gradient(180deg,#0a1f12 0%,#050c0a 100%)",borderBottom:"1px solid rgba(52,211,153,0.1)",position:"relative",overflow:"hidden"}}>
-        {/* Decorative field lines bg */}
-        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.05,pointerEvents:"none"}} viewBox="0 0 360 160" preserveAspectRatio="xMidYMid slice">
-          <rect x="10" y="10" width="340" height="140" fill="none" stroke="#34d399" strokeWidth="1.5"/>
-          <line x1="10" y1="80" x2="350" y2="80" stroke="#34d399" strokeWidth="1"/>
-          <circle cx="180" cy="80" r="30" fill="none" stroke="#34d399" strokeWidth="1"/>
-          <circle cx="180" cy="80" r="3" fill="#34d399"/>
+      <div style={{padding:"48px 20px 24px",background:"linear-gradient(175deg,#071a0f 0%,#050c0a 100%)",borderBottom:"1px solid rgba(52,211,153,0.07)",position:"relative",overflow:"hidden"}}>
+        {/* Decorative pitch lines */}
+        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.04,pointerEvents:"none"}} viewBox="0 0 360 170" preserveAspectRatio="xMidYMid slice">
+          <rect x="12" y="10" width="336" height="150" fill="none" stroke="#34d399" strokeWidth="1.5" rx="3"/>
+          <line x1="12" y1="85" x2="348" y2="85" stroke="#34d399" strokeWidth="1"/>
+          <circle cx="180" cy="85" r="28" fill="none" stroke="#34d399" strokeWidth="1"/>
+          <circle cx="180" cy="85" r="2.5" fill="#34d399"/>
+          <rect x="12" y="55" width="36" height="60" fill="none" stroke="#34d399" strokeWidth="1"/>
+          <rect x="312" y="55" width="36" height="60" fill="none" stroke="#34d399" strokeWidth="1"/>
         </svg>
 
         <div style={{position:"relative",display:"flex",alignItems:"center",gap:14}}>
@@ -2108,7 +2125,11 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                 border:isPremium?"1px solid rgba(250,204,21,0.4)":"1px solid rgba(255,255,255,0.1)",
                 background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
                 color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800
-              }}>{isPremium?"👑 PRO":"FREE"}</button>
+              }}>
+                {isPremium
+                  ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
+                  :"FREE"}
+              </button>
               {user.photoURL?(
                 <img src={user.photoURL} alt={user.displayName||""} style={{width:36,height:36,borderRadius:"50%",border:"2px solid rgba(52,211,153,0.4)"}}/>
               ):(
@@ -2121,52 +2142,56 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           )}
         </div>
 
-        <div style={{marginTop:18,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{marginTop:20,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
           <div>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:42,color:"#fff",lineHeight:1}}>{teams.length}</div>
-            <div style={{color:"#6B7280",fontSize:12,fontWeight:600}}>{teams.length===1?"TIME CADASTRADO":"TIMES CADASTRADOS"}</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:44,color:"#fff",lineHeight:1,letterSpacing:1}}>{teams.length}</div>
+            <div style={{color:"#4B5563",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>{teams.length===1?"Time cadastrado":"Times cadastrados"}</div>
           </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>setShowImport(true)} title="Importar time via código" style={{
-              display:"flex",alignItems:"center",gap:6,padding:"11px 14px",
-              background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.3)",
-              borderRadius:12,color:"#34d399",cursor:"pointer",
-              fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,transition:"all 0.15s"
-            }}
-              onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.18)";}}
-              onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.1)";}}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
-              IMPORTAR
-            </button>
-            <button onClick={onNewTeam} style={{
-              display:"flex",alignItems:"center",gap:8,padding:"13px 20px",
-              background:"linear-gradient(135deg,#166534,#34d399)",border:"none",
-              borderRadius:14,color:"#fff",cursor:"pointer",
-              fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,
-              boxShadow:"0 6px 20px rgba(52,211,153,0.4)",transition:"transform 0.15s"
-            }}
-              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.04)"}
-              onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-              <Ico.Plus/> NOVO TIME
-            </button>
-          </div>
+          <button onClick={()=>setShowImport(true)} title="Importar time via código" style={{
+            display:"flex",alignItems:"center",gap:6,padding:"10px 14px",
+            background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.22)",
+            borderRadius:12,color:"#34d399",cursor:"pointer",
+            fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,letterSpacing:0.5,
+            transition:"background 0.15s,border-color 0.15s"
+          }}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.14)";e.currentTarget.style.borderColor="rgba(52,211,153,0.4)";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.07)";e.currentTarget.style.borderColor="rgba(52,211,153,0.22)";}}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Importar
+          </button>
         </div>
       </div>
 
       {/* Team list */}
-      <div style={{padding:"16px 16px 100px",display:"flex",flexDirection:"column",gap:12}}>
+      <style>{`
+        @keyframes cardFadeUp{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+        .team-card{background:rgba(255,255,255,0.025);border:1px solid rgba(255,255,255,0.07);border-radius:18px;overflow:hidden;transition:border-color 0.2s,box-shadow 0.2s,transform 0.18s;cursor:pointer;}
+        .team-card:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(0,0,0,0.4);}
+        .tc-action-btn{border-radius:9px;padding:8px 10px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s,border-color 0.15s;}
+        .tc-action-btn:active{transform:scale(0.9);}
+        .tc-footer{border-top:1px solid rgba(255,255,255,0.04);padding:9px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:background 0.15s;}
+        .tc-footer:hover{background:rgba(255,255,255,0.02);}
+        /* FAB */
+        .home-fab{position:fixed;bottom:calc(60px + env(safe-area-inset-bottom,0px) + 16px);right:20px;z-index:850;width:56px;height:56px;border-radius:18px;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#15803d,#34d399);box-shadow:0 6px 24px rgba(52,211,153,0.45),0 2px 8px rgba(0,0,0,0.4),inset 0 1px 0 rgba(255,255,255,0.15);transition:transform 0.18s,box-shadow 0.18s;-webkit-tap-highlight-color:transparent;}
+        .home-fab:hover{transform:scale(1.07) translateY(-2px);box-shadow:0 10px 30px rgba(52,211,153,0.55),0 4px 12px rgba(0,0,0,0.4);}
+        .home-fab:active{transform:scale(0.95);box-shadow:0 4px 14px rgba(52,211,153,0.35);}
+      `}</style>
+
+      <div style={{padding:"16px 16px 120px",display:"flex",flexDirection:"column",gap:12}}>
         {teams.length===0&&(
-          <div style={{textAlign:"center",padding:"60px 20px",animation:"fadeUp 0.4s ease"}}>
-            <div style={{fontSize:64,marginBottom:16}}>🏆</div>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#fff",letterSpacing:1,marginBottom:8}}>NENHUM TIME AINDA</div>
-            <div style={{color:"#4B5563",fontSize:14,lineHeight:1.6}}>Crie seu primeiro time para começar<br/>a montar escalações e gerenciar elenco.</div>
-            <button onClick={onNewTeam} style={{
-              marginTop:24,display:"inline-flex",alignItems:"center",gap:8,padding:"14px 28px",
-              background:"linear-gradient(135deg,#166534,#34d399)",border:"none",
-              borderRadius:14,color:"#fff",cursor:"pointer",
-              fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,
-              boxShadow:"0 6px 20px rgba(52,211,153,0.4)"
-            }}><Ico.Plus/> CRIAR PRIMEIRO TIME</button>
+          <div style={{textAlign:"center",padding:"64px 20px 32px",animation:"cardFadeUp 0.4s ease"}}>
+            {/* Pitch icon */}
+            <div style={{width:72,height:72,borderRadius:20,background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.14)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinecap="round">
+                <rect x="2" y="3" width="20" height="18" rx="2.5"/>
+                <line x1="12" y1="3" x2="12" y2="21"/>
+                <circle cx="12" cy="12" r="3" fill="none"/>
+                <rect x="2" y="8" width="4" height="8" fill="none"/>
+                <rect x="18" y="8" width="4" height="8" fill="none"/>
+              </svg>
+            </div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:"#fff",letterSpacing:1,marginBottom:8}}>Nenhum time ainda</div>
+            <div style={{color:"#4B5563",fontSize:13,lineHeight:1.7,maxWidth:260,margin:"0 auto"}}>Toque no <strong style={{color:"#34d399"}}>+</strong> para criar seu primeiro time e começar a montar escalações.</div>
           </div>
         )}
 
@@ -2175,72 +2200,74 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           const escalados=(team.lineup||[]).filter(l=>l.playerId).length;
           const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
           return (
-            <div key={team.id} style={{
-              background:"rgba(255,255,255,0.03)",
-              border:"1px solid rgba(255,255,255,0.08)",
-              borderRadius:18,overflow:"hidden",
-              animation:`fadeUp 0.35s ease ${i*0.06}s both`,
-              transition:"border-color 0.2s,transform 0.15s",cursor:"pointer"
-            }}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor=`${c1}55`;e.currentTarget.style.transform="translateY(-1px)";}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";e.currentTarget.style.transform="translateY(0)";}}>
+            <div key={team.id} className="team-card" style={{animation:`cardFadeUp 0.32s ease ${i*0.055}s both`}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor=`${c1}44`}
+              onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
 
-              {/* Color accent bar */}
-              <div style={{height:3,background:`linear-gradient(90deg,${c1},${c2})`,opacity:0.8}}/>
+              {/* Gradient accent bar */}
+              <div style={{height:2,background:`linear-gradient(90deg,${c1},${c2},transparent)`,opacity:0.9}}/>
 
               <div style={{padding:"14px 16px",display:"flex",alignItems:"center",gap:14}}>
-                <TeamShield team={team} size={58}/>
+                <TeamShield team={team} size={56}/>
 
                 <div style={{flex:1,minWidth:0}} onClick={()=>onSelectTeam(team)}>
-                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:0.8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{team.name}</div>
-                  <div style={{display:"flex",gap:8,marginTop:4,flexWrap:"wrap"}}>
-                    <span style={{background:`${c1}22`,color:c2,borderRadius:5,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>{team.formation}</span>
-                    <span style={{display:"flex",alignItems:"center",gap:4,background:"rgba(255,255,255,0.12)",color:"#e5e7eb",borderRadius:5,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}><Ico.Players/> {team.players.length} jog.</span>
-                    <span style={{background:"rgba(255,255,255,0.12)",color:"#e5e7eb",borderRadius:5,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>⚽ {escalados}/{slots.length}</span>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:0.8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.2,marginBottom:6}}>{team.name}</div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    <span style={{background:`${c1}1a`,color:c1,border:`1px solid ${c1}33`,borderRadius:6,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,letterSpacing:0.3}}>{team.formation}</span>
+                    <span style={{display:"flex",alignItems:"center",gap:3,background:"rgba(255,255,255,0.06)",color:"#9CA3AF",border:"1px solid rgba(255,255,255,0.08)",borderRadius:6,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="9" cy="7" r="4"/><path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg>
+                      {team.players.length} jog.
+                    </span>
+                    <span style={{background:"rgba(255,255,255,0.06)",color:"#9CA3AF",border:"1px solid rgba(255,255,255,0.08)",borderRadius:6,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
+                      {escalados}/{slots.length} escal.
+                    </span>
                   </div>
                 </div>
 
-                <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-                  <button onClick={e=>{e.stopPropagation();onEditTeam(team);}} aria-label={`Editar ${team.name}`} style={{
-                    background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",
-                    borderRadius:9,padding:"8px 10px",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
-                  }}><Ico.Edit/></button>
-                  <button onClick={e=>{e.stopPropagation();setShareTeam(team);}} aria-label={`Compartilhar ${team.name}`} title="Compartilhar time" style={{
-                    background:"rgba(52,211,153,0.10)",border:"1px solid rgba(52,211,153,0.25)",
-                    borderRadius:9,padding:"8px 10px",color:"#34d399",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
-                  }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                <div style={{display:"flex",flexDirection:"column",gap:5,flexShrink:0}}>
+                  <button onClick={e=>{e.stopPropagation();onEditTeam(team);}} aria-label={`Editar ${team.name}`} className="tc-action-btn"
+                    style={{background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.2)",color:"#60a5fa"}}><Ico.Edit/></button>
+                  <button onClick={e=>{e.stopPropagation();setShareTeam(team);}} aria-label={`Compartilhar ${team.name}`} className="tc-action-btn"
+                    style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",color:"#34d399"}}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                   </button>
-                  <button onClick={e=>{e.stopPropagation();setConfirmDel(team.id);}} aria-label={`Excluir ${team.name}`} style={{
-                    background:"rgba(239,68,68,0.10)",border:"1px solid rgba(239,68,68,0.22)",
-                    borderRadius:9,padding:"8px 10px",color:"#f87171",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"
-                  }}><Ico.Trash/></button>
+                  <button onClick={e=>{e.stopPropagation();setConfirmDel(team.id);}} aria-label={`Excluir ${team.name}`} className="tc-action-btn"
+                    style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171"}}><Ico.Trash/></button>
                 </div>
               </div>
 
-              {/* Tap to open hint */}
-              <div onClick={()=>onSelectTeam(team)} style={{borderTop:"1px solid rgba(255,255,255,0.05)",padding:"9px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.02)"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600}}>Abrir prancheta tática</span>
-                <Ico.ChevR/>
+              <div className="tc-footer" onClick={()=>onSelectTeam(team)}>
+                <span style={{color:"#374151",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600}}>Abrir prancheta tática</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </div>
           );
         })}
       </div>
 
+      {/* FAB — Novo Time */}
+      <button className="home-fab" onClick={onNewTeam} aria-label="Criar novo time" title="Novo time">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+
       {/* Confirm delete overlay */}
       {confirmDel&&(
         <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.75)",backdropFilter:"blur(6px)",padding:20}}
           onClick={()=>setConfirmDel(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(239,68,68,0.3)",borderRadius:20,padding:"24px 20px",maxWidth:320,width:"100%",textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,0.8)"}}>
-            <div style={{fontSize:40,marginBottom:10}}>⚠️</div>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:8}}>EXCLUIR TIME?</div>
-            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.5,marginBottom:20}}>Esta ação é irreversível. Todos os jogadores e escalações do time serão perdidos.</div>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#0c1b14",border:"1px solid rgba(239,68,68,0.25)",borderRadius:22,padding:"28px 22px",maxWidth:320,width:"100%",textAlign:"center",boxShadow:"0 24px 64px rgba(0,0,0,0.9)"}}>
+            <div style={{width:56,height:56,borderRadius:16,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+            </div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:8}}>Excluir time?</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6,marginBottom:22}}>Esta ação é irreversível. Todos os jogadores e escalações serão perdidos.</div>
             <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setConfirmDel(null)} style={{flex:1,padding:"12px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Cancelar</button>
-              <button onClick={()=>{onDeleteTeam(confirmDel);setConfirmDel(null);}} style={{flex:1,padding:"12px 0",borderRadius:11,border:"none",background:"linear-gradient(135deg,#dc2626,#ef4444)",color:"#fff",cursor:"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,boxShadow:"0 4px 14px rgba(220,38,38,0.4)"}}>EXCLUIR</button>
+              <button onClick={()=>setConfirmDel(null)} style={{flex:1,padding:"13px 0",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,transition:"background 0.15s"}}>Cancelar</button>
+              <button onClick={()=>{onDeleteTeam(confirmDel);setConfirmDel(null);}} style={{flex:1,padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#dc2626,#ef4444)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:800,boxShadow:"0 4px 16px rgba(220,38,38,0.4)",transition:"transform 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
+                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>Excluir</button>
             </div>
           </div>
         </div>
@@ -4806,38 +4833,43 @@ function LoginScreen({onLogin, loading}) {
 // ─── Bottom Navigation Bar ────────────────────────────────────────────────────
 function BottomNav({active,onChange}) {
   const tabs=[
-    {id:"home",   label:"Times",     Icon:Ico.NavHome},
-    {id:"tactic", label:"Escalação", Icon:Ico.NavTactic},
-    {id:"office", label:"Escritório",Icon:Ico.NavOffice},
+    {id:"home",    label:"Times",      Icon:Ico.NavHome},
+    {id:"tactic",  label:"Escalação",  Icon:Ico.NavTactic},
+    {id:"office",  label:"Escritório", Icon:Ico.NavOffice},
   ];
   return (
-    <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:900,
-      background:"rgba(4,10,8,0.97)",borderTop:"1px solid rgba(255,255,255,0.06)",
-      backdropFilter:"blur(16px)",display:"flex",
-      padding:"8px 0 env(safe-area-inset-bottom,8px)"}}>
-      {tabs.map(({id,label,Icon})=>{
-        const on=active===id;
-        return (
-          <button key={id} onClick={()=>onChange(id)} style={{
-            flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,
-            background:"none",border:"none",cursor:"pointer",padding:"4px 0 2px",
-            color:on?"#34d399":"#4B5563",transition:"color 0.18s",position:"relative"
-          }}>
-            {/* Active background pill */}
-            {on&&<div style={{position:"absolute",top:0,left:"50%",transform:"translateX(-50%)",
-              width:44,height:36,borderRadius:10,background:"rgba(52,211,153,0.1)",zIndex:-1}}/>}
-            <Icon/>
-            <span style={{
-              fontFamily:"'DM Sans',sans-serif",fontSize:9,
-              fontWeight:on?800:500,letterSpacing:0.4,
-              color:on?"#34d399":"#4B5563"
-            }}>{label}</span>
-            {/* Active dot */}
-            {on&&<div style={{width:4,height:4,borderRadius:"50%",background:"#34d399",marginTop:1}}/>}
-          </button>
-        );
-      })}
-    </div>
+    <>
+      <style>{`
+        @keyframes bnTabPop{0%{transform:scale(0.88);}100%{transform:scale(1);}}
+        .bn-tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;cursor:pointer;padding:10px 0 6px;position:relative;-webkit-tap-highlight-color:transparent;transition:transform 0.12s;}
+        .bn-tab:active{transform:scale(0.9);}
+        .bn-pill{position:absolute;top:5px;left:50%;transform:translateX(-50%);width:40px;height:32px;border-radius:10px;background:rgba(52,211,153,0.12);pointer-events:none;}
+        .bn-label{font-family:'DM Sans',sans-serif;font-size:9px;letter-spacing:0.5px;}
+        .bn-dot{width:4px;height:4px;border-radius:50%;background:#34d399;margin-top:1px;}
+      `}</style>
+      <div style={{
+        position:"fixed",bottom:0,left:0,right:0,zIndex:900,
+        background:"rgba(3,8,6,0.97)",
+        borderTop:"1px solid rgba(52,211,153,0.08)",
+        backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
+        display:"flex",alignItems:"stretch",
+        paddingBottom:"env(safe-area-inset-bottom,0px)",
+        boxShadow:"0 -8px 32px rgba(0,0,0,0.4)"
+      }}>
+        {tabs.map(({id,label,Icon})=>{
+          const on=active===id;
+          return (
+            <button key={id} className="bn-tab" onClick={()=>onChange(id)}
+              style={{color:on?"#34d399":"#374151"}} aria-label={label} aria-current={on?"page":undefined}>
+              {on&&<div className="bn-pill"/>}
+              <Icon/>
+              <span className="bn-label" style={{color:on?"#34d399":"#4B5563",fontWeight:on?800:500}}>{label}</span>
+              {on&&<div className="bn-dot"/>}
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
