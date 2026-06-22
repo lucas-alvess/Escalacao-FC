@@ -5322,6 +5322,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
   const [filterHomeAway,setFilterHomeAway]=useState("home");
   const [copied,setCopied]=useState(false);
   const [shared,setShared]=useState(false);
+  const [exportMode,setExportMode]=useState("ranking"); // "ranking" | "team"
 
   const players=team.players||[];
   const playerById=Object.fromEntries(players.map(p=>[String(p.id),p]));
@@ -5588,19 +5589,146 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
     return new Promise(resolve=>canvas.toBlob(b=>resolve(b),"image/png",1));
   };
 
+  const buildTeamImage=async()=>{
+    const withResult=(filteredMatches||[]).filter(m=>m.goalsFor!==""&&m.goalsFor!==undefined&&m.goalsFor!==null);
+    const totalGF=withResult.reduce((s,m)=>s+(parseInt(m.goalsFor)||0),0);
+    const totalGA=withResult.reduce((s,m)=>s+(parseInt(m.goalsAgainst)||0),0);
+    const saldo=totalGF-totalGA;
+    const wins=withResult.filter(m=>(parseInt(m.goalsFor)||0)>(parseInt(m.goalsAgainst)||0)).length;
+    const draws=withResult.filter(m=>(parseInt(m.goalsFor)||0)===(parseInt(m.goalsAgainst)||0)).length;
+    const losses=withResult.filter(m=>(parseInt(m.goalsFor)||0)<(parseInt(m.goalsAgainst)||0)).length;
+    const totalGames=filteredMatches.length;
+
+    const filterDesc=(()=>{
+      if(filterType==="year")return `Ano ${filterYear}`;
+      if(filterType==="period")return `${filterDateFrom||"..."} até ${filterDateTo||"..."}`;
+      if(filterType==="matchType"){const mt=MATCH_TYPES.find(t=>t.id===filterMatchType);return mt?`${mt.emoji} ${mt.label}`:"Tipo";}
+      if(filterType==="competition")return filterCompetition||"Competição";
+      if(filterType==="homeAway")return filterHomeAway==="home"?"🏠 Casa":"✈️ Fora";
+      return "Geral";
+    })();
+
+    const DPR=3;
+    const W=720, headerH=210, statsH=220, footerH=56, pad=28;
+    const H=headerH+statsH+footerH;
+
+    const canvas=document.createElement("canvas");
+    canvas.width=W*DPR; canvas.height=H*DPR;
+    const ctx=canvas.getContext("2d");
+    ctx.scale(DPR,DPR);
+
+    // Background
+    const bg=ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,"#0b1f17");
+    bg.addColorStop(1,"#06140e");
+    ctx.fillStyle=bg;
+    ctx.fillRect(0,0,W,H);
+
+    // Header band
+    const headGrad=ctx.createLinearGradient(0,0,W,0);
+    headGrad.addColorStop(0,"#16a34a");
+    headGrad.addColorStop(1,"#0f7a37");
+    ctx.fillStyle=headGrad;
+    ctx.fillRect(0,0,W,headerH);
+
+    // Shield / Logo
+    const shieldSrc=(isPremium&&team.photo)?team.photo:LOGO_URI;
+    const shieldR=38, shieldCx=pad+shieldR, shieldCy=headerH/2-10;
+    const logoImg=await loadImg(shieldSrc);
+    if(logoImg) drawAvatar(ctx,logoImg,team.name,shieldCx,shieldCy,shieldR);
+
+    ctx.textAlign="left";
+    ctx.fillStyle="#ffffff";
+    ctx.font="800 32px 'DM Sans',Arial,sans-serif";
+    ctx.fillText(team.name||"Escalação FC",pad+shieldR*2+14,shieldCy-6);
+    ctx.font="600 17px 'DM Sans',Arial,sans-serif";
+    ctx.fillStyle="rgba(255,255,255,0.9)";
+    ctx.fillText("📊 Resumo do Time",pad+shieldR*2+14,shieldCy+18);
+
+    ctx.font="500 13px 'DM Sans',Arial,sans-serif";
+    ctx.fillStyle="rgba(255,255,255,0.75)";
+    ctx.fillText(`${filterDesc} · ${totalGames} jogo${totalGames!==1?"s":""}`,pad,headerH-44);
+
+    // Column headers inside header band
+    ctx.font="700 11px 'DM Sans',Arial,sans-serif";
+    ctx.fillStyle="rgba(255,255,255,0.6)";
+    ctx.fillText("ESTATÍSTICAS GERAIS",pad,headerH-16);
+
+    // Stats section — two rows of cards
+    const cardY1=headerH+20;
+    const cardY2=headerH+120;
+    const cardH=80;
+
+    const statsRow1=[
+      {label:"Jogos",value:String(totalGames),color:"#60a5fa",emoji:"📅"},
+      {label:"Vitórias",value:String(wins),color:"#34d399",emoji:"🏆"},
+      {label:"Empates",value:String(draws),color:"#f59e0b",emoji:"🤝"},
+      {label:"Derrotas",value:String(losses),color:"#f87171",emoji:"❌"},
+    ];
+    const statsRow2=[
+      {label:"Gols marcados",value:String(totalGF),color:"#34d399",emoji:"⚽"},
+      {label:"Gols sofridos",value:String(totalGA),color:"#f87171",emoji:"🧤"},
+      {label:"Saldo de gols",value:(saldo>0?"+":"")+saldo,color:saldo>0?"#34d399":saldo<0?"#f87171":"#f59e0b",emoji:"📊"},
+    ];
+
+    const drawStatCards=(cards,y,cols)=>{
+      const totalPad=(cols+1)*pad;
+      const cardW=(W-totalPad)/cols;
+      cards.forEach(({label,value,color,emoji},i)=>{
+        const x=pad+i*(cardW+pad);
+        // Card background
+        ctx.fillStyle="rgba(255,255,255,0.06)";
+        ctx.beginPath();
+        ctx.roundRect(x,y,cardW,cardH,12);
+        ctx.fill();
+        // Color accent left border
+        ctx.fillStyle=color;
+        ctx.beginPath();
+        ctx.roundRect(x,y,4,cardH,4);
+        ctx.fill();
+        // Value
+        ctx.textAlign="center";
+        ctx.fillStyle=color;
+        ctx.font=`800 30px 'Bebas Neue',Arial,sans-serif`;
+        ctx.fillText(value,x+cardW/2,y+cardH/2+4);
+        // Label
+        ctx.fillStyle="rgba(255,255,255,0.55)";
+        ctx.font="600 11px 'DM Sans',Arial,sans-serif";
+        ctx.fillText(label.toUpperCase(),x+cardW/2,y+cardH-14);
+        ctx.textAlign="left";
+      });
+    };
+
+    drawStatCards(statsRow1,cardY1,4);
+    drawStatCards(statsRow2,cardY2,3);
+
+    // Footer
+    ctx.fillStyle="rgba(255,255,255,0.35)";
+    ctx.font="500 12px 'DM Sans',Arial,sans-serif";
+    ctx.textAlign="center";
+    ctx.fillText(`Gerado em ${new Date().toLocaleDateString("pt-BR")} via Escalação FC`,W/2,H-footerH/2+4);
+    ctx.textAlign="left";
+
+    return new Promise(resolve=>canvas.toBlob(b=>resolve(b),"image/png",1));
+  };
+
   const handleImage=async()=>{
     if(generatingImage)return;
     setGeneratingImage(true);
     try{
-      const blob=await buildImage();
+      const blob=exportMode==="team"?await buildTeamImage():await buildImage();
       if(!blob)throw new Error("Falha ao gerar imagem");
       const sm=STAT_META[statType];
-      const fileName=`ranking-${(sm.label||"stats").toLowerCase().replace(/\s+/g,"-")}-${team.name.toLowerCase().replace(/\s+/g,"-")}.png`;
+      const fileName=exportMode==="team"
+        ?`resumo-time-${team.name.toLowerCase().replace(/\s+/g,"-")}.png`
+        :`ranking-${(sm.label||"stats").toLowerCase().replace(/\s+/g,"-")}-${team.name.toLowerCase().replace(/\s+/g,"-")}.png`;
+      const shareTitle=exportMode==="team"?`Resumo – ${team.name}`:`Estatísticas – ${team.name}`;
+      const shareText=exportMode==="team"?`📊 Resumo · ${team.name}`:`${sm.emoji} Ranking — ${sm.label} · ${team.name}`;
       const file=new File([blob],fileName,{type:"image/png"});
 
       if(navigator.canShare && navigator.canShare({files:[file]})){
         try{
-          await navigator.share({files:[file],title:`Estatísticas – ${team.name}`,text:`${sm.emoji} Ranking — ${sm.label} · ${team.name}`});
+          await navigator.share({files:[file],title:shareTitle,text:shareText});
           setGeneratingImage(false);
           return;
         }catch(e){ if(e?.name==="AbortError"){ setGeneratingImage(false); return; } }
@@ -5785,13 +5913,26 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
           )}
         </div>
 
+        <div style={{display:"flex",gap:6,marginBottom:4}}>
+          {[{id:"ranking",label:"Ranking jogadores",emoji:"🏅"},{id:"team",label:"Resumo do time",emoji:"📊"}].map(opt=>(
+            <button key={opt.id} onClick={()=>setExportMode(opt.id)} style={{
+              flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+              padding:"9px 6px",borderRadius:10,border:"2px solid",cursor:"pointer",transition:"all 0.15s",
+              borderColor:exportMode===opt.id?"#34d399":"rgba(255,255,255,0.08)",
+              background:exportMode===opt.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+              color:exportMode===opt.id?"#34d399":"#9CA3AF",
+              fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase"
+            }}><span style={{fontSize:14}}>{opt.emoji}</span>{opt.label}</button>
+          ))}
+        </div>
+
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          <button onClick={handleCopy} style={{
+          {exportMode==="ranking"&&<button onClick={handleCopy} style={{
             width:"100%",padding:"12px 0",borderRadius:12,border:"none",cursor:"pointer",
             background:copied?"rgba(52,211,153,0.2)":"linear-gradient(135deg,#16a34a,#34d399)",
             color:copied?"#34d399":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,
             display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s"
-          }}><Ico.List/>{copied?"✓ COPIADO!":"COPIAR LISTA"}</button>
+          }}><Ico.List/>{copied?"✓ COPIADO!":"COPIAR LISTA"}</button>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8}}>
             <button onClick={handleShare} style={{
               padding:"11px 0",borderRadius:12,border:"1px solid rgba(96,165,250,0.3)",cursor:"pointer",
