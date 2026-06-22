@@ -5311,7 +5311,7 @@ function buildConvocationText(team, match, presentedPlayers) {
 }
 
 // ─── Stats Export Modal ───────────────────────────────────────────────────────
-function StatsExportModal({team,matches,stats,onClose}) {
+function StatsExportModal({team,matches,stats,onClose,isPremium}) {
   const [statType,setStatType]=useState("goals"); // goals | assists | goalsAgainst
   const [filterType,setFilterType]=useState("all"); // all | year | period | matchType | competition | homeAway
   const [filterYear,setFilterYear]=useState(new Date().getFullYear().toString());
@@ -5477,7 +5477,7 @@ function StatsExportModal({team,matches,stats,onClose}) {
     })();
 
     const DPR=3; // high resolution for crisp player photos
-    const W=720, rowH=86, headerH=190, footerH=56, pad=28;
+    const W=720, rowH=86, headerH=210, footerH=56, pad=28;
     const rows=ranking.length?ranking.length:1;
     const H=headerH+rows*rowH+footerH;
 
@@ -5500,17 +5500,21 @@ function StatsExportModal({team,matches,stats,onClose}) {
     ctx.fillStyle=headGrad;
     ctx.fillRect(0,0,W,headerH);
 
-    // Logo
-    const logoImg=await loadImg(LOGO_URI);
-    if(logoImg) drawAvatar(ctx,logoImg,team.name,pad+26,52,26);
+    // Logo / Shield: premium → team photo, free → Escalação FC logo
+    const shieldSrc = (isPremium && team.photo) ? team.photo : LOGO_URI;
+    const shieldR = 38;
+    const shieldCx = pad + shieldR;
+    const shieldCy = headerH / 2 - 10;
+    const logoImg=await loadImg(shieldSrc);
+    if(logoImg) drawAvatar(ctx,logoImg,team.name,shieldCx,shieldCy,shieldR);
 
     ctx.textAlign="left";
     ctx.fillStyle="#ffffff";
-    ctx.font="700 26px 'DM Sans',Arial,sans-serif";
-    ctx.fillText(team.name||"Escalação FC",pad+64,44);
-    ctx.font="600 15px 'DM Sans',Arial,sans-serif";
-    ctx.fillStyle="rgba(255,255,255,0.85)";
-    ctx.fillText(`${sm.emoji} Ranking — ${sm.label}`,pad+64,68);
+    ctx.font="800 32px 'DM Sans',Arial,sans-serif";
+    ctx.fillText(team.name||"Escalação FC",pad+shieldR*2+14,shieldCy-6);
+    ctx.font="600 17px 'DM Sans',Arial,sans-serif";
+    ctx.fillStyle="rgba(255,255,255,0.9)";
+    ctx.fillText(`${sm.emoji} Ranking — ${sm.label}`,pad+shieldR*2+14,shieldCy+18);
 
     ctx.font="500 13px 'DM Sans',Arial,sans-serif";
     ctx.fillStyle="rgba(255,255,255,0.75)";
@@ -6101,7 +6105,7 @@ function ImportPlayersModal({team, onClose, onImport}) {
 }
 
 
-function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
+function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
   const [officeTab,setOfficeTab]=useState("calendar"); // "calendar" | "stats" | "import"
   const [matches,setMatches]=useState(null); // null=loading, []+=loaded
   const [stats,setStats]=useState({});
@@ -6492,7 +6496,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
       </div>
 
       {showMatchModal&&<MatchModal initial={editingMatch} players={team.players||[]} onSave={saveMatch} onClose={()=>{setShowMatchModal(false);setEditingMatch(null);}}/>}
-      {showExportStats&&<StatsExportModal team={team} matches={matches||[]} stats={stats} onClose={()=>setShowExportStats(false)}/>}
+      {showExportStats&&<StatsExportModal team={team} matches={matches||[]} stats={stats} isPremium={isPremium} onClose={()=>setShowExportStats(false)}/>}
       {showImport&&<ImportPlayersModal team={team} onClose={()=>setShowImport(false)} onImport={handleImportPlayers}/>}
       {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
     </div>
@@ -6993,7 +6997,7 @@ function App() {
 
       {/* Office: calendar + stats */}
       {navSection === "office" && activeTeam && (
-        <OfficeView team={activeTeam} uid={uid} onUpdateTeam={updateTeam} onSavePlayer={scheduleSavePlayer}/>
+        <OfficeView team={activeTeam} uid={uid} onUpdateTeam={updateTeam} onSavePlayer={scheduleSavePlayer} isPremium={isPremium}/>
       )}
 
       {/* Bottom navigation — only when logged in with a team selected */}
