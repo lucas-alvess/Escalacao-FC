@@ -5547,17 +5547,12 @@ function StatsExportModal({team,matches,stats,onClose}) {
 
       const cy=y+rowH/2;
 
-      // Rank / medal
-      const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":null;
+      // Rank number (1°, 2°, 3° with podium colors; rest dimmed)
+      const rankColor=i===0?"#FFD700":i===1?"#C0C0C0":i===2?"#CD7F32":"rgba(255,255,255,0.4)";
       ctx.textAlign="center";
-      if(medal){
-        ctx.font="28px Arial,sans-serif";
-        ctx.fillText(medal,pad+12,cy+10);
-      }else{
-        ctx.fillStyle="rgba(255,255,255,0.45)";
-        ctx.font="700 16px 'DM Sans',Arial,sans-serif";
-        ctx.fillText(`${i+1}º`,pad+12,cy+6);
-      }
+      ctx.fillStyle=rankColor;
+      ctx.font=`800 ${i<3?20:16}px 'DM Sans',Arial,sans-serif`;
+      ctx.fillText(`${i+1}°`,pad+12,cy+7);
 
       // Avatar
       drawAvatar(ctx,photoImgs[i],p.name,pad+62,cy,24);
