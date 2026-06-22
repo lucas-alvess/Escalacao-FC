@@ -4883,7 +4883,7 @@ const MATCH_TYPES=[
 const MATCH_TYPES_WITH_NAME=["festival","tournament","league"];
 
 function MatchModal({initial,players,onSave,onClose}) {
-  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{},matchType:"friendly",competitionName:"",presentPlayerIds:[]};
+  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{},matchType:"friendly",competitionName:"",presentPlayerIds:[],homeAway:"home"};
   const [form,setForm]=useState(()=>initial?{...empty,...initial}:empty);
   const [playerSearch,setPlayerSearch]=useState("");
   const [expandedPlayer,setExpandedPlayer]=useState(null);
@@ -5062,6 +5062,25 @@ function MatchModal({initial,players,onSave,onClose}) {
                 }}>
                   <span style={{fontSize:18}}>{t.emoji}</span>
                   <span style={{color:form.matchType===t.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{t.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Casa / Fora */}
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <span style={LT}>Local do jogo</span>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {[{id:"home",label:"Casa",emoji:"🏠"},{id:"away",label:"Fora",emoji:"✈️"}].map(opt=>(
+                <button key={opt.id} onClick={()=>set("homeAway",opt.id)} style={{
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"9px 4px",
+                  borderRadius:10,border:"2px solid",cursor:"pointer",
+                  borderColor:(form.homeAway||"home")===opt.id?"#34d399":"rgba(255,255,255,0.08)",
+                  background:(form.homeAway||"home")===opt.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:18}}>{opt.emoji}</span>
+                  <span style={{color:(form.homeAway||"home")===opt.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{opt.label}</span>
                 </button>
               ))}
             </div>
@@ -5294,12 +5313,13 @@ function buildConvocationText(team, match, presentedPlayers) {
 // ─── Stats Export Modal ───────────────────────────────────────────────────────
 function StatsExportModal({team,matches,stats,onClose}) {
   const [statType,setStatType]=useState("goals"); // goals | assists | goalsAgainst
-  const [filterType,setFilterType]=useState("all"); // all | year | period | matchType | competition
+  const [filterType,setFilterType]=useState("all"); // all | year | period | matchType | competition | homeAway
   const [filterYear,setFilterYear]=useState(new Date().getFullYear().toString());
   const [filterDateFrom,setFilterDateFrom]=useState("");
   const [filterDateTo,setFilterDateTo]=useState("");
   const [filterMatchType,setFilterMatchType]=useState("friendly");
   const [filterCompetition,setFilterCompetition]=useState("");
+  const [filterHomeAway,setFilterHomeAway]=useState("home");
   const [copied,setCopied]=useState(false);
   const [shared,setShared]=useState(false);
 
@@ -5327,8 +5347,10 @@ function StatsExportModal({team,matches,stats,onClose}) {
       ms=ms.filter(m=>(m.matchType||"friendly")===filterMatchType);
     else if(filterType==="competition")
       ms=ms.filter(m=>m.competitionName&&m.competitionName.trim()===filterCompetition);
+    else if(filterType==="homeAway")
+      ms=ms.filter(m=>(m.homeAway||"home")===filterHomeAway);
     return ms;
-  },[matches,filterType,filterYear,filterDateFrom,filterDateTo,filterMatchType,filterCompetition]);
+  },[matches,filterType,filterYear,filterDateFrom,filterDateTo,filterMatchType,filterCompetition,filterHomeAway]);
 
   // Compute aggregated stat from filtered matches
   const aggregated=useMemo(()=>{
@@ -5376,6 +5398,7 @@ function StatsExportModal({team,matches,stats,onClose}) {
       if(filterType==="period")return `${filterDateFrom||"..."} até ${filterDateTo||"..."}`;
       if(filterType==="matchType"){const mt=MATCH_TYPES.find(t=>t.id===filterMatchType);return mt?`${mt.emoji} ${mt.label}`:"";}
       if(filterType==="competition")return `🏆 ${filterCompetition}`;
+      if(filterType==="homeAway")return filterHomeAway==="home"?"🏠 Casa":"✈️ Fora";
       return "Geral";
     })();
     const header=[`${sm.emoji} RANKING — ${sm.label.toUpperCase()}`,`Time: ${team.name}`,`Filtro: ${filterDesc}`,`${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}`,`─────────────────────`].join("\n");
@@ -5449,6 +5472,7 @@ function StatsExportModal({team,matches,stats,onClose}) {
       if(filterType==="period")return `${filterDateFrom||"..."} até ${filterDateTo||"..."}`;
       if(filterType==="matchType"){const mt=MATCH_TYPES.find(t=>t.id===filterMatchType);return mt?`${mt.emoji} ${mt.label}`:"Tipo";}
       if(filterType==="competition")return filterCompetition||"Competição";
+      if(filterType==="homeAway")return filterHomeAway==="home"?"🏠 Casa":"✈️ Fora";
       return "Geral";
     })();
 
@@ -5656,6 +5680,7 @@ function StatsExportModal({team,matches,stats,onClose}) {
               {id:"period", label:"Período",  emoji:"🗓"},
               {id:"matchType",label:"Tipo",   emoji:"🏟"},
               {id:"competition",label:"Compet.",emoji:"🏆"},
+              {id:"homeAway",   label:"Casa/Fora",emoji:"🏠"},
             ].map(f=>(
               <button key={f.id} onClick={()=>setFilterType(f.id)} style={{
                 padding:"8px 4px",borderRadius:10,border:"2px solid",cursor:"pointer",
@@ -5724,9 +5749,23 @@ function StatsExportModal({team,matches,stats,onClose}) {
               )}
             </div>
           )}
+          {filterType==="homeAway"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {[{id:"home",label:"Casa",emoji:"🏠"},{id:"away",label:"Fora",emoji:"✈️"}].map(opt=>(
+                <button key={opt.id} onClick={()=>setFilterHomeAway(opt.id)} style={{
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"9px 4px",
+                  borderRadius:10,border:"2px solid",cursor:"pointer",
+                  borderColor:filterHomeAway===opt.id?"#34d399":"rgba(255,255,255,0.08)",
+                  background:filterHomeAway===opt.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:16}}>{opt.emoji}</span>
+                  <span style={{color:filterHomeAway===opt.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{opt.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-
-        {/* Preview */}
         <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"12px 14px",marginBottom:14,minHeight:80}}>
           <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>
             {STAT_META[statType].emoji} {STAT_META[statType].label} · {filteredMatches.length} partida{filteredMatches.length!==1?"s":""}
@@ -6319,6 +6358,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
                     <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
                       {m.date&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.Calendar/>{formatDate(m.date)}{m.time&&` · ${m.time}`}</span>}
                       {m.location&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.MapPin/>{m.location}</span>}
+                      {m.homeAway&&<span style={{display:"flex",alignItems:"center",gap:4,color:m.homeAway==="home"?"#34d399":"#a78bfa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>{m.homeAway==="home"?"🏠 Casa":"✈️ Fora"}</span>}
                       {(m.presentPlayerIds||[]).length>0&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>📋 {m.presentPlayerIds.length} presente{m.presentPlayerIds.length!==1?"s":""}</span>}
                     </div>
                     {m.notes&&<div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,borderTop:"1px solid rgba(255,255,255,0.05)",paddingTop:6}}>{m.notes}</div>}
@@ -6379,6 +6419,29 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
             background:"rgba(52,211,153,0.07)",color:"#34d399",
             fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1
           }}>📋 EXPORTAR / FILTRAR ESTATÍSTICAS</button>
+          {/* Goal balance summary */}
+          {(()=>{
+            const withResult=(matches||[]).filter(m=>m.goalsFor!==""&&m.goalsFor!==undefined&&m.goalsFor!==null);
+            const totalGF=withResult.reduce((s,m)=>s+(parseInt(m.goalsFor)||0),0);
+            const totalGA=withResult.reduce((s,m)=>s+(parseInt(m.goalsAgainst)||0),0);
+            const saldo=totalGF-totalGA;
+            if(!withResult.length)return null;
+            return (
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+                {[
+                  {label:"Gols marcados",value:totalGF,emoji:"⚽",color:"#34d399"},
+                  {label:"Gols sofridos",value:totalGA,emoji:"🧤",color:"#f87171"},
+                  {label:"Saldo de gols",value:(saldo>0?"+":"")+saldo,emoji:"📊",color:saldo>0?"#34d399":saldo<0?"#f87171":"#f59e0b"},
+                ].map(({label,value,emoji,color})=>(
+                  <div key={label} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"10px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:18}}>{emoji}</span>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color,letterSpacing:1,lineHeight:1}}>{value}</span>
+                    <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textTransform:"uppercase",textAlign:"center",lineHeight:1.3}}>{label}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
           <StatsView team={team} stats={stats} onUpdateStat={updateStat}/>
           </>
         )}
