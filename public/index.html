@@ -1428,7 +1428,7 @@ const Ico = {
   MapPin:  ()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
   Trophy:  ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>,
   Bell:    ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
-  Pdf:     ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="12" y2="17"/></svg>,
+  Image:   ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>,
   Send:    ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
 };
 
@@ -5344,7 +5344,50 @@ function StatsExportModal({team,matches,stats,onClose}) {
     if(result==="shared"||result==="copied"){ setShared(true); setTimeout(()=>setShared(false),2000); }
   };
 
-  const handlePdf=()=>{
+  const [generatingImage,setGeneratingImage]=useState(false);
+
+  /** Loads an image (base64 or URL) into an HTMLImageElement, resolving null on failure. */
+  const loadImg=src=>new Promise(resolve=>{
+    if(!src){resolve(null);return;}
+    const img=new Image();
+    img.crossOrigin="anonymous";
+    img.onload=()=>resolve(img);
+    img.onerror=()=>resolve(null);
+    img.src=src;
+  });
+
+  /** Draws a circular clipped image (or initial-letter fallback) centered at cx,cy with given radius. */
+  const drawAvatar=(ctx,img,name,cx,cy,r)=>{
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.closePath();
+    ctx.clip();
+    if(img){
+      // Cover-fit the image inside the circle
+      const s=Math.max((r*2)/img.width,(r*2)/img.height);
+      const w=img.width*s, h=img.height*s;
+      ctx.drawImage(img,cx-w/2,cy-h/2,w,h);
+    }else{
+      ctx.fillStyle="#16a34a";
+      ctx.fillRect(cx-r,cy-r,r*2,r*2);
+      ctx.fillStyle="#ffffff";
+      ctx.font=`700 ${Math.round(r*1.1)}px 'DM Sans',Arial,sans-serif`;
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText((name||"?")[0].toUpperCase(),cx,cy+r*0.07);
+    }
+    ctx.restore();
+    // Ring around the avatar
+    ctx.beginPath();
+    ctx.arc(cx,cy,r,0,Math.PI*2);
+    ctx.strokeStyle="rgba(52,211,153,0.5)";
+    ctx.lineWidth=2.5;
+    ctx.stroke();
+  };
+
+  /** Renders the stats ranking as a high-resolution PNG image for sharing. */
+  const buildImage=async()=>{
     const sm=STAT_META[statType];
     const filterDesc=(()=>{
       if(filterType==="year")return `Ano ${filterYear}`;
@@ -5353,34 +5396,149 @@ function StatsExportModal({team,matches,stats,onClose}) {
       if(filterType==="competition")return filterCompetition||"Competição";
       return "Geral";
     })();
-    const lines=ranking.map(({p,value},i)=>{
-      const photoSrc=p.photo||"";
-      const photoHtml=photoSrc
-        ? `<img src="${photoSrc}" style="width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid #d1fae5;flex-shrink:0;" onerror="this.style.display='none'"/>`
-        : `<div style="width:44px;height:44px;border-radius:50%;background:#d1fae5;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;color:#16a34a;font-weight:bold;">${(p.name||"?")[0].toUpperCase()}</div>`;
-      const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":"";
-      return `<tr><td style="width:20px;text-align:center;font-size:1.1em;">${medal||`<span style='color:#999;font-size:.85em;'>${i+1}º</span>`}</td><td><div style="display:flex;align-items:center;gap:10px;">${photoHtml}<div><div style="font-weight:600;font-size:.95em;">${p.name}</div><div style="color:#6b7280;font-size:.78em;">${p.position}${p.number?` · #${p.number}`:""}</div></div></div></td><td style="text-align:center;font-size:1.5em;font-weight:bold;color:#16a34a;">${value}</td></tr>`;
+
+    const DPR=3; // high resolution for crisp player photos
+    const W=720, rowH=86, headerH=190, footerH=56, pad=28;
+    const rows=ranking.length?ranking.length:1;
+    const H=headerH+rows*rowH+footerH;
+
+    const canvas=document.createElement("canvas");
+    canvas.width=W*DPR; canvas.height=H*DPR;
+    const ctx=canvas.getContext("2d");
+    ctx.scale(DPR,DPR);
+
+    // Background
+    const bg=ctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,"#0b1f17");
+    bg.addColorStop(1,"#06140e");
+    ctx.fillStyle=bg;
+    ctx.fillRect(0,0,W,H);
+
+    // Header band
+    const headGrad=ctx.createLinearGradient(0,0,W,0);
+    headGrad.addColorStop(0,"#16a34a");
+    headGrad.addColorStop(1,"#0f7a37");
+    ctx.fillStyle=headGrad;
+    ctx.fillRect(0,0,W,headerH);
+
+    // Logo
+    const logoImg=await loadImg(LOGO_URI);
+    if(logoImg) drawAvatar(ctx,logoImg,team.name,pad+26,52,26);
+
+    ctx.textAlign="left";
+    ctx.fillStyle="#ffffff";
+    ctx.font="700 26px 'DM Sans',Arial,sans-serif";
+    ctx.fillText(team.name||"Escalação FC",pad+64,44);
+    ctx.font="600 15px 'DM Sans',Arial,sans-serif";
+    ctx.fillStyle="rgba(255,255,255,0.85)";
+    ctx.fillText(`${sm.emoji} Ranking — ${sm.label}`,pad+64,68);
+
+    ctx.font="500 13px 'DM Sans',Arial,sans-serif";
+    ctx.fillStyle="rgba(255,255,255,0.75)";
+    ctx.fillText(`${filterDesc} · ${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}`,pad,headerH-44);
+
+    // Column headers
+    ctx.font="700 11px 'DM Sans',Arial,sans-serif";
+    ctx.fillStyle="rgba(255,255,255,0.6)";
+    ctx.fillText("JOGADOR",pad+58,headerH-16);
+    ctx.textAlign="right";
+    ctx.fillText(sm.label.toUpperCase(),W-pad,headerH-16);
+    ctx.textAlign="left";
+
+    if(!ranking.length){
+      ctx.fillStyle="rgba(255,255,255,0.5)";
+      ctx.font="500 16px 'DM Sans',Arial,sans-serif";
+      ctx.textAlign="center";
+      ctx.fillText("Sem dados para este filtro",W/2,headerH+rowH/2);
+      ctx.textAlign="left";
+    }
+
+    // Pre-load all player photos in parallel
+    const photoImgs=await Promise.all(ranking.map(({p})=>loadImg(p.photo||"")));
+
+    ranking.forEach(({p,value},i)=>{
+      const y=headerH+i*rowH;
+      // Row background (subtle alternating)
+      ctx.fillStyle=i%2===0?"rgba(255,255,255,0.03)":"rgba(255,255,255,0.0)";
+      ctx.fillRect(0,y,W,rowH);
+      // Divider
+      ctx.strokeStyle="rgba(255,255,255,0.06)";
+      ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(pad,y+rowH);ctx.lineTo(W-pad,y+rowH);ctx.stroke();
+
+      const cy=y+rowH/2;
+
+      // Rank / medal
+      const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":null;
+      ctx.textAlign="center";
+      if(medal){
+        ctx.font="28px Arial,sans-serif";
+        ctx.fillText(medal,pad+12,cy+10);
+      }else{
+        ctx.fillStyle="rgba(255,255,255,0.45)";
+        ctx.font="700 16px 'DM Sans',Arial,sans-serif";
+        ctx.fillText(`${i+1}º`,pad+12,cy+6);
+      }
+
+      // Avatar
+      drawAvatar(ctx,photoImgs[i],p.name,pad+62,cy,24);
+
+      // Name + position
+      ctx.textAlign="left";
+      ctx.fillStyle="#f3f4f6";
+      ctx.font="700 18px 'DM Sans',Arial,sans-serif";
+      ctx.fillText(p.name||"",pad+96,cy-3);
+      ctx.fillStyle="rgba(255,255,255,0.5)";
+      ctx.font="500 13px 'DM Sans',Arial,sans-serif";
+      ctx.fillText(`${p.position||""}${p.number?` · #${p.number}`:""}`,pad+96,cy+17);
+
+      // Value
+      ctx.textAlign="right";
+      ctx.fillStyle="#34d399";
+      ctx.font="800 30px 'Bebas Neue',Arial,sans-serif";
+      ctx.fillText(String(value),W-pad,cy+10);
+      ctx.textAlign="left";
     });
-    const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Estatísticas – ${team.name}</title>
-    <style>body{font-family:Arial,sans-serif;padding:24px;max-width:640px;margin:auto;background:#fff;}
-    h1{font-size:1.4em;margin:0;color:#111;}h2{font-size:.95em;color:#6b7280;font-weight:normal;margin:4px 0 18px;}
-    table{width:100%;border-collapse:collapse;}
-    th,td{padding:10px 12px;border-bottom:1px solid #f3f4f6;vertical-align:middle;}
-    th{background:#f9fafb;font-size:.78em;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;font-weight:700;}
-    tr:last-child td{border:none;}
-    tr:hover td{background:#f9fafb;}
-    .stat-val{text-align:center;}
-    .rank-col{text-align:center;width:36px;}
-    @media print{button{display:none;}}</style></head>
-    <body>
-    <h1>${sm.emoji} Ranking — ${sm.label} · ${team.name}</h1>
-    <h2>Filtro: ${filterDesc} &nbsp;|&nbsp; ${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}</h2>
-    <table><thead><tr><th class="rank-col">#</th><th>Jogador</th><th class="stat-val">${sm.label}</th></tr></thead>
-    <tbody>${lines.length?lines.join(""):"<tr><td colspan='3' style='text-align:center;color:#999;padding:24px;'>Sem dados</td></tr>"}</tbody></table>
-    <p style="margin-top:24px;color:#aaa;font-size:.75em;">Gerado em ${new Date().toLocaleDateString("pt-BR")} via Escalação FC</p>
-    <script>window.onload=()=>window.print()<\/script></body></html>`;
-    const w=window.open("","_blank","width=700,height=600");
-    if(w){w.document.write(html);w.document.close();}
+
+    // Footer
+    ctx.fillStyle="rgba(255,255,255,0.35)";
+    ctx.font="500 12px 'DM Sans',Arial,sans-serif";
+    ctx.textAlign="center";
+    ctx.fillText(`Gerado em ${new Date().toLocaleDateString("pt-BR")} via Escalação FC`,W/2,H-footerH/2+4);
+    ctx.textAlign="left";
+
+    return new Promise(resolve=>canvas.toBlob(b=>resolve(b),"image/png",1));
+  };
+
+  const handleImage=async()=>{
+    if(generatingImage)return;
+    setGeneratingImage(true);
+    try{
+      const blob=await buildImage();
+      if(!blob)throw new Error("Falha ao gerar imagem");
+      const sm=STAT_META[statType];
+      const fileName=`ranking-${(sm.label||"stats").toLowerCase().replace(/\s+/g,"-")}-${team.name.toLowerCase().replace(/\s+/g,"-")}.png`;
+      const file=new File([blob],fileName,{type:"image/png"});
+
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        try{
+          await navigator.share({files:[file],title:`Estatísticas – ${team.name}`,text:`${sm.emoji} Ranking — ${sm.label} · ${team.name}`});
+          setGeneratingImage(false);
+          return;
+        }catch(e){ if(e?.name==="AbortError"){ setGeneratingImage(false); return; } }
+      }
+      // Fallback: download
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");
+      a.href=url; a.download=fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),2000);
+    }catch(err){
+      console.error(err);
+      alert("Não foi possível gerar a imagem. Tente novamente.");
+    }finally{
+      setGeneratingImage(false);
+    }
   };
 
   // ── Export full stats table as CSV ────────────────────────────────────────
@@ -5548,11 +5706,11 @@ function StatsExportModal({team,matches,stats,onClose}) {
               color:shared?"#93c5fd":"#60a5fa",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,
               display:"flex",alignItems:"center",justifyContent:"center",gap:5,transition:"all 0.2s"
             }}><Ico.Share/>{shared?"OK!":"COMPARTILHAR"}</button>
-            <button onClick={handlePdf} style={{
-              padding:"11px 0",borderRadius:12,border:"1px solid rgba(251,191,36,0.3)",cursor:"pointer",
+            <button onClick={handleImage} disabled={generatingImage} style={{
+              padding:"11px 0",borderRadius:12,border:"1px solid rgba(251,191,36,0.3)",cursor:generatingImage?"default":"pointer",
               background:"rgba(251,191,36,0.08)",color:"#fbbf24",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,
-              display:"flex",alignItems:"center",justifyContent:"center",gap:5
-            }}><Ico.Pdf/>PDF</button>
+              display:"flex",alignItems:"center",justifyContent:"center",gap:5,opacity:generatingImage?0.6:1
+            }}><Ico.Image/>{generatingImage?"GERANDO...":"IMAGEM"}</button>
             <button onClick={handleExportCsv} style={{
               padding:"11px 0",borderRadius:12,border:"1px solid rgba(52,211,153,0.3)",cursor:"pointer",
               background:"rgba(52,211,153,0.08)",color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:13,letterSpacing:1,
