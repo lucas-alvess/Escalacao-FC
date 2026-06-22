@@ -586,6 +586,7 @@ async function loadAllStatsCloud(uid, teamId) {
 const FREE_LINEUP_LIMIT = 1;  // max saved lineups per team on the free plan
 const FREE_TEAM_LIMIT = 1;    // max teams on the free plan
 const FREE_PLAYER_LIMIT = 12; // max players per team on the free plan
+const FREE_GUEST_LIMIT = 1;   // max guest players per team on the free plan
 const FREE_KIT_IDS = ["titular","goleiro"]; // kit ids/types usable on the free plan
 const FREE_EXPORT_THEMES = ["modern"];      // export themes usable on the free plan
 
@@ -2580,11 +2581,12 @@ function ImportTeamModal({user, onClose, onImported}) {
 }
 
 // ─── Player Form ──────────────────────────────────────────────────────────────
-function PlayerFormModal({initial,onSave,onClose,teamColor}) {
-  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",position2:"",status:"active",stars:3});
+function PlayerFormModal({initial,onSave,onClose,teamColor,isGuest}) {
+  const [form,setForm]=useState(initial||{name:"",number:"",photo:"",foot:"Destro",position:"Goleiro",position2:"",status:"active",stars:3,isGuest:isGuest||false});
   const [saving,setSaving]=useState(false);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const valid=!!(form.name.trim()&&String(form.number).trim()!=="");
+  // For guests, number is not required (auto-assigned as "C1", "C2", etc.)
+  const valid=!!(form.name.trim()&&(form.isGuest||String(form.number).trim()!==""));
   const [c1]=SHIELD_COLORS[teamColor%SHIELD_COLORS.length];
   const handleSave=async()=>{
     if(!valid||saving)return;
@@ -2594,25 +2596,35 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
   };
   return (
     <div style={{position:"fixed",inset:0,zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.82)",backdropFilter:"blur(6px)",padding:"12px"}}>
-      <div style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
+      <div style={{background:"#0d1f17",border:`1px solid ${form.isGuest?"rgba(251,146,60,0.35)":"rgba(255,255,255,0.1)"}`,borderRadius:20,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
         <div style={{padding:"16px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
-          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>{initial?"Editar Jogador":"Novo Jogador"}</span>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {form.isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:8,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>🎟️ Convidado</span>}
+            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>{initial?"Editar":(form.isGuest?"Novo Convidado":"Novo Jogador")}</span>
+          </div>
           <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
         </div>
         <div style={{padding:"16px 18px 20px",display:"flex",flexDirection:"column",gap:15}}>
+          {form.isGuest&&(
+            <div style={{background:"rgba(251,146,60,0.07)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:12,padding:"10px 13px",fontFamily:"'DM Sans',sans-serif",fontSize:12,color:"#fb923c",lineHeight:1.5}}>
+              🎟️ Jogadores convidados não contam para as estatísticas do time e aparecem separados nos relatórios.
+            </div>
+          )}
           <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
 
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             <label htmlFor="player-name" style={LT}>Nome</label>
-            <input id="player-name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder="Nome do jogador" style={IS}
+            <input id="player-name" value={form.name} onChange={e=>set("name",e.target.value)} placeholder={form.isGuest?"Nome do convidado":"Nome do jogador"} style={IS}
               onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
           </div>
           <div style={{display:"flex",gap:10}}>
+            {!form.isGuest&&(
             <div style={{display:"flex",flexDirection:"column",gap:5,flex:"0 0 80px"}}>
               <label htmlFor="player-number" style={LT}>Número</label>
               <input id="player-number" type="number" min={1} max={99} value={form.number} onChange={e=>set("number",e.target.value)} placeholder="10" style={IS}
                 onFocus={e=>e.target.style.borderColor="#34d399"} onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.1)"}/>
             </div>
+            )}
             <div style={{display:"flex",flexDirection:"column",gap:5,flex:1}}>
               <label htmlFor="player-position" style={LT}>Posição</label>
               <select id="player-position" value={form.position} onChange={e=>set("position",e.target.value)} style={{...IS,appearance:"none"}}>
@@ -2633,6 +2645,7 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
               ))}
             </div>
           </div>
+          {!form.isGuest&&(
           <div style={{display:"flex",flexDirection:"column",gap:5}}>
             <label style={LT}>Posição Secundária <span style={{color:"#4B5563",fontWeight:400,textTransform:"none"}}>(opcional)</span></label>
             <select value={form.position2||""} onChange={e=>set("position2",e.target.value)} style={{...IS,appearance:"none"}}>
@@ -2640,6 +2653,7 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
               {POSITIONS.filter(p=>p!==form.position).map(p=><option key={p} value={p}>{p}</option>)}
             </select>
           </div>
+          )}
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             <span style={LT}>Status</span>
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
@@ -2666,13 +2680,15 @@ function PlayerFormModal({initial,onSave,onClose,teamColor}) {
           </div>
           <button onClick={handleSave} disabled={saving||!valid} style={{
             marginTop:2,padding:"13px 0",borderRadius:12,border:"none",cursor:(valid&&!saving)?"pointer":"not-allowed",
-            background:(valid&&!saving)?`linear-gradient(135deg,#166534,#34d399)`:"rgba(255,255,255,0.07)",
+            background:(valid&&!saving)
+              ?(form.isGuest?"linear-gradient(135deg,#9a3412,#fb923c)":"linear-gradient(135deg,#166534,#34d399)")
+              :"rgba(255,255,255,0.07)",
             color:(valid&&!saving)?"#fff":"#6B7280",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,transition:"all 0.2s",
-            boxShadow:(valid&&!saving)?"0 4px 20px rgba(52,211,153,0.3)":"none",
+            boxShadow:(valid&&!saving)?(form.isGuest?"0 4px 20px rgba(251,146,60,0.3)":"0 4px 20px rgba(52,211,153,0.3)"):"none",
             display:"flex",alignItems:"center",justifyContent:"center",gap:8
           }}>
             {saving&&<div style={{width:16,height:16,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.7s linear infinite",flexShrink:0}}/>}
-            {saving?"SALVANDO...":"SALVAR JOGADOR"}
+            {saving?"SALVANDO...":(form.isGuest?"SALVAR CONVIDADO":"SALVAR JOGADOR")}
           </button>
         </div>
       </div>
@@ -2779,35 +2795,49 @@ function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose,team})
           {available.length>0&&(
             <>
               <div style={{padding:"4px 2px",color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Disponíveis</div>
-              {available.map(p=>(
-                <button key={p.id} onClick={()=>onPick(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 13px",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:11,cursor:"pointer",transition:"all 0.14s",textAlign:"left"}}
-                  onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.1)";e.currentTarget.style.borderColor="rgba(52,211,153,0.4)";}}
-                  onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.04)";e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";}}>
-                  <PlayerAvatar player={p} size={42} style={{border:"2px solid rgba(255,255,255,0.18)"}} team={team}/>
+              {available.map((p,i)=>{
+                const isGuest=!!p.isGuest;
+                const guestIdx=players.filter(x=>x.isGuest).indexOf(p)+1;
+                return (
+                <button key={p.id} onClick={()=>onPick(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 13px",background:isGuest?"rgba(251,146,60,0.04)":"rgba(255,255,255,0.04)",border:isGuest?"1px solid rgba(251,146,60,0.18)":"1px solid rgba(255,255,255,0.08)",borderRadius:11,cursor:"pointer",transition:"all 0.14s",textAlign:"left"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background=isGuest?"rgba(251,146,60,0.12)":"rgba(52,211,153,0.1)";e.currentTarget.style.borderColor=isGuest?"rgba(251,146,60,0.45)":"rgba(52,211,153,0.4)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background=isGuest?"rgba(251,146,60,0.04)":"rgba(255,255,255,0.04)";e.currentTarget.style.borderColor=isGuest?"rgba(251,146,60,0.18)":"rgba(255,255,255,0.08)";}}>
+                  <PlayerAvatar player={p} size={42} style={{border:isGuest?"2px solid rgba(251,146,60,0.4)":"2px solid rgba(255,255,255,0.18)"}} team={team}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{p.name}</div>
-                    <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:1}}>#{p.number} · {p.position} · {p.foot}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{p.name}</span>
+                      {isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:800}}>🎟️ C{guestIdx}</span>}
+                    </div>
+                    <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:1}}>{isGuest?`Convidado · `:`#${p.number} · `}{p.position} · {p.foot}</div>
                     <div style={{marginTop:3}}><StarRating value={p.stars} readonly/></div>
                   </div>
                 </button>
-              ))}
+                );
+              })}
             </>
           )}
           {inField.length>0&&(
             <>
               <div style={{padding:"4px 2px",color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5,marginTop:4}}>Já escalados (trocar posição)</div>
-              {inField.map(p=>(
+              {inField.map(p=>{
+                const isGuest=!!p.isGuest;
+                const guestIdx=players.filter(x=>x.isGuest).indexOf(p)+1;
+                return (
                 <button key={p.id} onClick={()=>onPick(p.id)} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 13px",background:"rgba(250,204,21,0.04)",border:"1px solid rgba(250,204,21,0.15)",borderRadius:11,cursor:"pointer",transition:"all 0.14s",textAlign:"left"}}
                   onMouseEnter={e=>{e.currentTarget.style.background="rgba(250,204,21,0.1)";e.currentTarget.style.borderColor="rgba(250,204,21,0.4)";}}
                   onMouseLeave={e=>{e.currentTarget.style.background="rgba(250,204,21,0.04)";e.currentTarget.style.borderColor="rgba(250,204,21,0.15)";}}>
                   <PlayerAvatar player={p} size={42} style={{border:"2px solid rgba(250,204,21,0.4)"}} team={team}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{p.name}</div>
-                    <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:1}}>#{p.number} · {p.position}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{p.name}</span>
+                      {isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:800}}>🎟️ C{guestIdx}</span>}
+                    </div>
+                    <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:1}}>{isGuest?`Convidado`:`#${p.number}`} · {p.position}</div>
                   </div>
                   <div style={{color:"#facc15",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>↔ trocar</div>
                 </button>
-              ))}
+                );
+              })}
             </>
           )}
           {players.length===0&&<div style={{textAlign:"center",padding:"28px 0",color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>
@@ -3077,7 +3107,8 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.textAlign="left";ctx.textBaseline="middle";
     for(let i=0;i<benchPlayers.length;i++){
       const p=benchPlayers[i];
-      const label=`#${p.number} ${p.name.split(" ")[0]}`;
+      const guestIdx=p.isGuest?benchPlayers.filter(x=>x.isGuest).indexOf(p)+1:0;
+      const label=p.isGuest?`C${guestIdx} ${p.name.split(" ")[0]}`:`#${p.number} ${p.name.split(" ")[0]}`;
       const tw=ctx.measureText(label).width;
       let chipW=tw+padX*2;
       // If this chip doesn't fit on the current row, wrap to the next
@@ -3324,7 +3355,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       ctx.fillStyle="#fff";
       ctx.font=`bold ${R*0.75}px '${getJerseyFontName(jersey)}',sans-serif`;
       ctx.textAlign="center";ctx.textBaseline="middle";
-      ctx.fillText(player.number||"?",cx,cy+1);
+      ctx.fillText(player.isGuest?"G":player.number||"?",cx,cy+1);
       ctx.restore();
     } else {
       ctx.fillStyle=isModern?"rgba(0,0,0,0.4)":"rgba(209,213,219,0.7)";
@@ -3898,21 +3929,26 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
 }
 
 // ─── Player Card ──────────────────────────────────────────────────────────────
-function PlayerCard({player,onEdit,onDelete,isCaptain,onToggleCaptain,team}) {
+function PlayerCard({player,onEdit,onDelete,isCaptain,onToggleCaptain,team,guestIndex}) {
+  const isGuest=!!player.isGuest;
+  const displayNum=isGuest?`C${guestIndex||1}`:player.number;
   return (
-    <div style={{background:"rgba(255,255,255,0.04)",border:isCaptain?"1px solid rgba(245,158,11,0.4)":"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"12px 13px",display:"flex",alignItems:"center",gap:12}}>
+    <div style={{background:isGuest?"rgba(251,146,60,0.05)":"rgba(255,255,255,0.04)",border:isCaptain?"1px solid rgba(245,158,11,0.4)":isGuest?"1px solid rgba(251,146,60,0.2)":"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"12px 13px",display:"flex",alignItems:"center",gap:12}}>
       <div style={{position:"relative",flexShrink:0}}>
-        <PlayerAvatar player={player} size={52} style={{border:"2px solid rgba(255,255,255,0.14)"}} team={team}/>
+        <PlayerAvatar player={player} size={52} style={{border:isGuest?"2px solid rgba(251,146,60,0.4)":"2px solid rgba(255,255,255,0.14)"}} team={team}/>
         {isCaptain&&(
           <div style={{position:"absolute",top:-4,right:-4,width:20,height:20,borderRadius:"50%",background:"#F59E0B",border:"2px solid #050c0a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Bebas Neue',sans-serif",fontSize:11,fontWeight:900,color:"#1a1a0a"}}>C</div>
+        )}
+        {isGuest&&!isCaptain&&(
+          <div style={{position:"absolute",top:-4,right:-4,width:20,height:20,borderRadius:"50%",background:"#fb923c",border:"2px solid #050c0a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>🎟️</div>
         )}
       </div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{player.name}</span>
-          <span style={{background:"rgba(52,211,153,0.15)",color:"#34d399",borderRadius:5,padding:"1px 6px",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>#{player.number}</span>
+          <span style={{background:isGuest?"rgba(251,146,60,0.18)":"rgba(52,211,153,0.15)",color:isGuest?"#fb923c":"#34d399",borderRadius:5,padding:"1px 6px",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>{isGuest?`C${guestIndex||1}`:(`#${player.number}`)}</span>
         </div>
-        <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>{player.position} · {player.foot}</div>
+        <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>{player.position} · {player.foot}{isGuest&&<span style={{color:"#fb923c",marginLeft:6,fontWeight:700}}>· Convidado</span>}</div>
         <div style={{marginTop:3}}><StarRating value={player.stars} readonly/></div>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -3964,12 +4000,16 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
   // Reset to page 1 whenever filter/sort changes
   useEffect(() => { setPage(1); }, [search, sortBy, sortAsc, filterPos]);
 
+  // Separate guests from regular players
+  const regularPlayers = useMemo(() => players.filter(p => !p.isGuest), [players]);
+  const guestPlayers   = useMemo(() => players.filter(p => !!p.isGuest), [players]);
+
   const allPositions = useMemo(
-    () => ["Todas", ...Array.from(new Set(players.map(p => p.position)))],
-    [players]
+    () => ["Todas", ...Array.from(new Set(regularPlayers.map(p => p.position)))],
+    [regularPlayers]
   );
 
-  const allFiltered = useMemo(() => players
+  const allFiltered = useMemo(() => regularPlayers
     .filter(p => {
       const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || String(p.number).includes(search);
       const matchPos    = filterPos === "Todas" || p.position === filterPos;
@@ -3984,7 +4024,12 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
       if (va < vb) return sortAsc ? -1 : 1;
       if (va > vb) return sortAsc ? 1 : -1;
       return 0;
-    }), [players, search, filterPos, sortBy, sortAsc]);
+    }), [regularPlayers, search, filterPos, sortBy, sortAsc]);
+
+  // Guests also filtered by search
+  const filteredGuests = useMemo(() => guestPlayers.filter(p =>
+    !search || p.name.toLowerCase().includes(search.toLowerCase())
+  ), [guestPlayers, search]);
 
   const totalPages = Math.ceil(allFiltered.length / PLAYERS_PAGE_SIZE);
   const filtered = useMemo(
@@ -4052,7 +4097,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
       </div>
 
       {/* Position filter pills */}
-      {players.length > 0 && allPositions.length > 2 && (
+      {regularPlayers.length > 0 && allPositions.length > 2 && (
         <div style={{ display:"flex", gap:5, overflowX:"auto", paddingBottom:2 }}>
           {allPositions.map(pos => {
             const active = filterPos === pos;
@@ -4074,24 +4119,24 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
       )}
 
       {/* Results count */}
-      {players.length > 0 && (
+      {regularPlayers.length > 0 && (
         <div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:11, color:"#4B5563", paddingLeft:2 }}>
-          {allFiltered.length === players.length
-            ? `${players.length} jogador${players.length !== 1 ? "es" : ""}`
-            : `${allFiltered.length} de ${players.length} jogadores`}
+          {allFiltered.length === regularPlayers.length
+            ? `${regularPlayers.length} jogador${regularPlayers.length !== 1 ? "es" : ""}`
+            : `${allFiltered.length} de ${regularPlayers.length} jogadores`}
           {hasMore && <span style={{color:"#34d399",marginLeft:6}}>· mostrando {filtered.length}</span>}
         </div>
       )}
 
       {/* Empty states */}
-      {players.length === 0 && (
+      {regularPlayers.length === 0 && guestPlayers.length === 0 && (
         <div style={{ textAlign:"center", padding:"52px 20px", color:"#4B5563" }}>
           <div style={{display:"flex",justifyContent:"center",opacity:0.3,marginBottom:12}}><Ico.Players/></div>
           <div style={{ fontSize:16, fontWeight:700, color:"#6B7280" }}>Nenhum jogador ainda</div>
           <div style={{ fontSize:13, marginTop:6 }}>Toque no <span style={{ color:"#34d399" }}>+</span> para cadastrar</div>
         </div>
       )}
-      {players.length > 0 && filtered.length === 0 && (
+      {regularPlayers.length > 0 && filtered.length === 0 && filteredGuests.length === 0 && (
         <div style={{ textAlign:"center", padding:"36px 20px", color:"#4B5563" }}>
           <div style={{ fontSize:40, marginBottom:10 }}>🔍</div>
           <div style={{ fontSize:14, fontWeight:700, color:"#6B7280" }}>Nenhum resultado</div>
@@ -4099,7 +4144,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
         </div>
       )}
 
-      {/* Player list */}
+      {/* Regular player list */}
       {filtered.map(p => (
         <PlayerCard key={p.id} player={p}
           onEdit={() => onEdit(p)}
@@ -4123,6 +4168,34 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.06)";}}>
           Carregar mais ({allFiltered.length - filtered.length} restantes)
         </button>
+      )}
+
+      {/* Guest players section */}
+      {(guestPlayers.length > 0 || (!search && regularPlayers.length > 0)) && (
+        <div style={{marginTop:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+            <div style={{flex:1,height:1,background:"rgba(251,146,60,0.2)"}}/>
+            <span style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.7,flexShrink:0}}>🎟️ Convidados ({filteredGuests.length})</span>
+            <div style={{flex:1,height:1,background:"rgba(251,146,60,0.2)"}}/>
+          </div>
+          {filteredGuests.length === 0 && !search && (
+            <div style={{textAlign:"center",padding:"14px 0",color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>
+              Nenhum convidado cadastrado
+            </div>
+          )}
+          {filteredGuests.map((p, i) => (
+            <div key={p.id} style={{marginBottom:8}}>
+              <PlayerCard player={p}
+                onEdit={() => onEdit(p)}
+                onDelete={() => onDelete(p.id)}
+                isCaptain={String(captainPlayerId)===String(p.id)}
+                onToggleCaptain={() => onToggleCaptain(p.id)}
+                team={team}
+                guestIndex={i+1}
+              />
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
@@ -4342,6 +4415,8 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       setTeamAppearances(agg);
     }).catch(()=>{});
   },[uid,team?.id]);
+  const [showGuestLimitUpsell,setShowGuestLimitUpsell]=useState(false);
+  const [showGuestForm,setShowGuestForm]=useState(false);
   // ID generation: crypto.randomUUID() (with fallback) avoids any chance of
   // collision, even across teams/components remounted in quick succession.
   const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
@@ -4394,9 +4469,12 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
     try{
       const isEditing=editingPlayer;
       const newId=isEditing?isEditing.id:genUUID();
-      // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
-      // No further async image processing here, so the save can never hang.
-      const savedPlayer={...form,id:newId};
+      // For guest players, auto-assign a "guest slot" number string (not used for display but stored)
+      let savedPlayer={...form,id:newId};
+      if(savedPlayer.isGuest&&!isEditing){
+        const existingGuests=(team.players||[]).filter(p=>p.isGuest);
+        savedPlayer={...savedPlayer,number:`G${existingGuests.length+1}`};
+      }
       // Use functional updater via onUpdateTeam to always read latest players list
       onUpdateTeam(current=>{
         const curPlayers=current.players||[];
@@ -4574,7 +4652,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
       {/* Tabs */}
       <div style={{display:"flex",background:"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
-        {[{key:"field",label:"Escalação",I:Ico.Tactic},{key:"players",label:`Elenco (${team.players.length})`,I:Ico.Users}].map(t=>(
+        {[{key:"field",label:"Escalação",I:Ico.Tactic},{key:"players",label:`Elenco (${(team.players||[]).filter(p=>!p.isGuest).length})`,I:Ico.Users}].map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)} style={{
             flex:1,padding:"12px 0",background:"none",border:"none",
             borderBottom:tab===t.key?`2px solid ${c1}`:"2px solid transparent",
@@ -4638,22 +4716,25 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                   );
                 }
                 const benchSet=new Set((activeLineup?.benchPlayerIds||[]).map(String));
+                const guestPlayersInBench=candidates.filter(p=>p.isGuest);
                 return (
                   <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                     {candidates.map(p=>{
                       const onBench=benchSet.has(String(p.id));
+                      const isGuestP=!!p.isGuest;
+                      const guestIdx=isGuestP?guestPlayersInBench.indexOf(p)+1:0;
                       return (
                         <button key={p.id} onClick={()=>toggleBenchPlayer(p.id)}
                           aria-pressed={onBench}
                           aria-label={onBench?`Remover ${p.name} do banco de reservas`:`Adicionar ${p.name} ao banco de reservas`}
                           style={{
                             display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:20,cursor:"pointer",
-                            border:onBench?`1.5px solid ${c1}`:"1px solid rgba(255,255,255,0.1)",
-                            background:onBench?`${c1}22`:"rgba(255,255,255,0.03)",
-                            color:onBench?c2:"#9CA3AF",
+                            border:onBench?`1.5px solid ${isGuestP?"#fb923c":c1}`:isGuestP?"1px solid rgba(251,146,60,0.2)":"1px solid rgba(255,255,255,0.1)",
+                            background:onBench?(isGuestP?"rgba(251,146,60,0.2)":`${c1}22`):(isGuestP?"rgba(251,146,60,0.05)":"rgba(255,255,255,0.03)"),
+                            color:onBench?(isGuestP?"#fb923c":c2):(isGuestP?"#fb923c90":"#9CA3AF"),
                             fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,transition:"all 0.15s"
                           }}>
-                          <span style={{opacity:0.7}}>#{p.number}</span>{p.name.split(" ")[0]}
+                          <span style={{opacity:0.7}}>{isGuestP?`C${guestIdx}`:`#${p.number}`}</span>{p.name.split(" ")[0]}
                           {onBench&&<span style={{fontSize:13,lineHeight:1}}>✓</span>}
                         </button>
                       );
@@ -4679,9 +4760,10 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
       {/* FAB */}
       {tab==="players"&&(
+        <>
         <button onClick={()=>{
-          if(!isPremium&&(team.players||[]).length>=FREE_PLAYER_LIMIT){setShowPlayerLimitUpsell(true);return;}
-          setEditingPlayer(null);setShowForm(true);
+          if(!isPremium&&(team.players||[]).filter(p=>!p.isGuest).length>=FREE_PLAYER_LIMIT){setShowPlayerLimitUpsell(true);return;}
+          setEditingPlayer(null);setShowGuestForm(false);setShowForm(true);
         }} style={{
           position:"fixed",bottom:80,right:20,width:56,height:56,borderRadius:"50%",
           background:`linear-gradient(135deg,${c1},${c2})`,border:"none",cursor:"pointer",
@@ -4693,9 +4775,28 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           aria-label="Adicionar novo jogador">
           <Ico.Plus/>
         </button>
+        {/* Add Guest FAB — secondary button above the main FAB */}
+        <button onClick={()=>{
+          const guests=(team.players||[]).filter(p=>p.isGuest);
+          if(!isPremium&&guests.length>=FREE_GUEST_LIMIT){setShowGuestLimitUpsell(true);return;}
+          setEditingPlayer(null);setShowGuestForm(true);setShowForm(true);
+        }} style={{
+          position:"fixed",bottom:148,right:20,
+          padding:"8px 14px",borderRadius:28,
+          background:"rgba(251,146,60,0.18)",border:"1.5px solid rgba(251,146,60,0.5)",cursor:"pointer",
+          display:"flex",alignItems:"center",gap:6,
+          color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800,letterSpacing:0.4,
+          boxShadow:"0 4px 16px rgba(251,146,60,0.25)",zIndex:100,transition:"all 0.15s"
+        }}
+          onMouseEnter={e=>{e.currentTarget.style.background="rgba(251,146,60,0.28)";}}
+          onMouseLeave={e=>{e.currentTarget.style.background="rgba(251,146,60,0.18)";}}
+          aria-label="Adicionar jogador convidado">
+          🎟️ + Convidado
+        </button>
+        </>
       )}
 
-      {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} onClose={()=>{setShowForm(false);setEditingPlayer(null);}}/>}
+      {showForm&&<PlayerFormModal initial={editingPlayer} onSave={savePlayer} teamColor={team.colorIdx} isGuest={showGuestForm&&!editingPlayer} onClose={()=>{setShowForm(false);setEditingPlayer(null);setShowGuestForm(false);}}/>}
       {activeSlot&&<SlotPickerModal slotLabel={activeSlot.label} players={team.players} lineup={team.lineup.filter(l=>l.slotId!==activeSlot.slotId)} onPick={pickPlayer} onClear={team.lineup.find(l=>l.slotId===activeSlot.slotId)?clearSlot:null} onClose={()=>setActiveSlot(null)} team={team}/>}
       {showExport&&<ExportModal slots={slots} lineup={team.lineup} players={team.players} teamName={team.name} formation={team.formation} team={team} coach={activeLineup?.coach||""} benchPlayerIds={activeLineup?.benchPlayerIds||[]} isPremium={isPremium} onClose={()=>setShowExport(false)}/>}
       {showFList&&<FormationListModal current={team.formation} onSelect={handleFormationChange} onClose={()=>setShowFList(false)}/>}
@@ -4744,6 +4845,11 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
         title="Limite de jogadores"
         description={`No plano gratuito você pode cadastrar até ${FREE_PLAYER_LIMIT} jogadores por time. Faça upgrade para o premium e cadastre jogadores ilimitados.`}
         onClose={()=>setShowPlayerLimitUpsell(false)}
+      />}
+      {showGuestLimitUpsell&&<PremiumUpsellModal
+        title="Limite de convidados"
+        description={`No plano gratuito você pode adicionar ${FREE_GUEST_LIMIT} jogador convidado por time. Faça upgrade para o premium e adicione convidados ilimitados.`}
+        onClose={()=>setShowGuestLimitUpsell(false)}
       />}
     </div>
   );
@@ -4948,7 +5054,7 @@ function MatchModal({initial,players,onSave,onClose}) {
           <PlayerAvatar player={p} size={30}/>
           <div style={{flex:1,minWidth:0}}>
             <div style={{color:hasActivity?"#e5e7eb":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div>
-            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10}}>{p.position}{p.number?" · #"+p.number:""}</div>
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10}}>{p.position}{p.isGuest?" · Convidado":(p.number?" · #"+p.number:"")}</div>
           </div>
           {badges.length>0&&(
             <div style={{display:"flex",gap:4,alignItems:"center"}}>
@@ -5215,8 +5321,10 @@ function MatchModal({initial,players,onSave,onClose}) {
 
 // ─── Stats View (per-player stats within OfficeView) ──────────────────────────
 function StatsView({team,stats,onUpdateStat}) {
-  const players=team.players||[];
-  if(!players.length) return (
+  const allPlayers=team.players||[];
+  const players=allPlayers.filter(p=>!p.isGuest);
+  const guests=allPlayers.filter(p=>!!p.isGuest);
+  if(!allPlayers.length) return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 20px",gap:10,color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:13,textAlign:"center"}}>
       <Ico.Users/><span>Cadastre jogadores no time para registrar estatísticas.</span>
     </div>
@@ -5227,43 +5335,59 @@ function StatsView({team,stats,onUpdateStat}) {
     if(a.position!=="Goleiro"&&b.position==="Goleiro")return -1;
     return (parseInt(a.number)||0)-(parseInt(b.number)||0);
   });
+  const renderPlayerStatRow=(p,isGuestPlayer,guestIdx)=>{
+    const st=stats[String(p.id)]||{goals:0,assists:0,goalsAgainst:0,appearances:0};
+    const isGK=p.position==="Goleiro";
+    const statItems=[
+      {key:"appearances",  label:"Presenças",     emoji:"📋",color:"#60a5fa"},
+      {key:"goals",        label:"Gols",          emoji:"⚽",color:"#34d399"},
+      {key:"assists",      label:"Assistências",  emoji:"🎯",color:"#f59e0b"},
+      ...(isGK?[{key:"goalsAgainst",label:"Gols sofridos",emoji:"🧤",color:"#f87171"}]:[]),
+    ];
+    return (
+      <div key={p.id} style={{background:isGuestPlayer?"rgba(251,146,60,0.04)":"rgba(255,255,255,0.03)",border:isGuestPlayer?"1px solid rgba(251,146,60,0.15)":"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+        <PlayerAvatar player={p} size={44} team={team}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:5}}>
+            <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+            {isGuestPlayer&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:4,padding:"1px 5px",fontSize:9,fontWeight:800,flexShrink:0}}>C{guestIdx}</span>}
+          </div>
+          <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{p.position}{isGuestPlayer?<span style={{color:"#fb923c"}}> · Convidado</span>:<span> · #{p.number}</span>}</div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          {statItems.map(({key,label,emoji,color})=>(
+            <div key={key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+              <span title={label} style={{fontSize:14}}>{emoji}</span>
+              <div style={{display:"flex",alignItems:"center",gap:3}}>
+                <button onClick={()=>onUpdateStat(p.id,key,Math.max(0,(st[key]||0)-1))}
+                  style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                <span style={{color,fontFamily:"'Bebas Neue',sans-serif",fontSize:18,minWidth:20,textAlign:"center"}}>{st[key]||0}</span>
+                <button onClick={()=>onUpdateStat(p.id,key,(st[key]||0)+1)}
+                  style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+              </div>
+              <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:7,fontWeight:700,textTransform:"uppercase",textAlign:"center",maxWidth:44,lineHeight:1.2}}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:8}}>
-      {sorted.map(p=>{
-        const st=stats[String(p.id)]||{goals:0,assists:0,goalsAgainst:0,appearances:0};
-        const isGK=p.position==="Goleiro";
-        // All players: appearances + goals + assists. GKs additionally: goals conceded.
-        const statItems=[
-          {key:"appearances",  label:"Presenças",     emoji:"📋",color:"#60a5fa"},
-          {key:"goals",        label:"Gols",          emoji:"⚽",color:"#34d399"},
-          {key:"assists",      label:"Assistências",  emoji:"🎯",color:"#f59e0b"},
-          ...(isGK?[{key:"goalsAgainst",label:"Gols sofridos",emoji:"🧤",color:"#f87171"}]:[]),
-        ];
-        return (
-          <div key={p.id} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
-            <PlayerAvatar player={p} size={44} team={team}/>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
-              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{p.position} · #{p.number}</div>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              {statItems.map(({key,label,emoji,color})=>(
-                <div key={key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                  <span title={label} style={{fontSize:14}}>{emoji}</span>
-                  <div style={{display:"flex",alignItems:"center",gap:3}}>
-                    <button onClick={()=>onUpdateStat(p.id,key,Math.max(0,(st[key]||0)-1))}
-                      style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-                    <span style={{color,fontFamily:"'Bebas Neue',sans-serif",fontSize:18,minWidth:20,textAlign:"center"}}>{st[key]||0}</span>
-                    <button onClick={()=>onUpdateStat(p.id,key,(st[key]||0)+1)}
-                      style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-                  </div>
-                  <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:7,fontWeight:700,textTransform:"uppercase",textAlign:"center",maxWidth:44,lineHeight:1.2}}>{label}</span>
-                </div>
-              ))}
-            </div>
+      {sorted.map(p=>renderPlayerStatRow(p,false,0))}
+      {guests.length>0&&(
+        <>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
+            <div style={{flex:1,height:1,background:"rgba(251,146,60,0.2)"}}/>
+            <span style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.7,flexShrink:0}}>🎟️ Convidados</span>
+            <div style={{flex:1,height:1,background:"rgba(251,146,60,0.2)"}}/>
           </div>
-        );
-      })}
+          <div style={{background:"rgba(251,146,60,0.06)",border:"1px solid rgba(251,146,60,0.15)",borderRadius:10,padding:"8px 12px",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#fb923c",lineHeight:1.5}}>
+            ℹ️ As estatísticas de convidados não entram nos dados gerais do time.
+          </div>
+          {guests.map((p,i)=>renderPlayerStatRow(p,true,i+1))}
+        </>
+      )}
     </div>
   );
 }
@@ -5324,8 +5448,9 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
   const [shared,setShared]=useState(false);
   const [exportMode,setExportMode]=useState("ranking"); // "ranking" | "team"
 
-  const players=team.players||[];
-  const playerById=Object.fromEntries(players.map(p=>[String(p.id),p]));
+  const players=team.players.filter(p=>!p.isGuest)||[];
+  const guestPlayers=team.players.filter(p=>!!p.isGuest)||[];
+  const playerById=Object.fromEntries((team.players||[]).map(p=>[String(p.id),p]));
 
   // All unique competition names from matches
   const competitionNames=useMemo(()=>[...new Set(
@@ -5404,7 +5529,13 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
     })();
     const header=[`${sm.emoji} RANKING — ${sm.label.toUpperCase()}`,`Time: ${team.name}`,`Filtro: ${filterDesc}`,`${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}`,`─────────────────────`].join("\n");
     const lines=ranking.map(({p,value},i)=>`${i+1}º ${p.name} — ${value} ${sm.label.toLowerCase()}`);
-    return lines.length?[header,...lines].join("\n"):[header,"(sem dados para este filtro)"].join("\n");
+    const guestLines=guestPlayers.map((p,gi)=>{
+      const st=aggregated[String(p.id)]||{goals:0,assists:0,goalsAgainst:0,appearances:0};
+      return {text:`C${gi+1} ${p.name} (Convidado) — ${st[statType]||0} ${sm.label.toLowerCase()}`,val:st[statType]||0};
+    }).filter(({val})=>statType==="appearances"?true:val>0).map(({text})=>text);
+    let result=lines.length?[header,...lines].join("\n"):[header,"(sem dados para este filtro)"].join("\n");
+    if(guestLines.length){result+="\n─────────────────────\n🎟️ CONVIDADOS\n"+guestLines.join("\n");}
+    return result;
   };
 
   const handleCopy=()=>{
@@ -5749,17 +5880,25 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
 
   // ── Export full stats table as CSV ────────────────────────────────────────
   const handleExportCsv=()=>{
-    const headers=["Nome","Camisa","Posição","Gols","Assistências","Gols Sofridos","Presenças"];
+    const headers=["Nome","Camisa","Posição","Gols","Assistências","Gols Sofridos","Presenças","Tipo"];
     const rows=players.map(p=>{
       const a=aggregated[String(p.id)]||{};
       return [
         p.name, p.number, p.position,
-        a.goals||0, a.assists||0, a.goalsAgainst||0, a.appearances||0
+        a.goals||0, a.assists||0, a.goalsAgainst||0, a.appearances||0, "Titular"
       ];
     }).sort((a,b)=>(b[3]+b[4]+b[6])-(a[3]+a[4]+a[6]));
+    const guestRows=guestPlayers.map((p,i)=>{
+      const a=aggregated[String(p.id)]||{};
+      return [
+        p.name, `C${i+1}`, p.position,
+        a.goals||0, a.assists||0, a.goalsAgainst||0, a.appearances||0, "Convidado"
+      ];
+    });
     const CRLF="\r\n";
-    const csv=[headers,...rows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(";")).join(CRLF);
-    const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
+    const allRows=[...rows,...guestRows];
+    const csv=[headers,...allRows].map(r=>r.map(v=>'"'+String(v).replace(/"/g,'\"\"')+ '"').join(";")).join(CRLF);
+    const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
     a.href=url;a.download=`${team.name.replace(/\s+/g,"_")}_estatisticas.csv`;
@@ -5767,7 +5906,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
     URL.revokeObjectURL(url);
   };
 
-  return (
+    return (
     <div style={{position:"fixed",inset:0,zIndex:1300,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"18px 18px 0 0",width:"100%",maxWidth:480,maxHeight:"92vh",overflowY:"auto",padding:"18px 18px 32px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -5909,6 +6048,25 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
                   <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#34d399"}}>{value}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {/* Guest section */}
+          {guestPlayers.length>0&&(
+            <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(251,146,60,0.2)"}}>
+              <div style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>🎟️ Convidados (não contam no ranking)</div>
+              <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                {guestPlayers.map((p,i)=>{
+                  const val=(aggregated[String(p.id)]||{})[statType]||0;
+                  return (
+                  <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,opacity:0.8}}>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:13,color:"#fb923c",minWidth:22}}>C{i+1}</span>
+                    <PlayerAvatar player={p} size={24} team={team}/>
+                    <span style={{flex:1,color:"#d1d5db",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                    <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,color:"#fb923c"}}>{val}</span>
+                  </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
