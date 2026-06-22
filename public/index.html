@@ -4828,7 +4828,7 @@ const MATCH_TYPES=[
 const MATCH_TYPES_WITH_NAME=["festival","tournament","league"];
 
 function MatchModal({initial,players,onSave,onClose}) {
-  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{},matchType:"friendly",competitionName:"",presentPlayerIds:[]};
+  const empty={opponent:"",date:"",time:"",location:"",notes:"",goalsFor:"",goalsAgainst:"",scorers:[],assisters:[],gkGoalsConceded:{},matchType:"friendly",competitionName:"",presentPlayerIds:[],venue:""};
   const [form,setForm]=useState(()=>initial?{...empty,...initial}:empty);
   const [playerSearch,setPlayerSearch]=useState("");
   const [expandedPlayer,setExpandedPlayer]=useState(null);
@@ -5012,6 +5012,25 @@ function MatchModal({initial,players,onSave,onClose}) {
             </div>
           </div>
 
+          {/* Mandante: Casa ou Fora */}
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <span style={LT}>Mandante</span>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {[{id:"home",label:"Casa",emoji:"🏠"},{id:"away",label:"Fora",emoji:"✈️"}].map(v=>(
+                <button key={v.id} onClick={()=>set("venue",form.venue===v.id?"":v.id)} style={{
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px 4px",
+                  borderRadius:10,border:"2px solid",cursor:"pointer",
+                  borderColor:form.venue===v.id?"#34d399":"rgba(255,255,255,0.08)",
+                  background:form.venue===v.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:15}}>{v.emoji}</span>
+                  <span style={{color:form.venue===v.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800,textTransform:"uppercase"}}>{v.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Competition name */}
           {needsCompName&&(
             <div style={{display:"flex",flexDirection:"column",gap:4}}>
@@ -5140,21 +5159,105 @@ function MatchModal({initial,players,onSave,onClose}) {
 }
 
 // ─── Stats View (per-player stats within OfficeView) ──────────────────────────
-function StatsView({team,stats,onUpdateStat}) {
+function StatsView({team,stats,matches,onUpdateStat}) {
   const players=team.players||[];
-  if(!players.length) return (
-    <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 20px",gap:10,color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:13,textAlign:"center"}}>
-      <Ico.Users/><span>Cadastre jogadores no time para registrar estatísticas.</span>
-    </div>
-  );
+  const allMatches=matches||[];
+  const [filterVenue,setFilterVenue]=useState("all"); // all | home | away
+  const [filterLocation,setFilterLocation]=useState(""); // "" = todos os locais
+
+  // Unique locations across all matches (for the location filter dropdown)
+  const locations=useMemo(()=>[...new Set(
+    allMatches.filter(m=>m.location&&m.location.trim()).map(m=>m.location.trim())
+  )].sort((a,b)=>a.localeCompare(b,"pt-BR")),[allMatches]);
+
+  const filteredMatches=useMemo(()=>allMatches.filter(m=>
+    (filterVenue==="all"||m.venue===filterVenue)&&
+    (!filterLocation||(m.location||"").trim()===filterLocation)
+  ),[allMatches,filterVenue,filterLocation]);
+
+  // Aggregate team-level goal stats (saldo de gols, gols feitos, gols sofridos)
+  const teamStats=useMemo(()=>{
+    let gf=0,ga=0,played=0,w=0,d=0,l=0;
+    filteredMatches.forEach(m=>{
+      if(m.goalsFor===""||m.goalsFor===undefined||m.goalsFor===null)return;
+      const f=parseInt(m.goalsFor)||0, a=parseInt(m.goalsAgainst)||0;
+      gf+=f; ga+=a; played++;
+      if(f>a)w++; else if(f<a)l++; else d++;
+    });
+    return {gf,ga,saldo:gf-ga,played,w,d,l};
+  },[filteredMatches]);
+
+  const statBoxStyle={display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 4px",background:"rgba(0,0,0,0.2)",borderRadius:10};
+  const statLabelStyle={color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:800,letterSpacing:0.3,textTransform:"uppercase"};
+
   // Sort: GKs last, then by number
   const sorted=[...players].sort((a,b)=>{
     if(a.position==="Goleiro"&&b.position!=="Goleiro")return 1;
     if(a.position!=="Goleiro"&&b.position==="Goleiro")return -1;
     return (parseInt(a.number)||0)-(parseInt(b.number)||0);
   });
+
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {/* ── Estatísticas gerais do time ── */}
+      {allMatches.length>0&&(
+        <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"14px"}}>
+          <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:12,color:"#34d399"}}>
+            <Ico.Goal/>
+            <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Estatísticas do Time</span>
+          </div>
+
+          {/* Filtros: Mandante + Local */}
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+              {[{id:"all",label:"Geral",emoji:"📊"},{id:"home",label:"Casa",emoji:"🏠"},{id:"away",label:"Fora",emoji:"✈️"}].map(v=>(
+                <button key={v.id} onClick={()=>setFilterVenue(v.id)} style={{
+                  padding:"7px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",
+                  borderColor:filterVenue===v.id?"#34d399":"rgba(255,255,255,0.08)",
+                  background:filterVenue===v.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                  display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:13}}>{v.emoji}</span>
+                  <span style={{color:filterVenue===v.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{v.label}</span>
+                </button>
+              ))}
+            </div>
+            {locations.length>0&&(
+              <select value={filterLocation} onChange={e=>setFilterLocation(e.target.value)} style={{...IS,colorScheme:"dark",fontSize:12,padding:"7px 10px"}}>
+                <option value="">📍 Todos os locais</option>
+                {locations.map(l=><option key={l} value={l}>{l}</option>)}
+              </select>
+            )}
+          </div>
+
+          {/* Saldo de gols / gols feitos / gols sofridos */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+            <div style={statBoxStyle}>
+              <span style={statLabelStyle}>Gols Feitos</span>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#34d399"}}>{teamStats.gf}</span>
+            </div>
+            <div style={statBoxStyle}>
+              <span style={statLabelStyle}>Gols Sofridos</span>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#f87171"}}>{teamStats.ga}</span>
+            </div>
+            <div style={statBoxStyle}>
+              <span style={statLabelStyle}>Saldo</span>
+              <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:teamStats.saldo>0?"#34d399":teamStats.saldo<0?"#f87171":"#f59e0b"}}>{teamStats.saldo>0?"+":""}{teamStats.saldo}</span>
+            </div>
+          </div>
+          <div style={{marginTop:9,color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,textAlign:"center"}}>
+            {teamStats.played} partida{teamStats.played!==1?"s":""} com resultado registrado{teamStats.played>0?` · ${teamStats.w}V ${teamStats.d}E ${teamStats.l}D`:""}
+          </div>
+        </div>
+      )}
+
+      {/* ── Estatísticas individuais ── */}
+      {!players.length?(
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"40px 20px",gap:10,color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:13,textAlign:"center"}}>
+          <Ico.Users/><span>Cadastre jogadores no time para registrar estatísticas.</span>
+        </div>
+      ):(
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
       {sorted.map(p=>{
         const st=stats[String(p.id)]||{goals:0,assists:0,goalsAgainst:0,appearances:0};
         const isGK=p.position==="Goleiro";
@@ -5190,6 +5293,8 @@ function StatsView({team,stats,onUpdateStat}) {
           </div>
         );
       })}
+      </div>
+      )}
     </div>
   );
 }
@@ -5224,7 +5329,8 @@ function buildConvocationText(team, match, presentedPlayers) {
     const [y,mo,d]=match.date.split("-");
     lines.push(`📅 *Data:* ${d}/${mo}/${y}${match.time?` · ${match.time}`:""}`);
   }
-  if (match.location) lines.push(`📍 *Local:* ${match.location}`);
+  if (match.location) lines.push(`📍 *Local:* ${match.location}${match.venue?` (${match.venue==="home"?"Casa":"Fora"})`:""}`);
+  else if (match.venue) lines.push(`📍 *Mandante:* ${match.venue==="home"?"Casa":"Fora"}`);
   if (match.notes)    lines.push(`📝 ${match.notes}`);
   lines.push(``);
   if (presentedPlayers && presentedPlayers.length > 0) {
@@ -5239,12 +5345,14 @@ function buildConvocationText(team, match, presentedPlayers) {
 // ─── Stats Export Modal ───────────────────────────────────────────────────────
 function StatsExportModal({team,matches,stats,onClose}) {
   const [statType,setStatType]=useState("goals"); // goals | assists | goalsAgainst
-  const [filterType,setFilterType]=useState("all"); // all | year | period | matchType | competition
+  const [filterType,setFilterType]=useState("all"); // all | year | period | matchType | competition | location | venue
   const [filterYear,setFilterYear]=useState(new Date().getFullYear().toString());
   const [filterDateFrom,setFilterDateFrom]=useState("");
   const [filterDateTo,setFilterDateTo]=useState("");
   const [filterMatchType,setFilterMatchType]=useState("friendly");
   const [filterCompetition,setFilterCompetition]=useState("");
+  const [filterLocation,setFilterLocation]=useState("");
+  const [filterVenue,setFilterVenue]=useState("home"); // home | away
   const [copied,setCopied]=useState(false);
   const [shared,setShared]=useState(false);
 
@@ -5255,6 +5363,11 @@ function StatsExportModal({team,matches,stats,onClose}) {
   const competitionNames=useMemo(()=>[...new Set(
     (matches||[]).filter(m=>m.competitionName).map(m=>m.competitionName.trim())
   )].sort(),[matches]);
+
+  // All unique locations from matches
+  const locationNames=useMemo(()=>[...new Set(
+    (matches||[]).filter(m=>m.location&&m.location.trim()).map(m=>m.location.trim())
+  )].sort((a,b)=>a.localeCompare(b,"pt-BR")),[matches]);
 
   // Years with matches
   const matchYears=useMemo(()=>[...new Set(
@@ -5272,8 +5385,12 @@ function StatsExportModal({team,matches,stats,onClose}) {
       ms=ms.filter(m=>(m.matchType||"friendly")===filterMatchType);
     else if(filterType==="competition")
       ms=ms.filter(m=>m.competitionName&&m.competitionName.trim()===filterCompetition);
+    else if(filterType==="location")
+      ms=ms.filter(m=>m.location&&m.location.trim()===filterLocation);
+    else if(filterType==="venue")
+      ms=ms.filter(m=>m.venue===filterVenue);
     return ms;
-  },[matches,filterType,filterYear,filterDateFrom,filterDateTo,filterMatchType,filterCompetition]);
+  },[matches,filterType,filterYear,filterDateFrom,filterDateTo,filterMatchType,filterCompetition,filterLocation,filterVenue]);
 
   // Compute aggregated stat from filtered matches
   const aggregated=useMemo(()=>{
@@ -5321,6 +5438,8 @@ function StatsExportModal({team,matches,stats,onClose}) {
       if(filterType==="period")return `${filterDateFrom||"..."} até ${filterDateTo||"..."}`;
       if(filterType==="matchType"){const mt=MATCH_TYPES.find(t=>t.id===filterMatchType);return mt?`${mt.emoji} ${mt.label}`:"";}
       if(filterType==="competition")return `🏆 ${filterCompetition}`;
+      if(filterType==="location")return `📍 ${filterLocation}`;
+      if(filterType==="venue")return filterVenue==="home"?"🏠 Casa":"✈️ Fora";
       return "Geral";
     })();
     const header=[`${sm.emoji} RANKING — ${sm.label.toUpperCase()}`,`Time: ${team.name}`,`Filtro: ${filterDesc}`,`${filteredMatches.length} partida${filteredMatches.length!==1?"s":""}`,`─────────────────────`].join("\n");
@@ -5394,6 +5513,8 @@ function StatsExportModal({team,matches,stats,onClose}) {
       if(filterType==="period")return `${filterDateFrom||"..."} até ${filterDateTo||"..."}`;
       if(filterType==="matchType"){const mt=MATCH_TYPES.find(t=>t.id===filterMatchType);return mt?`${mt.emoji} ${mt.label}`:"Tipo";}
       if(filterType==="competition")return filterCompetition||"Competição";
+      if(filterType==="location")return filterLocation||"Local";
+      if(filterType==="venue")return filterVenue==="home"?"🏠 Casa":"✈️ Fora";
       return "Geral";
     })();
 
@@ -5601,6 +5722,8 @@ function StatsExportModal({team,matches,stats,onClose}) {
               {id:"period", label:"Período",  emoji:"🗓"},
               {id:"matchType",label:"Tipo",   emoji:"🏟"},
               {id:"competition",label:"Compet.",emoji:"🏆"},
+              {id:"location",label:"Local",   emoji:"📍"},
+              {id:"venue",  label:"Mandante", emoji:"🏠"},
             ].map(f=>(
               <button key={f.id} onClick={()=>setFilterType(f.id)} style={{
                 padding:"8px 4px",borderRadius:10,border:"2px solid",cursor:"pointer",
@@ -5667,6 +5790,37 @@ function StatsExportModal({team,matches,stats,onClose}) {
                   Nenhuma competição cadastrada ainda.
                 </div>
               )}
+            </div>
+          )}
+          {filterType==="location"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              <label style={LT}>Local</label>
+              {locationNames.length?(
+                <select value={filterLocation} onChange={e=>setFilterLocation(e.target.value)} style={{...IS,colorScheme:"dark"}}>
+                  <option value="">Selecione...</option>
+                  {locationNames.map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+              ):(
+                <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12,padding:"8px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9}}>
+                  Nenhum local cadastrado ainda.
+                </div>
+              )}
+            </div>
+          )}
+          {filterType==="venue"&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+              {[{id:"home",label:"Casa",emoji:"🏠"},{id:"away",label:"Fora",emoji:"✈️"}].map(v=>(
+                <button key={v.id} onClick={()=>setFilterVenue(v.id)} style={{
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 4px",
+                  borderRadius:9,border:"2px solid",cursor:"pointer",
+                  borderColor:filterVenue===v.id?"#34d399":"rgba(255,255,255,0.08)",
+                  background:filterVenue===v.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
+                  transition:"all 0.15s"
+                }}>
+                  <span style={{fontSize:13}}>{v.emoji}</span>
+                  <span style={{color:filterVenue===v.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase"}}>{v.label}</span>
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -6059,7 +6213,8 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
     const lines=[`⚽ *${team.name.toUpperCase()} ${m.goalsFor!==""&&m.goalsFor!==undefined?`${m.goalsFor}–${m.goalsAgainst} vs ${m.opponent}`:`vs ${m.opponent}`}*`,``];
     if(mt) lines.push(`${mt.emoji} ${mt.label}${m.competitionName?` · ${m.competitionName}`:""}`);
     if(m.date){const [y,mo,d]=m.date.split("-");lines.push(`📅 ${d}/${mo}/${y}${m.time?` · ${m.time}`:""}`);}
-    if(m.location) lines.push(`📍 ${m.location}`);
+    if(m.location) lines.push(`📍 ${m.location}${m.venue?` (${m.venue==="home"?"Casa":"Fora"})`:""}`);
+    else if(m.venue) lines.push(`📍 ${m.venue==="home"?"Casa":"Fora"}`);
     const scorerUniq=[...new Set(m.scorers||[])];
     if(scorerUniq.length){lines.push(``);lines.push(`⚽ Gols: ${scorerUniq.map(pid=>{const p=playerById[pid];const cnt=(m.scorers||[]).filter(x=>x===pid).length;return p?`${p.name}${cnt>1?` (${cnt})`:""}`:null;}).filter(Boolean).join(", ")}`);}
     const assUniq=[...new Set(m.assisters||[])];
@@ -6235,6 +6390,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
                           const mt=MATCH_TYPES.find(t=>t.id===(m.matchType||"friendly"));
                           return mt&&<span style={{fontSize:10,fontFamily:"'DM Sans',sans-serif",fontWeight:700,color:"#6B7280",background:"rgba(255,255,255,0.05)",borderRadius:5,padding:"1px 6px"}}>{mt.emoji} {mt.label}{m.competitionName?` · ${m.competitionName}`:""}</span>;
                         })()}
+                        {m.venue&&<span style={{fontSize:10,fontFamily:"'DM Sans',sans-serif",fontWeight:700,color:m.venue==="home"?"#34d399":"#60a5fa",background:m.venue==="home"?"rgba(52,211,153,0.1)":"rgba(96,165,250,0.1)",borderRadius:5,padding:"1px 6px"}}>{m.venue==="home"?"🏠 Casa":"✈️ Fora"}</span>}
                       </div>
                       <div style={{display:"flex",gap:6}}>
                         {!isPast&&(m.presentPlayerIds||[]).length>0&&(
@@ -6324,7 +6480,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer}) {
             background:"rgba(52,211,153,0.07)",color:"#34d399",
             fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1
           }}>📋 EXPORTAR / FILTRAR ESTATÍSTICAS</button>
-          <StatsView team={team} stats={stats} onUpdateStat={updateStat}/>
+          <StatsView team={team} stats={stats} matches={matches||[]} onUpdateStat={updateStat}/>
           </>
         )}
         {/* ── Import tab ── */}
