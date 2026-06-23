@@ -1851,7 +1851,12 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
 
       {/* Mode cards — premium photo style */}
       <style>{`
-        .pm-card{position:relative;width:100%;border:none;border-radius:20px;cursor:pointer;text-align:left;overflow:hidden;display:block;padding:0;background:none;-webkit-tap-highlight-color:transparent;box-shadow:0 8px 32px rgba(0,0,0,0.55);}
+        @keyframes pm-ripple{0%{transform:scale(0);opacity:0.5;}100%{transform:scale(4);opacity:0;}}
+        @keyframes pm-card-press{0%{transform:scale(1);}50%{transform:scale(0.97);}100%{transform:scale(1);}}
+        .pm-card{position:relative;width:100%;border:none;border-radius:20px;cursor:pointer;text-align:left;overflow:hidden;display:block;padding:0;background:none;-webkit-tap-highlight-color:transparent;box-shadow:0 8px 32px rgba(0,0,0,0.55);transition:transform 0.18s cubic-bezier(.25,.46,.45,.94),box-shadow 0.18s;}
+        .pm-card:hover{transform:translateY(-3px);box-shadow:0 16px 48px rgba(0,0,0,0.7);}
+        .pm-card.pm-pressing{animation:pm-card-press 0.35s cubic-bezier(.25,.46,.45,.94) forwards;}
+        .pm-ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,0.35);width:80px;height:80px;margin-top:-40px;margin-left:-40px;animation:pm-ripple 0.6s linear forwards;pointer-events:none;z-index:10;}
         .pm-card-img{width:100%;height:100%;object-fit:cover;transition:transform 0.35s cubic-bezier(.25,.46,.45,.94);display:block;}
         .pm-card:hover .pm-card-img,.pm-card:focus .pm-card-img{transform:scale(1.07);}
         .pm-card-img-wrap{width:100%;height:190px;overflow:hidden;border-radius:20px;position:relative;}
@@ -1869,7 +1874,7 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
       <div style={{flex:1,padding:"28px 20px 24px",display:"flex",flexDirection:"column",gap:16}}>
 
         {/* Card 1 — Futebol de Campo */}
-        <button className="pm-card" onClick={()=>onSelect("field")} aria-label="Futebol de Campo">
+        <button className="pm-card" onClick={(e)=>{const b=e.currentTarget;const r=document.createElement("span");r.className="pm-ripple";const rect=b.getBoundingClientRect();r.style.left=(e.clientX-rect.left)+"px";r.style.top=(e.clientY-rect.top)+"px";b.appendChild(r);b.classList.add("pm-pressing");setTimeout(()=>{r.remove();b.classList.remove("pm-pressing");},600);onSelect("field");}} aria-label="Futebol de Campo">
           <div className="pm-card-img-wrap">
             <img
               className="pm-card-img"
@@ -1902,7 +1907,7 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
         </button>
 
         {/* Card 2 — Pelada Mensal */}
-        <button className="pm-card" onClick={()=>onSelect("monthly")} aria-label="Pelada Mensal">
+        <button className="pm-card" onClick={(e)=>{const b=e.currentTarget;const r=document.createElement("span");r.className="pm-ripple";const rect=b.getBoundingClientRect();r.style.left=(e.clientX-rect.left)+"px";r.style.top=(e.clientY-rect.top)+"px";b.appendChild(r);b.classList.add("pm-pressing");setTimeout(()=>{r.remove();b.classList.remove("pm-pressing");},600);onSelect("monthly");}} aria-label="Pelada Mensal">
           <div className="pm-card-img-wrap">
             <img
               className="pm-card-img"
