@@ -1874,6 +1874,7 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
             <img
               className="pm-card-img"
               src="/assets/images/campao.png"
+              onError={e=>{e.target.style.display="none";e.target.parentNode.style.background="linear-gradient(135deg,#052e16,#16a34a)"}}
               alt="Futebol de Campo"
               loading="eager"
               
@@ -1906,6 +1907,7 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
             <img
               className="pm-card-img"
               src="/assets/images/society.png"
+              onError={e=>{e.target.style.display="none";e.target.parentNode.style.background="linear-gradient(135deg,#1e3a8a,#3b82f6)"}}
               alt="Pelada Mensal"
               loading="eager"
               
