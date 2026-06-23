@@ -1873,7 +1873,7 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
           <div className="pm-card-img-wrap">
             <img
               className="pm-card-img"
-              src="https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=800&q=80&auto=format&fit=crop"
+              src="images/campao.png"
               alt="Futebol de Campo"
               loading="eager"
               onError={e=>{e.target.style.background="linear-gradient(135deg,#052e16,#16a34a)";e.target.style.display="none";}}
@@ -1905,7 +1905,7 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
           <div className="pm-card-img-wrap">
             <img
               className="pm-card-img"
-              src="https://images.unsplash.com/photo-1575361204480-aadea25e6e68?w=800&q=80&auto=format&fit=crop"
+              src="images/society.png"
               alt="Pelada Mensal"
               loading="eager"
               onError={e=>{e.target.style.background="linear-gradient(135deg,#1e3a8a,#3b82f6)";e.target.style.display="none";}}
