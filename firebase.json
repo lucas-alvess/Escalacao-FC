@@ -6,7 +6,17 @@
       "**/.*",
       "**/node_modules/**"
     ],
+    "headers": [
+      {
+        "source": "/images/**",
+        "headers": [{ "key": "Cache-Control", "value": "public,max-age=31536000" }]
+      }
+    ],
     "rewrites": [
+      {
+        "source": "!/images/**",
+        "destination": "/index.html"
+      },
       {
         "source": "**",
         "destination": "/index.html"
