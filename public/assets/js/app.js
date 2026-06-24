@@ -1,7 +1,7 @@
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 const LOGO_URI = "/assets/images/logo.png";
-const LOGO_URI2 = "/assets/images/escalacao-blue.png"
+const LOGO_URI2 = "/assets/images/escalacao-blue.png";
 
 
 // ─── Firebase helpers (populated after firebase-ready event) ─────────────────
@@ -1993,14 +1993,7 @@ function PeladaMensalScreen({onBack, onSelect}) {
       title: "Mensalistas",
       desc: "Gerencie os mensalistas da pelada, controle pagamentos e presenças de cada jogador.",
       tags: ["Jogadores","Pagamento","Presença","Histórico"],
-      icon: (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <circle cx="9" cy="7" r="4"/>
-          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-        </svg>
-      ),
+      imgSrc: "/assets/images/mensalistas.png", // ← coloque o caminho da imagem aqui
       bg: "linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 60%,#3b82f6 100%)",
       overlayTop: "linear-gradient(135deg,rgba(29,78,216,0.45) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.38) 40%,rgba(5,10,30,0.92) 100%)",
@@ -2012,15 +2005,7 @@ function PeladaMensalScreen({onBack, onSelect}) {
       title: "Sorteio — Lista",
       desc: "Adicione os jogadores disponíveis e sorteie os times de forma rápida e justa.",
       tags: ["Sorteio","Times","Aleatorio","Justo"],
-      icon: (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="2" y="3" width="20" height="18" rx="2.5"/>
-          <line x1="8" y1="8" x2="16" y2="8"/>
-          <line x1="8" y1="12" x2="16" y2="12"/>
-          <line x1="8" y1="16" x2="12" y2="16"/>
-          <path d="M19 17l-2 2 2 2" opacity=".6"/>
-        </svg>
-      ),
+      imgSrc: "/assets/images/sorteio-lista.png", // ← coloque o caminho da imagem aqui
       bg: "linear-gradient(135deg,#0c1d4d 0%,#1e40af 60%,#2563eb 100%)",
       overlayTop: "linear-gradient(135deg,rgba(37,99,235,0.4) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.4) 40%,rgba(5,10,30,0.93) 100%)",
@@ -2032,16 +2017,7 @@ function PeladaMensalScreen({onBack, onSelect}) {
       title: "Sorteio — Tampinhas",
       desc: "Simule o clássico sorteio com tampinhas para montar os times da pelada.",
       tags: ["Tampinhas","Clássico","Sorteio","Diversão"],
-      icon: (
-        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="9"/>
-          <circle cx="12" cy="12" r="4"/>
-          <line x1="12" y1="3" x2="12" y2="8"/>
-          <line x1="12" y1="16" x2="12" y2="21"/>
-          <line x1="3" y1="12" x2="8" y2="12"/>
-          <line x1="16" y1="12" x2="21" y2="12"/>
-        </svg>
-      ),
+      imgSrc: "/assets/images/sorteio-tampinhas.png", // ← coloque o caminho da imagem aqui
       bg: "linear-gradient(135deg,#0f2460 0%,#1e3a8a 55%,#2563eb 100%)",
       overlayTop: "linear-gradient(135deg,rgba(30,58,138,0.5) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.42) 40%,rgba(5,10,30,0.94) 100%)",
@@ -2088,12 +2064,8 @@ function PeladaMensalScreen({onBack, onSelect}) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,position:"relative",zIndex:1}}>
-          <div style={{width:54,height:54,borderRadius:16,background:"linear-gradient(135deg,#1d4ed8,#60a5fa)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 6px 24px rgba(96,165,250,0.4)"}}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
-              <line x1="2" y1="12" x2="22" y2="12"/>
-            </svg>
+          <div style={{width:54,height:54,borderRadius:16,overflow:"hidden",boxShadow:"0 6px 24px rgba(96,165,250,0.4)"}}>
+            <img src={LOGO_URI2} alt="Pelada Mensal" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           </div>
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#fff",letterSpacing:2,lineHeight:1}}>PELADA MENSAL</div>
           <div style={{color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase"}}>Selecione uma opção</div>
@@ -2110,10 +2082,14 @@ function PeladaMensalScreen({onBack, onSelect}) {
             aria-label={card.title}
           >
             <div className="pm-card-img-wrap" style={{background:card.bg}}>
-              {/* Decorative large icon */}
-              <div className="pms-icon-wrap" style={{transform:"translate(-50%,-50%) scale(3.5)",opacity:0.13}}>
-                {card.icon}
-              </div>
+              <img
+                className="pm-card-img"
+                src={card.imgSrc}
+                alt={card.title}
+                loading="eager"
+                onError={e=>{e.target.style.display="none";}}
+                style={{width:"100%",height:"100%",objectFit:"cover",display:"block",transition:"transform 0.35s cubic-bezier(.25,.46,.45,.94)"}}
+              />
               <div className="pm-card-overlay" style={{background:card.overlayBot}}/>
               <div className="pm-card-overlay" style={{background:card.overlayTop}}/>
             </div>
