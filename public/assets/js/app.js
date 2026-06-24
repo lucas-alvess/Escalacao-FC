@@ -2954,29 +2954,37 @@ function SorteioListaScreen({ onBack, uid }) {
     { label:"Preto",    value:"#374151" },
   ];
 
+  const SKILL_LABELS = ["Fraco","Regular","Bom","Ótimo","Craque"];
+  const SKILL_COLORS = ["#6B7280","#60a5fa","#34d399","#f59e0b","#f43f5e"];
+  const SKILL_EMOJI  = ["😐","🙂","😊","😎","⭐"];
+
   // ── Steps: "setup" | "players" | "result"
   const [step, setStep] = useState("setup");
 
   // ── Setup state
   const [numTeams, setNumTeams] = useState(2);
   const [playersPerTeam, setPlayersPerTeam] = useState(5);
-  const [teamColors, setTeamColors] = useState([TEAM_COLORS[0].value, TEAM_COLORS[1].value, TEAM_COLORS[2].value, TEAM_COLORS[3].value, TEAM_COLORS[4].value, TEAM_COLORS[5].value]);
+  const [teamColors, setTeamColors] = useState([TEAM_COLORS[0].value,TEAM_COLORS[1].value,TEAM_COLORS[2].value,TEAM_COLORS[3].value,TEAM_COLORS[4].value,TEAM_COLORS[5].value]);
   const [teamNames, setTeamNames] = useState(["Time A","Time B","Time C","Time D","Time E","Time F"]);
+  const [drawMode, setDrawMode] = useState("balanced"); // "random" | "balanced"
 
-  // ── Players state
-  const [players, setPlayers] = useState([]); // [{id, name, source:"agenda"|"avulso"|"manual"}]
+  // ── Players state: [{id, name, skill:1-5, source, agendaName?}]
+  const [players, setPlayers] = useState([]);
   const [agendas, setAgendas] = useState([]);
   const [loadingAgendas, setLoadingAgendas] = useState(false);
   const [showAgendaModal, setShowAgendaModal] = useState(false);
-  const [selectedAgendaId, setSelectedAgendaId] = useState(null);
   const [avulsoName, setAvulsoName] = useState("");
+  const [avulsoSkill, setAvulsoSkill] = useState(3);
   const [manualName, setManualName] = useState("");
+  const [manualSkill, setManualSkill] = useState(3);
   const [showManualInput, setShowManualInput] = useState(false);
   const [showAvulsoInput, setShowAvulsoInput] = useState(false);
+  const [editingSkill, setEditingSkill] = useState(null); // player id being edited
 
   // ── Result state
-  const [teams, setTeams] = useState([]); // [{name, color, players:[{id,name}]}]
-  const [manualAssign, setManualAssign] = useState(null); // {playerId, playerName} currently being reassigned
+  const [teams, setTeams] = useState([]);
+  const [manualAssign, setManualAssign] = useState(null);
+  const [lastMode, setLastMode] = useState("balanced");
   const [toast, setToast] = useState(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
@@ -2987,59 +2995,104 @@ function SorteioListaScreen({ onBack, uid }) {
     const fb = getFirebase(); if (!fb) return;
     setLoadingAgendas(true);
     const { db, collection, query, orderBy, getDocs } = fb;
-    const q = query(collection(db, `users/${uid}/mensalistas`), orderBy("createdAt","asc"));
-    getDocs(q).then(snap => {
-      setAgendas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoadingAgendas(false);
-    }).catch(() => setLoadingAgendas(false));
+    getDocs(query(collection(db, `users/${uid}/mensalistas`), orderBy("createdAt","asc")))
+      .then(snap => { setAgendas(snap.docs.map(d => ({ id:d.id, ...d.data() }))); setLoadingAgendas(false); })
+      .catch(() => setLoadingAgendas(false));
   }, [uid]);
 
   const totalSlots = numTeams * playersPerTeam;
 
-  // ── Add players from agenda
+  // ── Skill bar mini component
+  const SkillBar = ({ value, onChange, size = "md" }) => {
+    const sz = size === "sm" ? 22 : 28;
+    return (
+      <div style={{ display:"flex", gap:3 }}>
+        {[1,2,3,4,5].map(v => (
+          <button key={v} onClick={() => onChange && onChange(v)} style={{
+            width:sz, height:sz, borderRadius:6, border:"none", cursor: onChange ? "pointer" : "default",
+            background: v <= value ? SKILL_COLORS[value-1] : "rgba(255,255,255,0.07)",
+            transition:"background 0.15s", display:"flex", alignItems:"center", justifyContent:"center",
+            fontSize: size === "sm" ? 9 : 11, fontWeight:700, color: v <= value ? "#000" : "#4B5563"
+          }}>{v <= value ? "★" : "☆"}</button>
+        ))}
+      </div>
+    );
+  };
+
+  // ── Add players from agenda (inherit stars as skill if available)
   const addFromAgenda = (agenda) => {
     const existing = new Set(players.map(p => p.id));
     const toAdd = (agenda.players || [])
       .filter(p => !existing.has(`agenda_${agenda.id}_${p.id}`))
-      .map(p => ({ id: `agenda_${agenda.id}_${p.id}`, name: p.name, source: "agenda", agendaName: agenda.name }));
-    if (toAdd.length === 0) { showToast("Todos os jogadores desta agenda já foram adicionados"); return; }
+      .map(p => ({ id:`agenda_${agenda.id}_${p.id}`, name:p.name, skill: p.stars || 3, source:"agenda", agendaName:agenda.name }));
+    if (toAdd.length === 0) { showToast("Todos já foram adicionados"); return; }
     setPlayers(prev => [...prev, ...toAdd]);
-    showToast(`${toAdd.length} jogador(es) adicionado(s) de ${agenda.name}`);
+    showToast(`${toAdd.length} jogador(es) de ${agenda.name}`);
     setShowAgendaModal(false);
   };
 
   const addAvulso = () => {
-    const name = avulsoName.trim();
-    if (!name) return;
-    setPlayers(prev => [...prev, { id: genUUID(), name, source: "avulso" }]);
-    setAvulsoName("");
-    setShowAvulsoInput(false);
+    const name = avulsoName.trim(); if (!name) return;
+    setPlayers(prev => [...prev, { id:genUUID(), name, skill:avulsoSkill, source:"avulso" }]);
+    setAvulsoName(""); setShowAvulsoInput(false);
     showToast("Avulso adicionado!");
   };
 
   const addManual = () => {
-    const name = manualName.trim();
-    if (!name) return;
-    setPlayers(prev => [...prev, { id: genUUID(), name, source: "manual" }]);
+    const name = manualName.trim(); if (!name) return;
+    setPlayers(prev => [...prev, { id:genUUID(), name, skill:manualSkill, source:"manual" }]);
     setManualName("");
   };
 
   const removePlayer = (id) => setPlayers(prev => prev.filter(p => p.id !== id));
 
-  // ── Sorteio
-  const doSorteio = () => {
-    if (players.length < 2) { showToast("Adicione pelo menos 2 jogadores"); return; }
-    const shuffled = [...players].sort(() => Math.random() - 0.5);
-    const result = Array.from({ length: numTeams }, (_, i) => ({
-      name: teamNames[i] || `Time ${i + 1}`,
+  const updateSkill = (id, skill) => {
+    setPlayers(prev => prev.map(p => p.id === id ? { ...p, skill } : p));
+    setEditingSkill(null);
+  };
+
+  // ── Balanced draw: snake draft by skill (desc sort → distribute round-robin alternating direction)
+  const doBalancedDraw = (pool, n) => {
+    const sorted = [...pool].sort((a, b) => (b.skill||3) - (a.skill||3) + (Math.random() - 0.5) * 0.01);
+    const result = Array.from({ length: n }, (_, i) => ({
+      name: teamNames[i] || `Time ${i+1}`,
       color: teamColors[i] || TEAM_COLORS[i % TEAM_COLORS.length].value,
-      players: [],
+      players: [], skillSum: 0,
+    }));
+    // Snake draft: 0,1,2 then 2,1,0 then 0,1,2...
+    let dir = 1, cur = 0;
+    sorted.forEach(p => {
+      result[cur].players.push(p);
+      result[cur].skillSum = (result[cur].skillSum || 0) + (p.skill || 3);
+      cur += dir;
+      if (cur >= n) { cur = n - 1; dir = -1; }
+      else if (cur < 0) { cur = 0; dir = 1; }
+    });
+    return result;
+  };
+
+  // ── Random draw
+  const doRandomDraw = (pool, n) => {
+    const shuffled = [...pool].sort(() => Math.random() - 0.5);
+    const result = Array.from({ length: n }, (_, i) => ({
+      name: teamNames[i] || `Time ${i+1}`,
+      color: teamColors[i] || TEAM_COLORS[i % TEAM_COLORS.length].value,
+      players: [], skillSum: 0,
     }));
     shuffled.forEach((p, i) => {
-      const teamIdx = i % numTeams;
-      result[teamIdx].players.push(p);
+      const t = i % n;
+      result[t].players.push(p);
+      result[t].skillSum = (result[t].skillSum || 0) + (p.skill || 3);
     });
+    return result;
+  };
+
+  const doSorteio = (mode) => {
+    if (players.length < 2) { showToast("Adicione pelo menos 2 jogadores"); return; }
+    const m = mode || drawMode;
+    const result = m === "balanced" ? doBalancedDraw(players, numTeams) : doRandomDraw(players, numTeams);
     setTeams(result);
+    setLastMode(m);
     setStep("result");
   };
 
@@ -3048,23 +3101,18 @@ function SorteioListaScreen({ onBack, uid }) {
     setTeams(prev => {
       const next = prev.map(t => ({ ...t, players: t.players.filter(p => p.id !== playerId) }));
       const player = prev.flatMap(t => t.players).find(p => p.id === playerId);
-      if (player) next[toTeamIdx].players.push(player);
+      if (player) {
+        next[toTeamIdx].players.push(player);
+        next.forEach(t => { t.skillSum = t.players.reduce((s,p) => s+(p.skill||3), 0); });
+      }
       return next;
     });
     setManualAssign(null);
     showToast("Jogador movido!");
   };
 
-  const resorteio = () => {
-    setTeams([]);
-    setStep("players");
-  };
-
-  const startOver = () => {
-    setPlayers([]);
-    setTeams([]);
-    setStep("setup");
-  };
+  const resorteio = () => { setTeams([]); setStep("players"); };
+  const startOver = () => { setPlayers([]); setTeams([]); setStep("setup"); };
 
   // ── Color picker
   const ColorPicker = ({ value, onChange }) => (
@@ -3072,30 +3120,39 @@ function SorteioListaScreen({ onBack, uid }) {
       {TEAM_COLORS.map(c => (
         <button key={c.value} onClick={() => onChange(c.value)} title={c.label} style={{
           width:26, height:26, borderRadius:"50%", background:c.value, border:`2px solid ${value===c.value?"#fff":"transparent"}`,
-          cursor:"pointer", outline:"none", transition:"border 0.15s", boxShadow:value===c.value?"0 0 0 2px rgba(255,255,255,0.4)":"none"
+          cursor:"pointer", outline:"none", boxShadow:value===c.value?"0 0 0 2px rgba(255,255,255,0.4)":"none"
         }}/>
       ))}
     </div>
   );
 
+  const SL_STYLES = `
+    .sl-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:10px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
+    .sl-input:focus{border-color:rgba(52,211,153,0.5);}
+    .sl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:14px;border:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;transition:opacity 0.15s;}
+    .sl-btn:active{opacity:0.8;}
+    .sl-stepper{display:flex;align-items:center;gap:12px;}
+    .sl-step-btn{width:36px;height:36px;border-radius:10px;border:1px solid rgba(52,211,153,0.3);background:rgba(52,211,153,0.08);color:#34d399;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;}
+    .sl-step-val{font-size:24px;font-family:'Bebas Neue',sans-serif;color:#fff;min-width:32px;text-align:center;letter-spacing:1px;}
+    .sl-player-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;}
+    .sl-team-card{border-radius:16px;padding:14px;}
+    .sl-p-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);cursor:pointer;}
+    .sl-p-chip:active{opacity:0.75;}
+    .sl-mode-btn{flex:1;padding:12px 8px;border-radius:12px;border:2px solid;font-family:'DM Sans',sans-serif;font-weight:700;font-size:12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4;transition:all 0.15s;}
+  `;
+
+  const BackBtn = ({ onClick }) => (
+    <button onClick={onClick} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#34d399",zIndex:2 }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+  );
+
   // ─────────────── STEP: SETUP ───────────────
   if (step === "setup") return (
     <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
-      <style>{`
-        .sl-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:10px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
-        .sl-input:focus{border-color:rgba(52,211,153,0.5);}
-        .sl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:14px;border:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;transition:opacity 0.15s;}
-        .sl-btn:active{opacity:0.8;}
-        .sl-stepper{display:flex;align-items:center;gap:12px;}
-        .sl-step-btn{width:36px;height:36px;border-radius:10px;border:1px solid rgba(52,211,153,0.3);background:rgba(52,211,153,0.08);color:#34d399;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;}
-        .sl-step-val{font-size:24px;font-family:'Bebas Neue',sans-serif;color:#fff;min-width:32px;text-align:center;letter-spacing:1px;}
-      `}</style>
-
-      {/* Header */}
+      <style>{SL_STYLES}</style>
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
-        <button onClick={onBack} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#34d399" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
+        <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
           <div style={{ fontSize:36 }}>🎲</div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
@@ -3104,6 +3161,31 @@ function SorteioListaScreen({ onBack, uid }) {
       </div>
 
       <div style={{ flex:1, padding:"24px 20px 40px", display:"flex", flexDirection:"column", gap:20, overflowY:"auto" }}>
+
+        {/* Modo de sorteio */}
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
+          <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Modo de Sorteio</div>
+          <div style={{ display:"flex", gap:10 }}>
+            <button className="sl-mode-btn" onClick={() => setDrawMode("balanced")} style={{
+              borderColor: drawMode==="balanced" ? "#34d399" : "rgba(255,255,255,0.08)",
+              background: drawMode==="balanced" ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.03)",
+              color: drawMode==="balanced" ? "#34d399" : "#9CA3AF"
+            }}>
+              <span style={{ fontSize:22 }}>⚖️</span>
+              <span>Equilibrado</span>
+              <span style={{ fontSize:10, fontWeight:400, opacity:0.7, textAlign:"center" }}>Distribui bons e fracos nos times</span>
+            </button>
+            <button className="sl-mode-btn" onClick={() => setDrawMode("random")} style={{
+              borderColor: drawMode==="random" ? "#a855f7" : "rgba(255,255,255,0.08)",
+              background: drawMode==="random" ? "rgba(168,85,247,0.1)" : "rgba(255,255,255,0.03)",
+              color: drawMode==="random" ? "#a855f7" : "#9CA3AF"
+            }}>
+              <span style={{ fontSize:22 }}>🎲</span>
+              <span>Aleatório</span>
+              <span style={{ fontSize:10, fontWeight:400, opacity:0.7, textAlign:"center" }}>Sorteio puro sem considerar nível</span>
+            </button>
+          </div>
+        </div>
 
         {/* Número de times */}
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
@@ -3131,23 +3213,18 @@ function SorteioListaScreen({ onBack, uid }) {
         {/* Times — nome e cor */}
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
           <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Times</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
             {Array.from({ length: numTeams }, (_, i) => (
               <div key={i} style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <div style={{ width:14, height:14, borderRadius:4, background:teamColors[i]||TEAM_COLORS[i%TEAM_COLORS.length].value, flexShrink:0 }}/>
-                  <input
-                    className="sl-input"
-                    style={{ flex:1, padding:"8px 10px", fontSize:13 }}
+                  <input className="sl-input" style={{ flex:1, padding:"8px 10px", fontSize:13 }}
                     value={teamNames[i] || `Time ${String.fromCharCode(65+i)}`}
                     onChange={e => setTeamNames(prev => { const n=[...prev]; n[i]=e.target.value; return n; })}
-                    placeholder={`Nome do Time ${i+1}`}
-                  />
+                    placeholder={`Nome do Time ${i+1}`}/>
                 </div>
-                <ColorPicker
-                  value={teamColors[i]||TEAM_COLORS[i%TEAM_COLORS.length].value}
-                  onChange={c => setTeamColors(prev => { const n=[...prev]; n[i]=c; return n; })}
-                />
+                <ColorPicker value={teamColors[i]||TEAM_COLORS[i%TEAM_COLORS.length].value}
+                  onChange={c => setTeamColors(prev => { const n=[...prev]; n[i]=c; return n; })}/>
               </div>
             ))}
           </div>
@@ -3163,75 +3240,70 @@ function SorteioListaScreen({ onBack, uid }) {
   // ─────────────── STEP: PLAYERS ───────────────
   if (step === "players") return (
     <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
-      <style>{`
-        .sl-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:10px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
-        .sl-input:focus{border-color:rgba(52,211,153,0.5);}
-        .sl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:14px;border:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;transition:opacity 0.15s;}
-        .sl-btn:active{opacity:0.8;}
-        .sl-player-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;}
-      `}</style>
-
-      {/* Header */}
-      <div style={{ padding:"52px 20px 16px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)" }}>
-        <button onClick={() => setStep("setup")} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#34d399" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
+      <style>{SL_STYLES}</style>
+      <div style={{ padding:"52px 20px 16px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
+        <BackBtn onClick={() => setStep("setup")}/>
         <div style={{ textAlign:"center" }}>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:24, color:"#fff", letterSpacing:2 }}>JOGADORES</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700 }}>
             <span style={{ color: players.length >= totalSlots ? "#34d399" : "#f59e0b" }}>{players.length}</span>
-            {" "}/ {totalSlots} vagas preenchidas
+            {" "}/ {totalSlots} vagas
+            {drawMode === "balanced" && <span style={{ color:"#6B7280", marginLeft:6 }}>· Modo Equilibrado ⚖️</span>}
           </div>
         </div>
       </div>
 
-      <div style={{ flex:1, padding:"16px 16px 120px", display:"flex", flexDirection:"column", gap:14, overflowY:"auto" }}>
+      <div style={{ flex:1, padding:"16px 16px 130px", display:"flex", flexDirection:"column", gap:14, overflowY:"auto" }}>
 
-        {/* Botões de fonte */}
+        {/* Fontes */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           <button onClick={() => setShowAgendaModal(true)} style={{ padding:"12px 8px", borderRadius:12, border:"1px solid rgba(52,211,153,0.25)", background:"rgba(52,211,153,0.07)", color:"#34d399", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-            <span style={{ fontSize:20 }}>📋</span>
-            <span>Da Agenda</span>
+            <span style={{ fontSize:20 }}>📋</span><span>Da Agenda</span>
           </button>
           <button onClick={() => { setShowAvulsoInput(v=>!v); setShowManualInput(false); }} style={{ padding:"12px 8px", borderRadius:12, border:"1px solid rgba(251,191,36,0.25)", background:"rgba(251,191,36,0.07)", color:"#FBBF24", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-            <span style={{ fontSize:20 }}>⚡</span>
-            <span>Avulso</span>
+            <span style={{ fontSize:20 }}>⚡</span><span>Avulso</span>
           </button>
         </div>
 
         {/* Input avulso */}
         {showAvulsoInput && (
-          <div style={{ display:"flex", gap:8 }}>
-            <input
-              className="sl-input"
-              autoFocus
-              style={{ flex:1, borderColor:"rgba(251,191,36,0.3)" }}
-              placeholder="Nome do jogador avulso"
-              value={avulsoName}
-              onChange={e => setAvulsoName(e.target.value)}
-              onKeyDown={e => e.key==="Enter" && addAvulso()}
-            />
-            <button onClick={addAvulso} style={{ padding:"10px 14px", borderRadius:10, border:"none", background:"#f59e0b", color:"#000", fontWeight:700, fontSize:13, cursor:"pointer" }}>+</button>
+          <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(251,191,36,0.2)", borderRadius:12, padding:12, display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ display:"flex", gap:8 }}>
+              <input className="sl-input" autoFocus style={{ flex:1, borderColor:"rgba(251,191,36,0.3)" }}
+                placeholder="Nome do jogador avulso" value={avulsoName}
+                onChange={e => setAvulsoName(e.target.value)} onKeyDown={e => e.key==="Enter" && addAvulso()}/>
+              <button onClick={addAvulso} style={{ padding:"10px 14px", borderRadius:10, border:"none", background:"#f59e0b", color:"#000", fontWeight:700, fontSize:13, cursor:"pointer" }}>+</button>
+            </div>
+            <div>
+              <div style={{ color:"#6B7280", fontSize:10, fontWeight:700, letterSpacing:0.8, marginBottom:6 }}>NÍVEL DE HABILIDADE</div>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <SkillBar value={avulsoSkill} onChange={setAvulsoSkill}/>
+                <span style={{ color:SKILL_COLORS[avulsoSkill-1], fontSize:12, fontWeight:700 }}>{SKILL_EMOJI[avulsoSkill-1]} {SKILL_LABELS[avulsoSkill-1]}</span>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* Adicionar manualmente (sem agenda) */}
+        {/* Input manual */}
         <div style={{ borderTop:"1px solid rgba(255,255,255,0.05)", paddingTop:10 }}>
           <button onClick={() => { setShowManualInput(v=>!v); setShowAvulsoInput(false); }} style={{ width:"100%", padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.03)", color:"#9CA3AF", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:12, cursor:"pointer" }}>
-            ✏️ Adicionar jogador na lista (sem cadastro)
+            ✏️ Adicionar na lista (sem cadastro)
           </button>
           {showManualInput && (
-            <div style={{ display:"flex", gap:8, marginTop:8 }}>
-              <input
-                className="sl-input"
-                autoFocus
-                style={{ flex:1 }}
-                placeholder="Nome do jogador"
-                value={manualName}
-                onChange={e => setManualName(e.target.value)}
-                onKeyDown={e => { if(e.key==="Enter"){ addManual(); } }}
-              />
-              <button onClick={addManual} style={{ padding:"10px 14px", borderRadius:10, border:"none", background:"#34d399", color:"#000", fontWeight:700, fontSize:13, cursor:"pointer" }}>+</button>
+            <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:12, marginTop:8, display:"flex", flexDirection:"column", gap:10 }}>
+              <div style={{ display:"flex", gap:8 }}>
+                <input className="sl-input" autoFocus style={{ flex:1 }} placeholder="Nome do jogador"
+                  value={manualName} onChange={e => setManualName(e.target.value)}
+                  onKeyDown={e => e.key==="Enter" && addManual()}/>
+                <button onClick={addManual} style={{ padding:"10px 14px", borderRadius:10, border:"none", background:"#34d399", color:"#000", fontWeight:700, fontSize:13, cursor:"pointer" }}>+</button>
+              </div>
+              <div>
+                <div style={{ color:"#6B7280", fontSize:10, fontWeight:700, letterSpacing:0.8, marginBottom:6 }}>NÍVEL DE HABILIDADE</div>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <SkillBar value={manualSkill} onChange={setManualSkill}/>
+                  <span style={{ color:SKILL_COLORS[manualSkill-1], fontSize:12, fontWeight:700 }}>{SKILL_EMOJI[manualSkill-1]} {SKILL_LABELS[manualSkill-1]}</span>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -3239,20 +3311,29 @@ function SorteioListaScreen({ onBack, uid }) {
         {/* Lista de jogadores */}
         {players.length > 0 && (
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-            <div style={{ color:"#6B7280", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>Jogadores adicionados ({players.length})</div>
-            {players.map((p, i) => (
-              <div key={p.id} className="sl-player-row">
-                <div style={{ width:24, height:24, borderRadius:6, background:
-                  p.source==="agenda"?"rgba(52,211,153,0.15)":
-                  p.source==="avulso"?"rgba(251,191,36,0.15)":
-                  "rgba(96,165,250,0.15)",
-                  display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, flexShrink:0
-                }}>
-                  {p.source==="agenda"?"📋":p.source==="avulso"?"⚡":"✏️"}
+            <div style={{ color:"#6B7280", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>Jogadores ({players.length})</div>
+            {players.map(p => (
+              <div key={p.id}>
+                <div className="sl-player-row">
+                  <div style={{ width:24, height:24, borderRadius:6, background: p.source==="agenda"?"rgba(52,211,153,0.15)":p.source==="avulso"?"rgba(251,191,36,0.15)":"rgba(96,165,250,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, flexShrink:0 }}>
+                    {p.source==="agenda"?"📋":p.source==="avulso"?"⚡":"✏️"}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ color:"#E5E7EB", fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:6, marginTop:3 }}>
+                      <SkillBar value={p.skill||3} size="sm"/>
+                      <span style={{ fontSize:10, color:SKILL_COLORS[(p.skill||3)-1], fontWeight:700 }}>{SKILL_LABELS[(p.skill||3)-1]}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => setEditingSkill(editingSkill===p.id?null:p.id)} style={{ background:"none", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, color:"#6B7280", cursor:"pointer", fontSize:11, padding:"3px 7px" }}>✏️</button>
+                  <button onClick={() => removePlayer(p.id)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:16, padding:"2px 4px", lineHeight:1 }}>×</button>
                 </div>
-                <span style={{ flex:1, color:"#E5E7EB", fontSize:13, fontWeight:600 }}>{p.name}</span>
-                {p.agendaName && <span style={{ fontSize:10, color:"#34d399", background:"rgba(52,211,153,0.1)", padding:"1px 6px", borderRadius:4 }}>{p.agendaName}</span>}
-                <button onClick={() => removePlayer(p.id)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:16, padding:"2px 4px", lineHeight:1 }}>×</button>
+                {editingSkill === p.id && (
+                  <div style={{ margin:"4px 0 0 34px", padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, display:"flex", alignItems:"center", gap:10 }}>
+                    <SkillBar value={p.skill||3} onChange={v => updateSkill(p.id, v)}/>
+                    <span style={{ fontSize:11, color:SKILL_COLORS[(p.skill||3)-1], fontWeight:700 }}>{SKILL_EMOJI[(p.skill||3)-1]} {SKILL_LABELS[(p.skill||3)-1]}</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -3265,14 +3346,14 @@ function SorteioListaScreen({ onBack, uid }) {
         )}
       </div>
 
-      {/* Botão fixo sorteio */}
+      {/* Botão fixo */}
       <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"16px 20px 32px", background:"linear-gradient(to top,#050c0a 60%,transparent)", zIndex:50 }}>
-        <button
-          onClick={doSorteio}
-          disabled={players.length < 2}
-          style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, width:"100%", padding:16, borderRadius:14, border:"none", background: players.length>=2?"linear-gradient(135deg,#7c3aed,#a855f7)":"rgba(255,255,255,0.05)", color: players.length>=2?"#fff":"#4B5563", fontFamily:"'Bebas Neue',sans-serif", fontSize:20, letterSpacing:1.5, cursor: players.length>=2?"pointer":"not-allowed" }}
-        >
-          🎲 SORTEAR TIMES
+        <button onClick={() => doSorteio(drawMode)} disabled={players.length < 2} style={{
+          display:"flex", alignItems:"center", justifyContent:"center", gap:10, width:"100%", padding:16, borderRadius:14, border:"none",
+          background: players.length>=2 ? (drawMode==="balanced"?"linear-gradient(135deg,#059669,#34d399)":"linear-gradient(135deg,#7c3aed,#a855f7)") : "rgba(255,255,255,0.05)",
+          color: players.length>=2?"#fff":"#4B5563", fontFamily:"'Bebas Neue',sans-serif", fontSize:20, letterSpacing:1.5, cursor: players.length>=2?"pointer":"not-allowed"
+        }}>
+          {drawMode==="balanced"?"⚖️ SORTEAR EQUILIBRADO":"🎲 SORTEAR ALEATÓRIO"}
         </button>
       </div>
 
@@ -3280,7 +3361,8 @@ function SorteioListaScreen({ onBack, uid }) {
       {showAgendaModal && (
         <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:200, display:"flex", alignItems:"flex-end" }} onClick={() => setShowAgendaModal(false)}>
           <div onClick={e=>e.stopPropagation()} style={{ background:"#0d1f17", borderRadius:"20px 20px 0 0", width:"100%", maxHeight:"70vh", overflowY:"auto", padding:"20px 20px 40px" }}>
-            <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#fff", letterSpacing:1, marginBottom:16 }}>ESCOLHER AGENDA</div>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#fff", letterSpacing:1, marginBottom:4 }}>ESCOLHER AGENDA</div>
+            <div style={{ color:"#6B7280", fontSize:11, marginBottom:14 }}>O nível de estrelas dos jogadores será importado automaticamente.</div>
             {loadingAgendas ? (
               <div style={{ textAlign:"center", color:"#6B7280", padding:20 }}>Carregando...</div>
             ) : agendas.length === 0 ? (
@@ -3290,7 +3372,7 @@ function SorteioListaScreen({ onBack, uid }) {
                 {agendas.map(ag => (
                   <button key={ag.id} onClick={() => addFromAgenda(ag)} style={{ padding:"12px 14px", borderRadius:12, border:"1px solid rgba(52,211,153,0.2)", background:"rgba(52,211,153,0.06)", color:"#E5E7EB", textAlign:"left", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
                     <span style={{ fontWeight:700, fontSize:13 }}>{ag.name}</span>
-                    <span style={{ fontSize:11, color:"#34d399" }}>{(ag.players||[]).length} jogador(es)</span>
+                    <span style={{ fontSize:11, color:"#34d399" }}>{(ag.players||[]).length} jog.</span>
                   </button>
                 ))}
               </div>
@@ -3304,23 +3386,20 @@ function SorteioListaScreen({ onBack, uid }) {
   );
 
   // ─────────────── STEP: RESULT ───────────────
+  const teamSkillAvg = (t) => t.players.length ? ((t.skillSum||0)/t.players.length).toFixed(1) : "—";
+
   return (
     <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
-      <style>{`
-        .sl-team-card{border-radius:16px;padding:14px;margin-bottom:0;}
-        .sl-p-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);cursor:pointer;}
-        .sl-p-chip:active{opacity:0.75;}
-        .sl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:14px;border:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;}
-      `}</style>
-
-      {/* Header */}
+      <style>{SL_STYLES}</style>
       <div style={{ padding:"52px 20px 16px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
-        <button onClick={resorteio} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#34d399" }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
+        <BackBtn onClick={resorteio}/>
         <div style={{ textAlign:"center" }}>
-          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>TIMES SORTEADOS 🎉</div>
-          <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1 }}>Toque em um jogador para mover de time</div>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:24, color:"#fff", letterSpacing:2 }}>TIMES SORTEADOS 🎉</div>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:2 }}>
+            <span style={{ fontSize:11, color:"#6B7280", fontWeight:600 }}>{lastMode==="balanced"?"⚖️ Equilibrado":"🎲 Aleatório"}</span>
+            <span style={{ color:"#374151" }}>·</span>
+            <span style={{ fontSize:11, color:"#34d399", fontWeight:600 }}>Toque para mover jogador</span>
+          </div>
         </div>
       </div>
 
@@ -3330,19 +3409,25 @@ function SorteioListaScreen({ onBack, uid }) {
             <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
               <div style={{ width:14, height:14, borderRadius:4, background:team.color, flexShrink:0 }}/>
               <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:team.color, letterSpacing:1 }}>{team.name}</div>
-              <div style={{ marginLeft:"auto", fontSize:11, color:"#6B7280", fontWeight:600 }}>{team.players.length} jog.</div>
+              <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center" }}>
+                <span style={{ fontSize:10, color:"#6B7280", fontWeight:600 }}>{team.players.length} jog.</span>
+                {lastMode==="balanced" && team.players.length > 0 && (
+                  <span style={{ fontSize:10, fontWeight:700, color:team.color, background:`${team.color}18`, padding:"2px 7px", borderRadius:6 }}>
+                    ⭐ {teamSkillAvg(team)}
+                  </span>
+                )}
+              </div>
             </div>
             <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
               {team.players.map((p, pi) => (
                 <div key={p.id} className="sl-p-chip" onClick={() => setManualAssign({ playerId:p.id, playerName:p.name })}>
                   <div style={{ width:20, height:20, borderRadius:"50%", background:team.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#000", flexShrink:0 }}>{pi+1}</div>
                   <span style={{ flex:1, color:"#E5E7EB", fontSize:13 }}>{p.name}</span>
+                  <span style={{ fontSize:10, color:SKILL_COLORS[(p.skill||3)-1], fontWeight:700, marginRight:4 }}>{SKILL_EMOJI[(p.skill||3)-1]}</span>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round"><path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/></svg>
                 </div>
               ))}
-              {team.players.length === 0 && (
-                <div style={{ color:"#4B5563", fontSize:12, padding:"8px 0", textAlign:"center" }}>Sem jogadores</div>
-              )}
+              {team.players.length === 0 && <div style={{ color:"#4B5563", fontSize:12, padding:"8px 0", textAlign:"center" }}>Sem jogadores</div>}
             </div>
           </div>
         ))}
@@ -3350,9 +3435,14 @@ function SorteioListaScreen({ onBack, uid }) {
 
       {/* Botões fixos */}
       <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"12px 20px 32px", background:"linear-gradient(to top,#050c0a 60%,transparent)", zIndex:50, display:"flex", flexDirection:"column", gap:8 }}>
-        <button className="sl-btn" style={{ background:"linear-gradient(135deg,#7c3aed,#a855f7)", color:"#fff", fontFamily:"'Bebas Neue',sans-serif", fontSize:18, letterSpacing:1 }} onClick={doSorteio}>
-          🎲 RESSORTEAR
-        </button>
+        <div style={{ display:"flex", gap:8 }}>
+          <button onClick={() => doSorteio("balanced")} style={{ flex:1, padding:"12px 8px", borderRadius:12, border:`2px solid ${lastMode==="balanced"?"#34d399":"rgba(52,211,153,0.2)"}`, background:lastMode==="balanced"?"rgba(52,211,153,0.12)":"rgba(255,255,255,0.03)", color:lastMode==="balanced"?"#34d399":"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+            ⚖️ Equilibrado
+          </button>
+          <button onClick={() => doSorteio("random")} style={{ flex:1, padding:"12px 8px", borderRadius:12, border:`2px solid ${lastMode==="random"?"#a855f7":"rgba(168,85,247,0.2)"}`, background:lastMode==="random"?"rgba(168,85,247,0.12)":"rgba(255,255,255,0.03)", color:lastMode==="random"?"#a855f7":"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer" }}>
+            🎲 Aleatório
+          </button>
+        </div>
         <button className="sl-btn" style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"#9CA3AF", fontSize:13 }} onClick={startOver}>
           Começar do zero
         </button>
@@ -3370,6 +3460,7 @@ function SorteioListaScreen({ onBack, uid }) {
                   <div style={{ width:12, height:12, borderRadius:3, background:t.color, flexShrink:0 }}/>
                   <span style={{ fontWeight:700, fontSize:13 }}>{t.name}</span>
                   <span style={{ marginLeft:"auto", color:"#6B7280", fontSize:11 }}>{t.players.length} jog.</span>
+                  {lastMode==="balanced" && t.players.length > 0 && <span style={{ fontSize:11, color:t.color, fontWeight:700 }}>⭐ {teamSkillAvg(t)}</span>}
                 </button>
               ))}
             </div>
