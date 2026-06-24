@@ -2172,7 +2172,7 @@ function AgendaDetailScreen({ agenda, uid, onBack }) {
 // ─── Mensalidade Tab ─────────────────────────────────────────────────────────
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
-function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade }) {
+function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, agendaInfo }) {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
   const [ano, setAno] = useState(now.getFullYear());
@@ -2187,6 +2187,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade }) {
   const [showDeleteGasto, setShowDeleteGasto] = useState(null);
   const [valorCampo, setValorCampo] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [copiedReport, setCopiedReport] = useState(false);
   const saveTimer = useRef(null);
 
   const mesAnoKey = `${String(mes+1).padStart(2,"0")}_${ano}`;
@@ -2475,6 +2476,97 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade }) {
         )}
       </div>
 
+      {/* ── Extrato para WhatsApp ── */}
+      {!loading && data && (
+        <div style={{ background:"linear-gradient(135deg,rgba(37,99,235,0.08),rgba(29,78,216,0.04))", border:"1px solid rgba(59,130,246,0.2)", borderRadius:16, padding:"16px" }}>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:15, color:"#60a5fa", letterSpacing:1, marginBottom:10 }}>📋 EXTRATO PARA WHATSAPP</div>
+          <textarea
+            readOnly
+            value={(() => {
+              const mesLabel = `${MESES[mes].toUpperCase()} ${ano}`;
+              const agendaName = agenda.name.toUpperCase();
+              const localStr = agendaInfo?.local || "-";
+              const horarioStr = agendaInfo?.horario || "-";
+              let txt = `💰 FINANCEIRO — ${agendaName}\n`;
+              txt += `📅 ${mesLabel}\n`;
+              txt += `📍 ${localStr} | 🕐 ${horarioStr}\n`;
+              txt += `${"─".repeat(30)}\n\n`;
+              const pags = data?.pagamentos || [];
+              txt += `👥 MENSALISTAS (${pags.length})\n`;
+              pags.forEach(p => {
+                const s = p.pago ? `✅ PAGO${p.dataPagamento?` (${p.dataPagamento})`:""}` : "❌ PENDENTE";
+                txt += `  ${p.name} — ${s}${p.obs?` | ${p.obs}`:""}\n`;
+              });
+              const avs = data?.avulsos || [];
+              if (avs.length > 0) {
+                txt += `\n⚡ AVULSOS (${avs.length})\n`;
+                avs.forEach(a => {
+                  const s = a.pago ? `✅ PAGO${a.dataPagamento?` (${a.dataPagamento})`:""}` : "❌ PENDENTE";
+                  txt += `  ${a.name}${a.valor?` R$ ${a.valor}`:""} — ${s}\n`;
+                });
+              }
+              txt += `\n${"─".repeat(30)}\n`;
+              txt += `💵 Arrecadado: R$ ${totalArrecadado.toFixed(2).replace(".",",")}\n`;
+              if (valorCampoNum > 0) txt += `🏟️ Campo: R$ ${valorCampoNum.toFixed(2).replace(".",",")}\n`;
+              const gts = data?.gastos || [];
+              if (gts.length > 0) {
+                txt += `🧾 Gastos:\n`;
+                gts.forEach(g => { txt += `  • ${g.desc}: R$ ${g.valor||"0"}\n`; });
+              }
+              txt += `\n${"─".repeat(30)}\n`;
+              txt += `${saldo >= 0 ? "✅" : "⚠️"} SALDO: R$ ${saldo.toFixed(2).replace(".",",")}`;
+              return txt;
+            })()}
+            style={{ width:"100%", background:"rgba(0,0,0,0.35)", border:"1px solid rgba(59,130,246,0.15)", borderRadius:12, padding:"12px", color:"#D1FAE5", fontFamily:"'Courier New',monospace", fontSize:11.5, lineHeight:1.7, whiteSpace:"pre-wrap", wordBreak:"break-word", resize:"none", outline:"none", minHeight:160, boxSizing:"border-box" }}
+          />
+          <button
+            onClick={() => {
+              const mesLabel = `${MESES[mes].toUpperCase()} ${ano}`;
+              const agendaName = agenda.name.toUpperCase();
+              const localStr = agendaInfo?.local || "-";
+              const horarioStr = agendaInfo?.horario || "-";
+              let txt = `💰 FINANCEIRO — ${agendaName}\n`;
+              txt += `📅 ${mesLabel}\n`;
+              txt += `📍 ${localStr} | 🕐 ${horarioStr}\n`;
+              txt += `${"─".repeat(30)}\n\n`;
+              const pags = data?.pagamentos || [];
+              txt += `👥 MENSALISTAS (${pags.length})\n`;
+              pags.forEach(p => {
+                const s = p.pago ? `✅ PAGO${p.dataPagamento?` (${p.dataPagamento})`:""}` : "❌ PENDENTE";
+                txt += `  ${p.name} — ${s}${p.obs?` | ${p.obs}`:""}\n`;
+              });
+              const avs = data?.avulsos || [];
+              if (avs.length > 0) {
+                txt += `\n⚡ AVULSOS (${avs.length})\n`;
+                avs.forEach(a => {
+                  const s = a.pago ? `✅ PAGO${a.dataPagamento?` (${a.dataPagamento})`:""}` : "❌ PENDENTE";
+                  txt += `  ${a.name}${a.valor?` R$ ${a.valor}`:""} — ${s}\n`;
+                });
+              }
+              txt += `\n${"─".repeat(30)}\n`;
+              txt += `💵 Arrecadado: R$ ${totalArrecadado.toFixed(2).replace(".",",")}\n`;
+              if (valorCampoNum > 0) txt += `🏟️ Campo: R$ ${valorCampoNum.toFixed(2).replace(".",",")}\n`;
+              const gts = data?.gastos || [];
+              if (gts.length > 0) {
+                txt += `🧾 Gastos:\n`;
+                gts.forEach(g => { txt += `  • ${g.desc}: R$ ${g.valor||"0"}\n`; });
+              }
+              txt += `\n${"─".repeat(30)}\n`;
+              txt += `${saldo >= 0 ? "✅" : "⚠️"} SALDO: R$ ${saldo.toFixed(2).replace(".",",")}`;
+              const fallback = () => { const ta=document.createElement("textarea"); ta.value=txt; ta.style.cssText="position:fixed;top:-9999px;opacity:0;"; document.body.appendChild(ta); ta.focus(); ta.select(); try{document.execCommand("copy");}catch(e){} document.body.removeChild(ta); };
+              if (navigator.clipboard?.writeText) { navigator.clipboard.writeText(txt).then(()=>{}).catch(fallback); } else { fallback(); }
+              setCopiedReport(true); showToast("Extrato copiado!"); setTimeout(()=>setCopiedReport(false),2500);
+            }}
+            style={{ width:"100%", marginTop:10, padding:"13px", borderRadius:12, border:`1px solid ${copiedReport?"rgba(52,211,153,0.4)":"rgba(59,130,246,0.3)"}`, background:copiedReport?"rgba(52,211,153,0.12)":"rgba(59,130,246,0.1)", color:copiedReport?"#34d399":"#60a5fa", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8, transition:"all 0.2s" }}
+          >
+            {copiedReport
+              ? <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg> Copiado!</>
+              : <><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copiar Extrato</>
+            }
+          </button>
+        </div>
+      )}
+
       </>)}
 
       {showAddAvulso && (
@@ -2737,6 +2829,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade }) {
           uid={uid}
           mensalistasPlayers={players}
           valorMensalidade={info.mensalidade}
+          agendaInfo={info}
         />
       )}
 
