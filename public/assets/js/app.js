@@ -2169,7 +2169,366 @@ function MensalistasScreen({ onBack, uid }) {
 
 // ─── Agenda Detail Screen ─────────────────────────────────────────────────────
 function AgendaDetailScreen({ agenda, uid, onBack }) {
-  const [tab, setTab] = useState("info"); // "info" | "players" | "export"
+// ─── Mensalidade Tab ─────────────────────────────────────────────────────────
+const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [showAddAvulso, setShowAddAvulso] = useState(false);
+  const [avulsoName, setAvulsoName] = useState("");
+  const [showGasto, setShowGasto] = useState(false);
+  const [gastoDesc, setGastoDesc] = useState("");
+  const [gastoValor, setGastoValor] = useState("");
+  const [showDeleteGasto, setShowDeleteGasto] = useState(null);
+  const [valorCampo, setValorCampo] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+  const saveTimer = useRef(null);
+
+  const mesAnoKey = `${String(mes+1).padStart(2,"0")}_${ano}`;
+  const docPath = uid ? `users/${uid}/mensalistas/${agenda.id}/mensalidades/${mesAnoKey}` : null;
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null),2200); };
+
+  useEffect(() => {
+    if (!uid) { setLoading(false); return; }
+    const fb = getFirebase();
+    if (!fb) { setLoading(false); return; }
+    setLoading(true);
+    const { db, doc, onSnapshot } = fb;
+    const ref = doc(db, docPath);
+    const unsub = onSnapshot(ref, snap => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setData(d);
+        setValorCampo(d.valorCampo || "");
+      } else {
+        const initialPagamentos = mensalistasPlayers.map(p => ({
+          id: p.id, name: p.name, tipo: "mensalista", pago: false, dataPagamento: "", obs: ""
+        }));
+        setData({ pagamentos: initialPagamentos, avulsos: [], gastos: [], valorCampo: "" });
+        setValorCampo("");
+      }
+      setLoading(false);
+    }, () => setLoading(false));
+    return () => unsub();
+  }, [mesAnoKey, uid]);
+
+  const save = async (next) => {
+    const fb = getFirebase();
+    if (!fb || !uid) return;
+    const { db, doc, setDoc } = fb;
+    await setDoc(doc(db, docPath), next, { merge: true });
+  };
+
+  const saveDebounced = (next) => {
+    setData(next);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => save(next), 800);
+  };
+
+  // Sync novos mensalistas cadastrados na agenda
+  useEffect(() => {
+    if (!data || loading) return;
+    const existingIds = new Set((data.pagamentos||[]).map(p=>p.id));
+    const novos = mensalistasPlayers.filter(p=>!existingIds.has(p.id));
+    if (novos.length > 0) {
+      const added = novos.map(p=>({ id:p.id, name:p.name, tipo:"mensalista", pago:false, dataPagamento:"", obs:"" }));
+      const next = { ...data, pagamentos: [...(data.pagamentos||[]), ...added] };
+      setData(next); save(next);
+    }
+  }, [mensalistasPlayers.length]);
+
+  if (!data && !loading) return null;
+
+  const valorMsg = parseFloat(String(valorMensalidade||"").replace(/[^\d.,]/g,"").replace(",",".")) || 0;
+  const pagosMensalistas = (data?.pagamentos||[]).filter(p=>p.pago).length;
+  const totalArrecadado = (pagosMensalistas * valorMsg) +
+    (data?.avulsos||[]).filter(a=>a.pago).reduce((s,a)=>s+(parseFloat(String(a.valor||0).replace(",","."))||0),0);
+  const totalGastos = (data?.gastos||[]).reduce((s,g)=>s+(parseFloat(String(g.valor||0).replace(",","."))||0),0);
+  const valorCampoNum = parseFloat(String(valorCampo||"").replace(/[^\d.,]/g,"").replace(",",".")) || 0;
+  const saldo = totalArrecadado - totalGastos - valorCampoNum;
+
+  const navMes = (dir) => {
+    let m = mes + dir, a = ano;
+    if (m < 0) { m = 11; a--; }
+    if (m > 11) { m = 0; a++; }
+    setMes(m); setAno(a);
+  };
+
+  const togglePago = (id, tipo) => {
+    const key = tipo === "avulso" ? "avulsos" : "pagamentos";
+    const list = [...(data[key]||[])];
+    const idx = list.findIndex(p=>p.id===id);
+    if (idx===-1) return;
+    const wasPago = list[idx].pago;
+    list[idx] = { ...list[idx], pago: !wasPago, dataPagamento: !wasPago ? new Date().toLocaleDateString("pt-BR") : list[idx].dataPagamento };
+    saveDebounced({ ...data, [key]: list });
+  };
+
+  const updateField = (id, tipo, field, val) => {
+    const key = tipo === "avulso" ? "avulsos" : "pagamentos";
+    const list = [...(data[key]||[])];
+    const idx = list.findIndex(p=>p.id===id);
+    if (idx===-1) return;
+    list[idx] = { ...list[idx], [field]: val };
+    saveDebounced({ ...data, [key]: list });
+  };
+
+  const addAvulso = () => {
+    const name = avulsoName.trim();
+    if (!name) return;
+    const a = { id: genUUID(), name, tipo:"avulso", pago:false, dataPagamento:"", obs:"", valor: String(valorMsg||"") };
+    const next = { ...data, avulsos: [...(data.avulsos||[]), a] };
+    save(next); setData(next);
+    setAvulsoName(""); setShowAddAvulso(false);
+    showToast("Avulso adicionado!");
+  };
+
+  const removeAvulso = (id) => {
+    const next = { ...data, avulsos: (data.avulsos||[]).filter(a=>a.id!==id) };
+    save(next); setData(next); showToast("Avulso removido");
+  };
+
+  const addGasto = () => {
+    const desc = gastoDesc.trim();
+    if (!desc) return;
+    const g = { id: genUUID(), desc, valor: gastoValor, data: new Date().toLocaleDateString("pt-BR") };
+    const next = { ...data, gastos: [...(data.gastos||[]), g] };
+    save(next); setData(next);
+    setGastoDesc(""); setGastoValor(""); setShowGasto(false);
+    showToast("Gasto registrado!");
+  };
+
+  const removeGasto = (id) => {
+    const next = { ...data, gastos: (data.gastos||[]).filter(g=>g.id!==id) };
+    save(next); setData(next);
+    setShowDeleteGasto(null); showToast("Gasto removido");
+  };
+
+  const handleValorCampo = (v) => {
+    setValorCampo(v);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => save({ ...data, valorCampo: v }), 800);
+  };
+
+  const PlayerRow = ({ item, tipo }) => {
+    const isExp = expandedId === item.id;
+    return (
+      <div style={{ background: item.pago?"rgba(52,211,153,0.07)":"rgba(255,255,255,0.03)", border:`1px solid ${item.pago?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.07)"}`, borderRadius:12, overflow:"hidden", transition:"border-color 0.2s" }}>
+        <div style={{ padding:"11px 13px", display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setExpandedId(isExp?null:item.id)}>
+          <button onClick={e=>{e.stopPropagation();togglePago(item.id,tipo);}} style={{ width:28,height:28,borderRadius:8,border:`2px solid ${item.pago?"#34d399":"rgba(156,163,175,0.35)"}`,background:item.pago?"rgba(52,211,153,0.15)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.2s" }}>
+            {item.pago && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+          </button>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ color:item.pago?"#6ee7b7":"#E5E7EB", fontWeight:700, fontSize:13 }}>{item.name}</div>
+            <div style={{ display:"flex", gap:6, marginTop:2, flexWrap:"wrap" }}>
+              {tipo==="avulso" && <span style={{ fontSize:10,fontWeight:700,color:"#FBBF24",background:"rgba(251,191,36,0.12)",padding:"1px 6px",borderRadius:5 }}>AVULSO</span>}
+              {item.pago
+                ? <span style={{ fontSize:10,color:"#34d399",fontWeight:600 }}>✓ Pago{item.dataPagamento?` em ${item.dataPagamento}`:""}</span>
+                : <span style={{ fontSize:10,color:"#6B7280" }}>Aguardando</span>}
+              {item.obs && <span style={{ fontSize:10,color:"#60a5fa" }}>📝 {item.obs.slice(0,22)}{item.obs.length>22?"…":""}</span>}
+            </div>
+          </div>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2" strokeLinecap="round" style={{ transform:isExp?"rotate(90deg)":"none", transition:"transform 0.2s", flexShrink:0 }}><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+        {isExp && (
+          <div style={{ padding:"0 13px 13px", borderTop:"1px solid rgba(255,255,255,0.05)" }}>
+            <div style={{ display:"flex", gap:8, marginTop:10, marginBottom:8 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ color:"#6B7280",fontSize:10,fontWeight:700,letterSpacing:0.8,marginBottom:4 }}>DATA PAGAMENTO</div>
+                <input style={{ width:"100%",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"8px 10px",color:"#fff",fontSize:12,outline:"none",fontFamily:"'DM Sans',sans-serif" }} placeholder="dd/mm/aaaa" value={item.dataPagamento||""} onChange={e=>updateField(item.id,tipo,"dataPagamento",e.target.value)}/>
+              </div>
+              {tipo==="avulso" && (
+                <div style={{ flex:1 }}>
+                  <div style={{ color:"#6B7280",fontSize:10,fontWeight:700,letterSpacing:0.8,marginBottom:4 }}>VALOR (R$)</div>
+                  <input style={{ width:"100%",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"8px 10px",color:"#fff",fontSize:12,outline:"none",fontFamily:"'DM Sans',sans-serif" }} placeholder="0,00" value={item.valor||""} onChange={e=>updateField(item.id,tipo,"valor",e.target.value)}/>
+                </div>
+              )}
+            </div>
+            <div>
+              <div style={{ color:"#6B7280",fontSize:10,fontWeight:700,letterSpacing:0.8,marginBottom:4 }}>OBSERVAÇÃO</div>
+              <input style={{ width:"100%",background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"8px 10px",color:"#fff",fontSize:12,outline:"none",fontFamily:"'DM Sans',sans-serif" }} placeholder="Ex: Vai pagar na quinta..." value={item.obs||""} onChange={e=>updateField(item.id,tipo,"obs",e.target.value)}/>
+            </div>
+            {tipo==="avulso" && (
+              <button onClick={()=>removeAvulso(item.id)} style={{ marginTop:10,alignSelf:"flex-end",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,padding:"6px 12px",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer",display:"block",marginLeft:"auto" }}>
+                Remover avulso
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ flex:1, padding:"16px 16px 40px", overflowY:"auto", display:"flex", flexDirection:"column", gap:16 }}>
+      <style>{`
+        .men-label{color:#9CA3AF;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px;display:block;}
+        .men-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(59,130,246,0.2);border-radius:10px;padding:10px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
+        .men-input:focus{border-color:rgba(96,165,250,0.5);}
+        .men-section-title{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1px;margin-bottom:10px;}
+        .men-toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:#1d4ed8;color:#fff;padding:10px 22px;border-radius:20px;font-size:13px;font-weight:600;z-index:999;white-space:nowrap;pointer-events:none;animation:toastIn 0.25s ease;}
+      `}</style>
+
+      {/* Nav mês */}
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", background:"rgba(255,255,255,0.03)", border:"1px solid rgba(59,130,246,0.15)", borderRadius:14, padding:"10px 14px" }}>
+        <button onClick={()=>navMes(-1)} style={{ width:32,height:32,borderRadius:8,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#fff", letterSpacing:1.5 }}>{MESES[mes]} {ano}</div>
+          <div style={{ fontSize:10, color:"#4B5563", fontWeight:700 }}>{(data?.pagamentos||[]).filter(p=>p.pago).length + (data?.avulsos||[]).filter(a=>a.pago).length} PAGAMENTOS CONFIRMADOS</div>
+        </div>
+        <button onClick={()=>navMes(1)} style={{ width:32,height:32,borderRadius:8,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 0" }}>
+          <div style={{ width:28,height:28,border:"3px solid rgba(59,130,246,0.3)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite" }}/>
+        </div>
+      ) : (<>
+
+      {/* Caixa */}
+      <div style={{ background:"linear-gradient(135deg,#0a1628,#0d1f38)", border:"1px solid rgba(59,130,246,0.2)", borderRadius:16, padding:"16px" }}>
+        <div className="men-section-title" style={{ color:"#60a5fa" }}>💰 CAIXA DO MÊS</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+          <div style={{ background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"10px 12px" }}>
+            <div style={{ color:"#6B7280",fontSize:10,fontWeight:700 }}>ARRECADADO</div>
+            <div style={{ color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1 }}>R$ {totalArrecadado.toFixed(2).replace(".",",")}</div>
+            <div style={{ color:"#4B5563",fontSize:10,marginTop:2 }}>{pagosMensalistas} mensalistas + {(data?.avulsos||[]).filter(a=>a.pago).length} avulsos</div>
+          </div>
+          <div style={{ background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"10px 12px" }}>
+            <div style={{ color:"#6B7280",fontSize:10,fontWeight:700 }}>SAÍDAS</div>
+            <div style={{ color:"#F87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1 }}>R$ {(totalGastos+valorCampoNum).toFixed(2).replace(".",",")}</div>
+            <div style={{ color:"#4B5563",fontSize:10,marginTop:2 }}>Campo + gastos extras</div>
+          </div>
+        </div>
+        <div style={{ background:saldo>=0?"rgba(52,211,153,0.1)":"rgba(239,68,68,0.1)", border:`1px solid ${saldo>=0?"rgba(52,211,153,0.3)":"rgba(239,68,68,0.3)"}`, borderRadius:10, padding:"10px 14px", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700 }}>SALDO FINAL</div>
+          <div style={{ color:saldo>=0?"#34d399":"#F87171", fontFamily:"'Bebas Neue',sans-serif", fontSize:26, letterSpacing:1 }}>R$ {saldo.toFixed(2).replace(".",",")}</div>
+        </div>
+        <div>
+          <label className="men-label">🏟️ Valor do Campo (abater do caixa)</label>
+          <input className="men-input" placeholder="Ex: 300,00" value={valorCampo} onChange={e=>handleValorCampo(e.target.value)}/>
+        </div>
+      </div>
+
+      {/* Mensalistas */}
+      <div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+          <div className="men-section-title" style={{ color:"#60a5fa",marginBottom:0 }}>👥 MENSALISTAS ({(data?.pagamentos||[]).length})</div>
+          <span style={{ fontSize:11,color:"#34d399",fontWeight:700 }}>{pagosMensalistas} pagos</span>
+        </div>
+        {(data?.pagamentos||[]).length === 0 ? (
+          <div style={{ textAlign:"center",padding:"18px",color:"#4B5563",fontSize:12,border:"1px dashed rgba(255,255,255,0.07)",borderRadius:12 }}>Nenhum mensalista cadastrado na agenda</div>
+        ) : (
+          <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+            {(data?.pagamentos||[]).map(p=><PlayerRow key={p.id} item={p} tipo="mensalista"/>)}
+          </div>
+        )}
+      </div>
+
+      {/* Avulsos */}
+      <div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+          <div className="men-section-title" style={{ color:"#FBBF24",marginBottom:0 }}>⚡ AVULSOS ({(data?.avulsos||[]).length})</div>
+          <button onClick={()=>setShowAddAvulso(true)} style={{ background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.3)",borderRadius:8,padding:"5px 12px",color:"#FBBF24",fontSize:11,fontWeight:700,cursor:"pointer" }}>+ Adicionar</button>
+        </div>
+        {(data?.avulsos||[]).length === 0 ? (
+          <div style={{ textAlign:"center",padding:"16px",color:"#4B5563",fontSize:12,border:"1px dashed rgba(255,255,255,0.07)",borderRadius:12 }}>Nenhum avulso neste mês</div>
+        ) : (
+          <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+            {(data?.avulsos||[]).map(a=><PlayerRow key={a.id} item={a} tipo="avulso"/>)}
+          </div>
+        )}
+      </div>
+
+      {/* Gastos */}
+      <div>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+          <div className="men-section-title" style={{ color:"#F87171",marginBottom:0 }}>🧾 GASTOS / SAÍDAS</div>
+          <button onClick={()=>setShowGasto(true)} style={{ background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"5px 12px",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer" }}>+ Registrar</button>
+        </div>
+        {(data?.gastos||[]).length === 0 ? (
+          <div style={{ textAlign:"center",padding:"16px",color:"#4B5563",fontSize:12,border:"1px dashed rgba(255,255,255,0.07)",borderRadius:12 }}>Nenhum gasto registrado</div>
+        ) : (
+          <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+            {(data?.gastos||[]).map(g=>(
+              <div key={g.id} style={{ background:"rgba(239,68,68,0.06)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:12,padding:"12px 14px",display:"flex",alignItems:"center",gap:10 }}>
+                <div style={{ flex:1,minWidth:0 }}>
+                  <div style={{ color:"#FCA5A5",fontWeight:700,fontSize:13 }}>{g.desc}</div>
+                  <div style={{ color:"#6B7280",fontSize:11,marginTop:2 }}>{g.data}</div>
+                </div>
+                <div style={{ color:"#F87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1,flexShrink:0 }}>R$ {g.valor||"0"}</div>
+                <button onClick={()=>setShowDeleteGasto(g.id)} style={{ width:28,height:28,borderRadius:7,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#F87171",flexShrink:0 }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      </>)}
+
+      {showAddAvulso && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:300 }}>
+          <div style={{ background:"#0d1828",borderRadius:"24px 24px 0 0",padding:"28px 20px 44px",width:"100%",maxWidth:520,border:"1px solid rgba(251,191,36,0.2)",borderBottom:"none" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#FBBF24",letterSpacing:1.5,marginBottom:16 }}>ADICIONAR AVULSO</div>
+            <input className="men-input" style={{ marginBottom:16 }} placeholder="Nome do jogador avulso..." value={avulsoName} onChange={e=>setAvulsoName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addAvulso()} autoFocus/>
+            <div style={{ display:"flex",gap:10 }}>
+              <button onClick={()=>{setShowAddAvulso(false);setAvulsoName("");}} style={{ flex:1,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"12px",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:14,cursor:"pointer" }}>Cancelar</button>
+              <button onClick={addAvulso} disabled={!avulsoName.trim()} style={{ flex:2,background:"linear-gradient(135deg,#b45309,#f59e0b)",border:"none",borderRadius:12,padding:"12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer",opacity:avulsoName.trim()?1:0.5 }}>Adicionar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showGasto && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:300 }}>
+          <div style={{ background:"#0d1828",borderRadius:"24px 24px 0 0",padding:"28px 20px 44px",width:"100%",maxWidth:520,border:"1px solid rgba(239,68,68,0.2)",borderBottom:"none" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#F87171",letterSpacing:1.5,marginBottom:16 }}>REGISTRAR GASTO</div>
+            <div style={{ marginBottom:12 }}>
+              <label className="men-label">DESCRIÇÃO (Ex: Churrasco, Resenha, Bola...)</label>
+              <input className="men-input" placeholder="Ex: Churrasco pós-jogo" value={gastoDesc} onChange={e=>setGastoDesc(e.target.value)} autoFocus/>
+            </div>
+            <div style={{ marginBottom:16 }}>
+              <label className="men-label">VALOR (R$)</label>
+              <input className="men-input" placeholder="Ex: 150,00" value={gastoValor} onChange={e=>setGastoValor(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addGasto()}/>
+            </div>
+            <div style={{ display:"flex",gap:10 }}>
+              <button onClick={()=>{setShowGasto(false);setGastoDesc("");setGastoValor("");}} style={{ flex:1,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"12px",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:14,cursor:"pointer" }}>Cancelar</button>
+              <button onClick={addGasto} disabled={!gastoDesc.trim()} style={{ flex:2,background:"linear-gradient(135deg,#dc2626,#ef4444)",border:"none",borderRadius:12,padding:"12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer",opacity:gastoDesc.trim()?1:0.5 }}>Registrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteGasto && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:300,padding:"0 24px" }}>
+          <div style={{ background:"#0d1828",borderRadius:20,padding:"24px 20px",width:"100%",maxWidth:320,border:"1px solid rgba(239,68,68,0.2)" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#F87171",marginBottom:8 }}>REMOVER GASTO?</div>
+            <div style={{ color:"#9CA3AF",fontSize:13,marginBottom:18 }}>Esta saída será removida do caixa.</div>
+            <div style={{ display:"flex",gap:10 }}>
+              <button onClick={()=>setShowDeleteGasto(null)} style={{ flex:1,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:12,padding:"11px",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,cursor:"pointer" }}>Cancelar</button>
+              <button onClick={()=>removeGasto(showDeleteGasto)} style={{ flex:1,background:"linear-gradient(135deg,#dc2626,#ef4444)",border:"none",borderRadius:12,padding:"11px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:13,cursor:"pointer" }}>Remover</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className="men-toast">{toast}</div>}
+    </div>
+  );
+}
+
+  const [tab, setTab] = useState("info"); // "info" | "players" | "mensalidade" | "export"
   const [info, setInfo] = useState({ local: agenda.local||"", horario: agenda.horario||"", mensalidade: agenda.mensalidade||"" });
   const [players, setPlayers] = useState(agenda.players || []);
   const [toast, setToast] = useState(null);
@@ -2297,8 +2656,9 @@ function AgendaDetailScreen({ agenda, uid, onBack }) {
         {/* Tabs */}
         <div style={{ display:"flex",gap:0,borderTop:"1px solid rgba(59,130,246,0.1)",marginTop:4 }}>
           {[
-            { key:"info", label:"Informações", icon:"ℹ️" },
+            { key:"info", label:"Info", icon:"ℹ️" },
             { key:"players", label:"Jogadores", icon:"👥" },
+            { key:"mensalidade", label:"Mensalidade", icon:"💳" },
             { key:"export", label:"WhatsApp", icon:"📤" },
           ].map(t => (
             <button key={t.key} className="ad-tab" onClick={() => setTab(t.key)} style={{ color: tab===t.key ? "#60a5fa" : "#6B7280" }}>
@@ -2368,6 +2728,16 @@ function AgendaDetailScreen({ agenda, uid, onBack }) {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </div>
+      )}
+
+      {/* Tab: Mensalidade */}
+      {tab === "mensalidade" && (
+        <MensalidadeTab
+          agenda={agenda}
+          uid={uid}
+          mensalistasPlayers={players}
+          valorMensalidade={info.mensalidade}
+        />
       )}
 
       {/* Tab: Export / WhatsApp */}
