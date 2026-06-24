@@ -1973,8 +1973,405 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
   );
 }
 
+// ─── Mensalistas Screen ──────────────────────────────────────────────────────
+function MensalistasScreen({ onBack, uid }) {
+  const [agendas, setAgendas] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeAgendaId, setActiveAgendaId] = useState(null);
+  const [showNewAgenda, setShowNewAgenda] = useState(false);
+  const [newAgendaName, setNewAgendaName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
+
+  // ── Firestore paths ──────────────────────────────────────────────────────
+  const colPath = uid ? `users/${uid}/mensalistas` : null;
+
+  useEffect(() => {
+    if (!uid) { setLoading(false); return; }
+    const fb = getFirebase();
+    if (!fb) { setLoading(false); return; }
+    const { db, collection, query, orderBy, onSnapshot } = fb;
+    const q = query(collection(db, `users/${uid}/mensalistas`), orderBy("createdAt", "asc"));
+    const unsub = onSnapshot(q, snap => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setAgendas(data);
+      setLoading(false);
+    }, () => setLoading(false));
+    return () => unsub();
+  }, [uid]);
+
+  const createAgenda = async () => {
+    const name = newAgendaName.trim();
+    if (!name) return;
+    setSaving(true);
+    const fb = getFirebase();
+    if (fb && uid) {
+      const { db, collection, doc, setDoc, serverTimestamp } = fb;
+      const ref = doc(collection(db, `users/${uid}/mensalistas`));
+      await setDoc(ref, {
+        name,
+        local: "",
+        horario: "",
+        mensalidade: "",
+        players: [],
+        createdAt: serverTimestamp(),
+      });
+    }
+    setNewAgendaName("");
+    setShowNewAgenda(false);
+    setSaving(false);
+    showToast("Agenda criada!");
+  };
+
+  const deleteAgenda = async (id) => {
+    const fb = getFirebase();
+    if (fb && uid) {
+      const { db, doc, deleteDoc } = fb;
+      await deleteDoc(doc(db, `users/${uid}/mensalistas`, id));
+    }
+    setDeleteConfirm(null);
+    if (activeAgendaId === id) setActiveAgendaId(null);
+    showToast("Agenda excluída");
+  };
+
+  if (activeAgendaId) {
+    const agenda = agendas.find(a => a.id === activeAgendaId);
+    if (agenda) return (
+      <AgendaDetailScreen
+        agenda={agenda}
+        uid={uid}
+        onBack={() => setActiveAgendaId(null)}
+      />
+    );
+  }
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
+      <style>{`
+        @keyframes ms-fadeUp{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:translateY(0);}}
+        .ms-card{background:linear-gradient(135deg,#0d1f38 0%,#0a1628 100%);border:1px solid rgba(59,130,246,0.18);border-radius:16px;padding:16px 18px;cursor:pointer;transition:transform 0.15s,box-shadow 0.15s;animation:ms-fadeUp 0.3s ease both;-webkit-tap-highlight-color:transparent;}
+        .ms-card:active{transform:scale(0.97);}
+        .ms-card:hover{box-shadow:0 8px 28px rgba(59,130,246,0.18);transform:translateY(-2px);}
+        .ms-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(59,130,246,0.25);border-radius:12px;padding:12px 14px;color:#fff;font-family:'DM Sans',sans-serif;font-size:15px;outline:none;}
+        .ms-input:focus{border-color:rgba(96,165,250,0.6);background:rgba(59,130,246,0.08);}
+        .ms-btn-primary{background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;border-radius:12px;padding:13px 24px;color:#fff;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:opacity 0.15s;}
+        .ms-btn-primary:active{opacity:0.8;}
+        .ms-btn-ghost{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 20px;color:#9CA3AF;font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;}
+        .ms-toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:#1d4ed8;color:#fff;padding:10px 22px;border-radius:20px;font-size:13px;font-weight:600;z-index:999;white-space:nowrap;pointer-events:none;animation:toastIn 0.25s ease;}
+      `}</style>
+
+      {/* Header */}
+      <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(59,130,246,0.1)", position:"relative", overflow:"hidden" }}>
+        <svg style={{ position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.04,pointerEvents:"none" }} viewBox="0 0 360 120" preserveAspectRatio="xMidYMid slice">
+          <rect x="12" y="8" width="336" height="104" fill="none" stroke="#3b82f6" strokeWidth="1.5" rx="3"/>
+          <line x1="12" y1="60" x2="348" y2="60" stroke="#3b82f6" strokeWidth="1"/>
+          <circle cx="180" cy="60" r="22" fill="none" stroke="#3b82f6" strokeWidth="1"/>
+        </svg>
+        <button onClick={onBack} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#60a5fa",zIndex:2 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:8,position:"relative",zIndex:1 }}>
+          <div style={{ fontSize:32 }}>⚽</div>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#fff",letterSpacing:2 }}>MENSALISTAS</div>
+          <div style={{ color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase" }}>Suas Agendas de Futebol</div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex:1, padding:"20px 20px 100px", overflowY:"auto" }}>
+        {loading ? (
+          <div style={{ display:"flex",alignItems:"center",justifyContent:"center",paddingTop:60 }}>
+            <div style={{ width:32,height:32,border:"3px solid rgba(59,130,246,0.3)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite" }}/>
+          </div>
+        ) : agendas.length === 0 ? (
+          <div style={{ textAlign:"center",paddingTop:60,color:"#4B5563" }}>
+            <div style={{ fontSize:48,marginBottom:16 }}>📅</div>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#6B7280",letterSpacing:1,marginBottom:8 }}>NENHUMA AGENDA CRIADA</div>
+            <div style={{ fontSize:13,color:"#374151",lineHeight:1.6 }}>Crie sua primeira agenda de futebol,<br/>ex: Fut de Terça, Fut de Quinta...</div>
+          </div>
+        ) : (
+          <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+            {agendas.map((ag, i) => (
+              <div key={ag.id} className="ms-card" style={{ animationDelay:`${i*0.06}s` }} onClick={() => setActiveAgendaId(ag.id)}>
+                <div style={{ display:"flex",alignItems:"center",gap:14 }}>
+                  <div style={{ width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0 }}>⚽</div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1,lineHeight:1.2 }}>{ag.name}</div>
+                    <div style={{ display:"flex",gap:10,marginTop:4,flexWrap:"wrap" }}>
+                      {ag.horario && <span style={{ color:"#60a5fa",fontSize:11,fontWeight:600 }}>🕐 {ag.horario}</span>}
+                      {ag.local && <span style={{ color:"#9CA3AF",fontSize:11 }}>📍 {ag.local}</span>}
+                      <span style={{ color:"#9CA3AF",fontSize:11 }}>👥 {(ag.players||[]).length} jogador{(ag.players||[]).length!==1?"es":""}</span>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                    <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ag.id); }} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#F87171",flexShrink:0 }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    </button>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* FAB */}
+      <button onClick={() => setShowNewAgenda(true)} style={{ position:"fixed",bottom:28,right:24,width:56,height:56,borderRadius:18,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",border:"none",boxShadow:"0 8px 24px rgba(59,130,246,0.45)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:50 }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+
+      {/* Modal nova agenda */}
+      {showNewAgenda && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200,padding:"0 0 0" }}>
+          <div style={{ background:"#0d1828",borderRadius:"24px 24px 0 0",padding:"28px 24px 40px",width:"100%",maxWidth:520,border:"1px solid rgba(59,130,246,0.2)",borderBottom:"none" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1.5,marginBottom:6 }}>NOVA AGENDA</div>
+            <div style={{ color:"#4B5563",fontSize:12,marginBottom:20 }}>Ex: Fut de Terça, Fut de Quinta...</div>
+            <input
+              className="ms-input"
+              placeholder="Nome da agenda..."
+              value={newAgendaName}
+              onChange={e => setNewAgendaName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && createAgenda()}
+              autoFocus
+            />
+            <div style={{ display:"flex",gap:10,marginTop:16 }}>
+              <button className="ms-btn-ghost" style={{ flex:1 }} onClick={() => { setShowNewAgenda(false); setNewAgendaName(""); }}>Cancelar</button>
+              <button className="ms-btn-primary" style={{ flex:2, opacity: saving||!newAgendaName.trim() ? 0.6:1 }} onClick={createAgenda} disabled={saving||!newAgendaName.trim()}>
+                {saving ? "Salvando..." : "Criar Agenda"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm delete */}
+      {deleteConfirm && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:"0 24px" }}>
+          <div style={{ background:"#0d1828",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:340,border:"1px solid rgba(239,68,68,0.2)" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#F87171",letterSpacing:1,marginBottom:10 }}>EXCLUIR AGENDA?</div>
+            <div style={{ color:"#9CA3AF",fontSize:13,marginBottom:20,lineHeight:1.5 }}>Todos os dados desta agenda serão removidos permanentemente.</div>
+            <div style={{ display:"flex",gap:10 }}>
+              <button className="ms-btn-ghost" style={{ flex:1 }} onClick={() => setDeleteConfirm(null)}>Cancelar</button>
+              <button onClick={() => deleteAgenda(deleteConfirm)} style={{ flex:1,background:"linear-gradient(135deg,#dc2626,#ef4444)",border:"none",borderRadius:12,padding:"12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer" }}>Excluir</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className="ms-toast">{toast}</div>}
+    </div>
+  );
+}
+
+// ─── Agenda Detail Screen ─────────────────────────────────────────────────────
+function AgendaDetailScreen({ agenda, uid, onBack }) {
+  const [tab, setTab] = useState("info"); // "info" | "players"
+  const [info, setInfo] = useState({ local: agenda.local||"", horario: agenda.horario||"", mensalidade: agenda.mensalidade||"" });
+  const [players, setPlayers] = useState(agenda.players || []);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [showAddPlayer, setShowAddPlayer] = useState(false);
+  const [newPlayer, setNewPlayer] = useState({ name: "", stars: 3 });
+  const [deletePlayerConfirm, setDeletePlayerConfirm] = useState(null);
+  const saveTimer = useRef(null);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2000); };
+
+  const saveToFirestore = async (updatedInfo, updatedPlayers) => {
+    const fb = getFirebase();
+    if (!fb || !uid) return;
+    const { db, doc, setDoc } = fb;
+    await setDoc(doc(db, `users/${uid}/mensalistas`, agenda.id), {
+      ...agenda,
+      ...updatedInfo,
+      players: updatedPlayers,
+    }, { merge: true });
+  };
+
+  const handleInfoChange = (field, val) => {
+    const next = { ...info, [field]: val };
+    setInfo(next);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { saveToFirestore(next, players); }, 1000);
+  };
+
+  const addPlayer = async () => {
+    const name = newPlayer.name.trim();
+    if (!name) return;
+    const p = { id: genUUID(), name, stars: newPlayer.stars };
+    const next = [...players, p];
+    setPlayers(next);
+    setShowAddPlayer(false);
+    setNewPlayer({ name:"", stars:3 });
+    await saveToFirestore(info, next);
+    showToast("Jogador adicionado!");
+  };
+
+  const removePlayer = async (id) => {
+    const next = players.filter(p => p.id !== id);
+    setPlayers(next);
+    setDeletePlayerConfirm(null);
+    await saveToFirestore(info, next);
+    showToast("Jogador removido");
+  };
+
+  const StarRating = ({ value, onChange }) => (
+    <div style={{ display:"flex",gap:4 }}>
+      {[1,2,3,4,5].map(s => (
+        <button key={s} onClick={() => onChange(s)} style={{ background:"none",border:"none",cursor:"pointer",padding:2,fontSize:20,color: s<=value ? "#FBBF24" : "#374151",transition:"color 0.1s" }}>★</button>
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{ minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif",display:"flex",flexDirection:"column" }}>
+      <style>{`
+        .ad-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(59,130,246,0.2);border-radius:12px;padding:13px 15px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color 0.2s,background 0.2s;}
+        .ad-input:focus{border-color:rgba(96,165,250,0.55);background:rgba(59,130,246,0.07);}
+        .ad-tab{flex:1;padding:11px 4px;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.5px;transition:color 0.15s;position:relative;}
+        .ad-player-row{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:13px 15px;display:flex;align-items:center;gap:12px;animation:ms-fadeUp 0.25s ease both;}
+        .ad-btn-primary{background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;border-radius:12px;padding:13px 20px;color:#fff;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;}
+        .ad-btn-ghost{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 20px;color:#9CA3AF;font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;}
+        .ad-toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:#1d4ed8;color:#fff;padding:10px 22px;border-radius:20px;font-size:13px;font-weight:600;z-index:999;white-space:nowrap;pointer-events:none;animation:toastIn 0.25s ease;}
+        @keyframes ms-fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+      `}</style>
+
+      {/* Header */}
+      <div style={{ padding:"52px 20px 0",background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)",borderBottom:"1px solid rgba(59,130,246,0.12)",position:"relative" }}>
+        <button onClick={onBack} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#60a5fa",zIndex:2 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+
+        <div style={{ textAlign:"center",paddingBottom:16 }}>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:"#fff",letterSpacing:2,lineHeight:1 }}>{agenda.name}</div>
+          <div style={{ color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1,marginTop:4 }}>⚽ AGENDA DE FUTEBOL</div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display:"flex",gap:0,borderTop:"1px solid rgba(59,130,246,0.1)",marginTop:4 }}>
+          {[
+            { key:"info", label:"Informações", icon:"ℹ️" },
+            { key:"players", label:"Jogadores", icon:"👥" },
+          ].map(t => (
+            <button key={t.key} className="ad-tab" onClick={() => setTab(t.key)} style={{ color: tab===t.key ? "#60a5fa" : "#6B7280" }}>
+              {t.icon} {t.label}
+              {tab===t.key && <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:2,background:"linear-gradient(90deg,#1d4ed8,#60a5fa)",borderRadius:2 }}/>}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Tab: Info */}
+      {tab === "info" && (
+        <div style={{ flex:1,padding:"24px 20px 40px",overflowY:"auto",display:"flex",flexDirection:"column",gap:20 }}>
+          <div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase" }}>📍 Localização do Campo</div>
+            <input className="ad-input" placeholder="Ex: Campo do Zé, Rua das Flores, 120" value={info.local} onChange={e => handleInfoChange("local", e.target.value)}/>
+          </div>
+          <div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase" }}>🕐 Horário do Jogo</div>
+            <input className="ad-input" placeholder="Ex: Terças às 20h" value={info.horario} onChange={e => handleInfoChange("horario", e.target.value)}/>
+          </div>
+          <div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase" }}>💰 Valor da Mensalidade</div>
+            <input className="ad-input" placeholder="Ex: R$ 80,00" value={info.mensalidade} onChange={e => handleInfoChange("mensalidade", e.target.value)}/>
+          </div>
+          <div style={{ background:"linear-gradient(135deg,rgba(59,130,246,0.08),rgba(29,78,216,0.05))",border:"1px solid rgba(59,130,246,0.15)",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:10 }}>
+            <span style={{ fontSize:18 }}>💡</span>
+            <span style={{ color:"#6B7280",fontSize:12,lineHeight:1.5 }}>As informações são salvas automaticamente enquanto você digita.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Players */}
+      {tab === "players" && (
+        <div style={{ flex:1,padding:"20px 20px 100px",overflowY:"auto" }}>
+          {players.length === 0 ? (
+            <div style={{ textAlign:"center",paddingTop:50,color:"#4B5563" }}>
+              <div style={{ fontSize:44,marginBottom:12 }}>👤</div>
+              <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#6B7280",letterSpacing:1,marginBottom:6 }}>NENHUM JOGADOR</div>
+              <div style={{ fontSize:12,color:"#374151" }}>Adicione os mensalistas desta agenda</div>
+            </div>
+          ) : (
+            <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
+              {players.map((p, i) => (
+                <div key={p.id} className="ad-player-row" style={{ animationDelay:`${i*0.05}s` }}>
+                  <div style={{ width:38,height:38,borderRadius:10,background:"linear-gradient(135deg,#1e3a5f,#1d4ed8)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,flexShrink:0 }}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ color:"#fff",fontWeight:700,fontSize:14,lineHeight:1.2 }}>{p.name}</div>
+                    <div style={{ display:"flex",gap:1,marginTop:2 }}>
+                      {[1,2,3,4,5].map(s => (
+                        <span key={s} style={{ fontSize:12,color: s<=(p.stars||3) ? "#FBBF24" : "#374151" }}>★</span>
+                      ))}
+                    </div>
+                  </div>
+                  <button onClick={() => setDeletePlayerConfirm(p.id)} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.07)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#F87171",flexShrink:0 }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* FAB add player */}
+          <button onClick={() => setShowAddPlayer(true)} style={{ position:"fixed",bottom:28,right:24,width:56,height:56,borderRadius:18,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",border:"none",boxShadow:"0 8px 24px rgba(59,130,246,0.45)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:50 }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+      )}
+
+      {/* Modal adicionar jogador */}
+      {showAddPlayer && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:200 }}>
+          <div style={{ background:"#0d1828",borderRadius:"24px 24px 0 0",padding:"28px 24px 44px",width:"100%",maxWidth:520,border:"1px solid rgba(59,130,246,0.2)",borderBottom:"none" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1.5,marginBottom:20 }}>ADICIONAR JOGADOR</div>
+            <div style={{ marginBottom:16 }}>
+              <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8 }}>NOME</div>
+              <input className="ad-input" placeholder="Nome do jogador..." value={newPlayer.name} onChange={e => setNewPlayer(p => ({...p, name:e.target.value}))} onKeyDown={e => e.key==="Enter" && addPlayer()} autoFocus/>
+            </div>
+            <div style={{ marginBottom:24 }}>
+              <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:10 }}>NÍVEL (ESTRELAS)</div>
+              <div style={{ display:"flex",gap:6 }}>
+                {[1,2,3,4,5].map(s => (
+                  <button key={s} onClick={() => setNewPlayer(p => ({...p,stars:s}))} style={{ background:"none",border:"none",cursor:"pointer",padding:"4px 2px",fontSize:28,color: s<=newPlayer.stars ? "#FBBF24":"#374151",transition:"color 0.1s,transform 0.1s" }}>★</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ display:"flex",gap:10 }}>
+              <button className="ad-btn-ghost" style={{ flex:1 }} onClick={() => { setShowAddPlayer(false); setNewPlayer({name:"",stars:3}); }}>Cancelar</button>
+              <button className="ad-btn-primary" style={{ flex:2, opacity: !newPlayer.name.trim()?0.6:1 }} onClick={addPlayer} disabled={!newPlayer.name.trim()}>Adicionar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm delete player */}
+      {deletePlayerConfirm && (
+        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:"0 24px" }}>
+          <div style={{ background:"#0d1828",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:340,border:"1px solid rgba(239,68,68,0.2)" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#F87171",letterSpacing:1,marginBottom:10 }}>REMOVER JOGADOR?</div>
+            <div style={{ color:"#9CA3AF",fontSize:13,marginBottom:20 }}>O jogador será removido desta agenda.</div>
+            <div style={{ display:"flex",gap:10 }}>
+              <button className="ad-btn-ghost" style={{ flex:1 }} onClick={() => setDeletePlayerConfirm(null)}>Cancelar</button>
+              <button onClick={() => removePlayer(deletePlayerConfirm)} style={{ flex:1,background:"linear-gradient(135deg,#dc2626,#ef4444)",border:"none",borderRadius:12,padding:"12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer" }}>Remover</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div className="ad-toast">{toast}</div>}
+    </div>
+  );
+}
+
 // ─── Pelada Mensal Screen ─────────────────────────────────────────────────────
-function PeladaMensalScreen({onBack, onSelect}) {
+function PeladaMensalScreen({onBack, onSelect, uid}) {
   function ripple(e, cb) {
     const b=e.currentTarget;
     const r=document.createElement("span");
@@ -1997,7 +2394,7 @@ function PeladaMensalScreen({onBack, onSelect}) {
       bg: "linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 60%,#3b82f6 100%)",
       overlayTop: "linear-gradient(135deg,rgba(29,78,216,0.45) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.38) 40%,rgba(5,10,30,0.92) 100%)",
-      badge: {bg:"rgba(96,165,250,0.22)",color:"#bfdbfe",border:"1px solid rgba(147,197,253,0.35)",dot:"#60a5fa",label:"EM BREVE"},
+      badge: {bg:"rgba(52,211,153,0.18)",color:"#6ee7b7",border:"1px solid rgba(52,211,153,0.3)",dot:"#34d399",label:"NOVO"},
       tagStyle: {background:"rgba(59,130,246,0.22)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
     },
     {
@@ -7254,7 +7651,12 @@ function App() {
 
       {/* ── Monthly mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "monthly" && (
-        <PeladaMensalScreen onBack={()=>setProfileMode(null)} onSelect={()=>{}}/>
+        <PeladaMensalScreen onBack={()=>setProfileMode(null)} uid={uid} onSelect={(key)=>{ if(key==="mensalistas") setProfileMode("mensalistas"); }}/>
+      )}
+
+      {/* ── Mensalistas mode ── */}
+      {authState === "loggedIn" && loaded && profileMode === "mensalistas" && (
+        <MensalistasScreen onBack={()=>setProfileMode("monthly")} uid={uid}/>
       )}
 
       {/* ── Field mode: full app ── */}
