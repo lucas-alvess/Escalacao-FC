@@ -2169,14 +2169,18 @@ function MensalistasScreen({ onBack, uid }) {
 
 // ─── Agenda Detail Screen ─────────────────────────────────────────────────────
 function AgendaDetailScreen({ agenda, uid, onBack }) {
-  const [tab, setTab] = useState("info"); // "info" | "players"
+  const [tab, setTab] = useState("info"); // "info" | "players" | "export"
   const [info, setInfo] = useState({ local: agenda.local||"", horario: agenda.horario||"", mensalidade: agenda.mensalidade||"" });
   const [players, setPlayers] = useState(agenda.players || []);
-  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [newPlayer, setNewPlayer] = useState({ name: "", stars: 3 });
   const [deletePlayerConfirm, setDeletePlayerConfirm] = useState(null);
+  // Export tab state
+  const [numConfirmados, setNumConfirmados] = useState(18);
+  const [numNaoPode, setNumNaoPode] = useState(3);
+  const [numEspera, setNumEspera] = useState(1);
+  const [copied, setCopied] = useState(false);
   const saveTimer = useRef(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2000); };
@@ -2219,25 +2223,64 @@ function AgendaDetailScreen({ agenda, uid, onBack }) {
     showToast("Jogador removido");
   };
 
-  const StarRating = ({ value, onChange }) => (
-    <div style={{ display:"flex",gap:4 }}>
-      {[1,2,3,4,5].map(s => (
-        <button key={s} onClick={() => onChange(s)} style={{ background:"none",border:"none",cursor:"pointer",padding:2,fontSize:20,color: s<=value ? "#FBBF24" : "#374151",transition:"color 0.1s" }}>★</button>
-      ))}
-    </div>
-  );
+  // ── Gera o texto da lista para WhatsApp ──────────────────────────────────
+  const generateWhatsAppList = () => {
+    const agendaName = agenda.name.toUpperCase();
+    const localStr = info.local ? `LOCAL: ${info.local.toUpperCase()}` : "LOCAL: -";
+    const horarioStr = info.horario ? info.horario.toUpperCase() : "";
+    const header = `CONFIRMADOS - ${agendaName}${horarioStr ? ` - ${horarioStr}` : ""}\n${localStr}\n`;
+
+    const confirmLines = Array.from({ length: numConfirmados }, (_, i) => `${i+1}- `).join("\n");
+    const naoPodeLines = Array.from({ length: numNaoPode }, (_, i) => `${i+1}- `).join("\n");
+    const esperaLines = Array.from({ length: numEspera }, (_, i) => `${i+1}- `).join("\n");
+
+    return `${header}\n${confirmLines}\n\nNÃO PODERÁ IR\n${naoPodeLines}\n\nLISTA DE ESPERA AVULSOS\n${esperaLines}`;
+  };
+
+  const handleCopy = () => {
+    const text = generateWhatsAppList();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true);
+        showToast("Lista copiada!");
+        setTimeout(() => setCopied(false), 2500);
+      }).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  };
+
+  const fallbackCopy = (text) => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.cssText = "position:fixed;top:-9999px;left:-9999px;opacity:0;";
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    try { document.execCommand("copy"); setCopied(true); showToast("Lista copiada!"); setTimeout(()=>setCopied(false),2500); } catch(e) {}
+    document.body.removeChild(ta);
+  };
+
+  const handleWhatsApp = () => {
+    const text = generateWhatsAppList();
+    const encoded = encodeURIComponent(text);
+    window.open(`https://wa.me/?text=${encoded}`, "_blank");
+  };
 
   return (
     <div style={{ minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif",display:"flex",flexDirection:"column" }}>
       <style>{`
         .ad-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(59,130,246,0.2);border-radius:12px;padding:13px 15px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;transition:border-color 0.2s,background 0.2s;}
         .ad-input:focus{border-color:rgba(96,165,250,0.55);background:rgba(59,130,246,0.07);}
-        .ad-tab{flex:1;padding:11px 4px;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.5px;transition:color 0.15s;position:relative;}
+        .ad-tab{flex:1;padding:10px 2px;background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:700;letter-spacing:0.3px;transition:color 0.15s;position:relative;}
         .ad-player-row{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:13px 15px;display:flex;align-items:center;gap:12px;animation:ms-fadeUp 0.25s ease both;}
         .ad-btn-primary{background:linear-gradient(135deg,#1d4ed8,#3b82f6);border:none;border-radius:12px;padding:13px 20px;color:#fff;font-family:'DM Sans',sans-serif;font-weight:700;font-size:14px;cursor:pointer;}
         .ad-btn-ghost{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:12px 20px;color:#9CA3AF;font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer;}
         .ad-toast{position:fixed;bottom:32px;left:50%;transform:translateX(-50%);background:#1d4ed8;color:#fff;padding:10px 22px;border-radius:20px;font-size:13px;font-weight:600;z-index:999;white-space:nowrap;pointer-events:none;animation:toastIn 0.25s ease;}
+        .ad-num-btn{width:36px;height:36px;border-radius:10px;border:1px solid rgba(59,130,246,0.25);background:rgba(59,130,246,0.1);color:#60a5fa;font-size:18px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.15s;flex-shrink:0;}
+        .ad-num-btn:active{background:rgba(59,130,246,0.25);}
+        .ad-preview{width:100%;background:rgba(0,0,0,0.4);border:1px solid rgba(59,130,246,0.15);border-radius:14px;padding:16px;color:#D1FAE5;font-family:'Courier New',monospace;font-size:12px;line-height:1.7;white-space:pre-wrap;word-break:break-word;resize:none;outline:none;min-height:200px;}
         @keyframes ms-fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+        @keyframes waPulse{0%,100%{box-shadow:0 6px 20px rgba(37,211,102,0.4);}50%{box-shadow:0 6px 32px rgba(37,211,102,0.7);}}
       `}</style>
 
       {/* Header */}
@@ -2256,10 +2299,11 @@ function AgendaDetailScreen({ agenda, uid, onBack }) {
           {[
             { key:"info", label:"Informações", icon:"ℹ️" },
             { key:"players", label:"Jogadores", icon:"👥" },
+            { key:"export", label:"WhatsApp", icon:"📤" },
           ].map(t => (
             <button key={t.key} className="ad-tab" onClick={() => setTab(t.key)} style={{ color: tab===t.key ? "#60a5fa" : "#6B7280" }}>
               {t.icon} {t.label}
-              {tab===t.key && <div style={{ position:"absolute",bottom:0,left:"10%",right:"10%",height:2,background:"linear-gradient(90deg,#1d4ed8,#60a5fa)",borderRadius:2 }}/>}
+              {tab===t.key && <div style={{ position:"absolute",bottom:0,left:"8%",right:"8%",height:2,background:"linear-gradient(90deg,#1d4ed8,#60a5fa)",borderRadius:2 }}/>}
             </button>
           ))}
         </div>
@@ -2323,6 +2367,68 @@ function AgendaDetailScreen({ agenda, uid, onBack }) {
           <button onClick={() => setShowAddPlayer(true)} style={{ position:"fixed",bottom:28,right:24,width:56,height:56,borderRadius:18,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",border:"none",boxShadow:"0 8px 24px rgba(59,130,246,0.45)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:50 }}>
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
+        </div>
+      )}
+
+      {/* Tab: Export / WhatsApp */}
+      {tab === "export" && (
+        <div style={{ flex:1,padding:"20px 20px 40px",overflowY:"auto",display:"flex",flexDirection:"column",gap:18 }}>
+
+          {/* Configurações da lista */}
+          <div style={{ background:"rgba(255,255,255,0.03)",border:"1px solid rgba(59,130,246,0.15)",borderRadius:16,padding:"18px 16px",display:"flex",flexDirection:"column",gap:14 }}>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:2 }}>⚙️ Configurar Lista</div>
+
+            {[
+              { label:"Vagas — Confirmados", value:numConfirmados, set:setNumConfirmados, color:"#34d399" },
+              { label:"Não Poderá Ir", value:numNaoPode, set:setNumNaoPode, color:"#F87171" },
+              { label:"Lista de Espera Avulsos", value:numEspera, set:setNumEspera, color:"#FBBF24" },
+            ].map(row => (
+              <div key={row.label} style={{ display:"flex",alignItems:"center",gap:12 }}>
+                <div style={{ flex:1,color:"#D1D5DB",fontSize:13,fontWeight:600 }}>{row.label}</div>
+                <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                  <button className="ad-num-btn" onClick={() => row.set(v => Math.max(1,v-1))}>−</button>
+                  <span style={{ color:row.color,fontFamily:"'Bebas Neue',sans-serif",fontSize:22,minWidth:28,textAlign:"center" }}>{row.value}</span>
+                  <button className="ad-num-btn" onClick={() => row.set(v => Math.min(50,v+1))}>+</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Preview da lista */}
+          <div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8 }}>👁️ Pré-visualização</div>
+            <textarea
+              className="ad-preview"
+              readOnly
+              value={generateWhatsAppList()}
+            />
+          </div>
+
+          {/* Botões de ação */}
+          <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
+            <button
+              onClick={handleCopy}
+              style={{ width:"100%",padding:"15px",borderRadius:14,border:`1px solid ${copied ? "rgba(52,211,153,0.4)" : "rgba(59,130,246,0.3)"}`,background: copied ? "rgba(52,211,153,0.12)" : "rgba(59,130,246,0.1)",color: copied ? "#34d399" : "#60a5fa",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s" }}
+            >
+              {copied
+                ? <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg> Copiado!</>
+                : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> Copiar Lista</>
+              }
+            </button>
+
+            <button
+              onClick={handleWhatsApp}
+              style={{ width:"100%",padding:"15px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#128C7E,#25D366)",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,animation:"waPulse 2.5s ease-in-out infinite" }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.123.554 4.12 1.522 5.855L.057 23.882a.5.5 0 00.61.61l6.027-1.466A11.944 11.944 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.794 9.794 0 01-5.006-1.374l-.36-.213-3.717.904.922-3.617-.234-.372A9.792 9.792 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/></svg>
+              Enviar pelo WhatsApp
+            </button>
+          </div>
+
+          <div style={{ background:"rgba(37,211,102,0.06)",border:"1px solid rgba(37,211,102,0.15)",borderRadius:12,padding:"12px 14px",display:"flex",gap:8,alignItems:"flex-start" }}>
+            <span style={{ fontSize:16 }}>💡</span>
+            <span style={{ color:"#6B7280",fontSize:12,lineHeight:1.6 }}>A lista é gerada com vagas em branco para os jogadores preencherem no grupo. Ajuste as quantidades acima conforme sua pelada.</span>
+          </div>
         </div>
       )}
 
