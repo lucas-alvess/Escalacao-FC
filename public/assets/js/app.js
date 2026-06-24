@@ -1,6 +1,7 @@
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 const LOGO_URI = "/assets/images/logo.png";
+const LOGO_URI2 = "/assets/images/escalacao-blue.png"
 
 
 // ─── Firebase helpers (populated after firebase-ready event) ─────────────────
