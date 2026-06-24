@@ -1972,30 +1972,169 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
   );
 }
 
-// ─── Coming Soon Screen ───────────────────────────────────────────────────────
-function ComingSoonScreen({onBack}) {
-  return (
-    <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,fontFamily:"'DM Sans',sans-serif",gap:20,textAlign:"center"}}>
-      <div style={{width:72,height:72,borderRadius:20,background:"linear-gradient(135deg,#1d4ed8,#60a5fa)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 8px 28px rgba(96,165,250,0.35)"}}>
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round">
-          <rect x="3" y="4" width="18" height="18" rx="2.5"/>
-          <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
-          <line x1="3" y1="10" x2="21" y2="10"/>
-          <circle cx="8"  cy="15" r="1.2" fill="#fff" stroke="none"/>
-          <circle cx="12" cy="15" r="1.2" fill="#fff" stroke="none"/>
-          <circle cx="16" cy="15" r="1.2" fill="#fff" stroke="none"/>
+// ─── Pelada Mensal Screen ─────────────────────────────────────────────────────
+function PeladaMensalScreen({onBack, onSelect}) {
+  function ripple(e, cb) {
+    const b=e.currentTarget;
+    const r=document.createElement("span");
+    r.className="pm-ripple";
+    const rect=b.getBoundingClientRect();
+    r.style.left=(e.clientX-rect.left)+"px";
+    r.style.top=(e.clientY-rect.top)+"px";
+    b.appendChild(r);
+    b.classList.add("pm-pressing");
+    setTimeout(()=>{r.remove();b.classList.remove("pm-pressing");cb&&cb();},400);
+  }
+
+  const cards = [
+    {
+      key: "mensalistas",
+      title: "Mensalistas",
+      desc: "Gerencie os mensalistas da pelada, controle pagamentos e presenças de cada jogador.",
+      tags: ["Jogadores","Pagamento","Presença","Histórico"],
+      icon: (
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
+      ),
+      bg: "linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 60%,#3b82f6 100%)",
+      overlayTop: "linear-gradient(135deg,rgba(29,78,216,0.45) 0%,transparent 65%)",
+      overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.38) 40%,rgba(5,10,30,0.92) 100%)",
+      badge: {bg:"rgba(96,165,250,0.22)",color:"#bfdbfe",border:"1px solid rgba(147,197,253,0.35)",dot:"#60a5fa",label:"EM BREVE"},
+      tagStyle: {background:"rgba(59,130,246,0.22)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
+    },
+    {
+      key: "sorteio-lista",
+      title: "Sorteio — Lista",
+      desc: "Adicione os jogadores disponíveis e sorteie os times de forma rápida e justa.",
+      tags: ["Sorteio","Times","Aleatorio","Justo"],
+      icon: (
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="3" width="20" height="18" rx="2.5"/>
+          <line x1="8" y1="8" x2="16" y2="8"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+          <line x1="8" y1="16" x2="12" y2="16"/>
+          <path d="M19 17l-2 2 2 2" opacity=".6"/>
+        </svg>
+      ),
+      bg: "linear-gradient(135deg,#0c1d4d 0%,#1e40af 60%,#2563eb 100%)",
+      overlayTop: "linear-gradient(135deg,rgba(37,99,235,0.4) 0%,transparent 65%)",
+      overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.4) 40%,rgba(5,10,30,0.93) 100%)",
+      badge: {bg:"rgba(96,165,250,0.22)",color:"#bfdbfe",border:"1px solid rgba(147,197,253,0.35)",dot:"#60a5fa",label:"EM BREVE"},
+      tagStyle: {background:"rgba(37,99,235,0.22)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
+    },
+    {
+      key: "sorteio-tampinhas",
+      title: "Sorteio — Tampinhas",
+      desc: "Simule o clássico sorteio com tampinhas para montar os times da pelada.",
+      tags: ["Tampinhas","Clássico","Sorteio","Diversão"],
+      icon: (
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="9"/>
+          <circle cx="12" cy="12" r="4"/>
+          <line x1="12" y1="3" x2="12" y2="8"/>
+          <line x1="12" y1="16" x2="12" y2="21"/>
+          <line x1="3" y1="12" x2="8" y2="12"/>
+          <line x1="16" y1="12" x2="21" y2="12"/>
+        </svg>
+      ),
+      bg: "linear-gradient(135deg,#0f2460 0%,#1e3a8a 55%,#2563eb 100%)",
+      overlayTop: "linear-gradient(135deg,rgba(30,58,138,0.5) 0%,transparent 65%)",
+      overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.42) 40%,rgba(5,10,30,0.94) 100%)",
+      badge: {bg:"rgba(96,165,250,0.22)",color:"#bfdbfe",border:"1px solid rgba(147,197,253,0.35)",dot:"#60a5fa",label:"EM BREVE"},
+      tagStyle: {background:"rgba(30,58,138,0.28)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
+    },
+  ];
+
+  return (
+    <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
+      <style>{`
+        @keyframes pm-ripple{0%{transform:scale(0);opacity:0.5;}100%{transform:scale(4);opacity:0;}}
+        @keyframes pm-card-press{0%{transform:scale(1);}50%{transform:scale(0.97);}100%{transform:scale(1);}}
+        .pm-card{position:relative;width:100%;border:none;border-radius:20px;cursor:pointer;text-align:left;overflow:hidden;display:block;padding:0;background:none;-webkit-tap-highlight-color:transparent;box-shadow:0 8px 32px rgba(0,0,0,0.55);transition:transform 0.18s cubic-bezier(.25,.46,.45,.94),box-shadow 0.18s;}
+        .pm-card:hover{transform:translateY(-3px);box-shadow:0 16px 48px rgba(0,0,0,0.7);}
+        .pm-card.pm-pressing{animation:pm-card-press 0.35s cubic-bezier(.25,.46,.45,.94) forwards;}
+        .pm-ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,0.35);width:80px;height:80px;margin-top:-40px;margin-left:-40px;animation:pm-ripple 0.6s linear forwards;pointer-events:none;z-index:10;}
+        .pm-card-img-wrap{width:100%;height:160px;overflow:hidden;border-radius:20px;position:relative;display:flex;align-items:center;justify-content:center;}
+        .pm-card-overlay{position:absolute;inset:0;border-radius:20px;pointer-events:none;}
+        .pm-card-body{position:absolute;bottom:0;left:0;right:0;padding:16px 20px 18px;pointer-events:none;}
+        .pm-card-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:800;letter-spacing:0.8px;margin-bottom:8px;backdrop-filter:blur(6px);}
+        .pm-card-title{color:#fff;font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1.5px;line-height:1.1;margin-bottom:6px;text-shadow:0 2px 8px rgba(0,0,0,0.5);}
+        .pm-card-desc{color:rgba(255,255,255,0.72);font-size:11.5px;line-height:1.5;margin-bottom:10px;text-shadow:0 1px 4px rgba(0,0,0,0.6);}
+        .pm-tags{display:flex;gap:5px;flex-wrap:wrap;}
+        .pm-tag{border-radius:6px;padding:2px 9px;font-size:10px;font-weight:700;backdrop-filter:blur(6px);}
+        .pm-card-arrow{position:absolute;top:16px;right:16px;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.15);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;pointer-events:none;}
+        .pm-card:active .pm-card-img-wrap{opacity:0.9;}
+        @media(min-width:480px){.pm-card-img-wrap{height:185px;}}
+        .pms-icon-wrap{position:absolute;top:50%;left:50%;transform:translate(-50%,-60%);opacity:0.22;pointer-events:none;}
+      `}</style>
+
+      {/* Header */}
+      <div style={{padding:"52px 20px 20px",background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)",borderBottom:"1px solid rgba(59,130,246,0.1)",position:"relative",overflow:"hidden"}}>
+        {/* Decorative pitch lines — blue tinted */}
+        <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",opacity:0.04,pointerEvents:"none"}} viewBox="0 0 360 130" preserveAspectRatio="xMidYMid slice">
+          <rect x="12" y="8" width="336" height="114" fill="none" stroke="#3b82f6" strokeWidth="1.5" rx="3"/>
+          <line x1="12" y1="65" x2="348" y2="65" stroke="#3b82f6" strokeWidth="1"/>
+          <circle cx="180" cy="65" r="22" fill="none" stroke="#3b82f6" strokeWidth="1"/>
+          <rect x="12" y="28" width="54" height="74" fill="none" stroke="#3b82f6" strokeWidth="0.8"/>
+          <rect x="294" y="28" width="54" height="74" fill="none" stroke="#3b82f6" strokeWidth="0.8"/>
+        </svg>
+        {/* Back button */}
+        <button onClick={onBack} style={{position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#60a5fa",zIndex:2}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10,position:"relative",zIndex:1}}>
+          <div style={{width:54,height:54,borderRadius:16,background:"linear-gradient(135deg,#1d4ed8,#60a5fa)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 6px 24px rgba(96,165,250,0.4)"}}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+              <line x1="2" y1="12" x2="22" y2="12"/>
+            </svg>
+          </div>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#fff",letterSpacing:2,lineHeight:1}}>PELADA MENSAL</div>
+          <div style={{color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase"}}>Selecione uma opção</div>
+        </div>
       </div>
-      <div>
-        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#fff",letterSpacing:1,marginBottom:8}}>Pelada Mensal</div>
-        <div style={{color:"#9CA3AF",fontSize:14,lineHeight:1.6,maxWidth:280}}>Estamos preparando o módulo de Pelada Mensal (Society/Futsal). Em breve você poderá organizar jogos, presenças e mensalidades dos participantes.</div>
-      </div>
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",justifyContent:"center",marginTop:4}}>
-        {["Organizar jogos","Controle de presenças","Mensalidade","Bolão de resultado"].map(t=>(
-          <span key={t} style={{background:"rgba(96,165,250,0.1)",color:"#60a5fa",borderRadius:20,padding:"5px 12px",fontSize:11,fontWeight:700}}>{t}</span>
+
+      {/* Cards */}
+      <div style={{flex:1,padding:"24px 20px 32px",display:"flex",flexDirection:"column",gap:14}}>
+        {cards.map(card=>(
+          <button
+            key={card.key}
+            className="pm-card"
+            onClick={(e)=>ripple(e, ()=>onSelect&&onSelect(card.key))}
+            aria-label={card.title}
+          >
+            <div className="pm-card-img-wrap" style={{background:card.bg}}>
+              {/* Decorative large icon */}
+              <div className="pms-icon-wrap" style={{transform:"translate(-50%,-50%) scale(3.5)",opacity:0.13}}>
+                {card.icon}
+              </div>
+              <div className="pm-card-overlay" style={{background:card.overlayBot}}/>
+              <div className="pm-card-overlay" style={{background:card.overlayTop}}/>
+            </div>
+            <div className="pm-card-body">
+              <div className="pm-card-badge" style={{background:card.badge.bg,color:card.badge.color,border:card.badge.border}}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={card.badge.dot} strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.8" fill={card.badge.dot}/></svg>
+                {card.badge.label}
+              </div>
+              <div className="pm-card-title">{card.title}</div>
+              <div className="pm-card-desc">{card.desc}</div>
+              <div className="pm-tags">
+                {card.tags.map(tag=>(
+                  <span key={tag} className="pm-tag" style={card.tagStyle}>{tag}</span>
+                ))}
+              </div>
+            </div>
+            <div className="pm-card-arrow">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </button>
         ))}
       </div>
-      <button onClick={onBack} style={{marginTop:12,padding:"12px 28px",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1d4ed8,#60a5fa)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>VOLTAR AO MENU</button>
     </div>
   );
 }
@@ -7136,9 +7275,9 @@ function App() {
         />
       )}
 
-      {/* ── Monthly mode (coming soon) ── */}
+      {/* ── Monthly mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "monthly" && (
-        <ComingSoonScreen onBack={()=>setProfileMode(null)}/>
+        <PeladaMensalScreen onBack={()=>setProfileMode(null)} onSelect={()=>{}}/>
       )}
 
       {/* ── Field mode: full app ── */}
