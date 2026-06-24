@@ -3091,6 +3091,10 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
       <style>{`
         @keyframes fadeUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
         @keyframes shimmer{0%{background-position:-200% 0;}100%{background-position:200% 0;}}
+        @keyframes tc-ripple{0%{transform:scale(0);opacity:0.45;}100%{transform:scale(5);opacity:0;}}
+        @keyframes tc-press{0%{transform:scale(1);}50%{transform:scale(0.984);}100%{transform:scale(1);}}
+        .tc-ripple-el{position:absolute;border-radius:50%;background:rgba(255,255,255,0.28);width:80px;height:80px;margin-top:-40px;margin-left:-40px;animation:tc-ripple 0.55s linear forwards;pointer-events:none;z-index:8;}
+        .team-card.tc-pressing{animation:tc-press 0.32s cubic-bezier(.25,.46,.45,.94) forwards;}
       `}</style>
 
       {/* Header hero */}
@@ -3210,9 +3214,20 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           const escalados=(team.lineup||[]).filter(l=>l.playerId).length;
           const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
           return (
-            <div key={team.id} className="team-card" style={{animation:`cardFadeUp 0.32s ease ${i*0.055}s both`}}
+            <div key={team.id} className="team-card" style={{animation:`cardFadeUp 0.32s ease ${i*0.055}s both`,position:"relative",overflow:"hidden"}}
               onMouseEnter={e=>e.currentTarget.style.borderColor=`${c1}44`}
-              onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}>
+              onMouseLeave={e=>e.currentTarget.style.borderColor="rgba(255,255,255,0.07)"}
+              onClick={e=>{
+                const b=e.currentTarget;
+                const r=document.createElement("span");
+                r.className="tc-ripple-el";
+                const rect=b.getBoundingClientRect();
+                r.style.left=(e.clientX-rect.left)+"px";
+                r.style.top=(e.clientY-rect.top)+"px";
+                b.appendChild(r);
+                b.classList.add("tc-pressing");
+                setTimeout(()=>{r.remove();b.classList.remove("tc-pressing");},550);
+              }}>
 
               {/* Gradient accent bar */}
               <div style={{height:2,background:`linear-gradient(90deg,${c1},${c2},transparent)`,opacity:0.9}}/>
