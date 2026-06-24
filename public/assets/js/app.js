@@ -2939,6 +2939,449 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   );
 }
 
+// ─── Sorteio Lista Screen ─────────────────────────────────────────────────────
+function SorteioListaScreen({ onBack, uid }) {
+  const TEAM_COLORS = [
+    { label:"Verde",    value:"#22c55e" },
+    { label:"Vermelho", value:"#ef4444" },
+    { label:"Azul",     value:"#3b82f6" },
+    { label:"Amarelo",  value:"#f59e0b" },
+    { label:"Roxo",     value:"#a855f7" },
+    { label:"Laranja",  value:"#f97316" },
+    { label:"Rosa",     value:"#ec4899" },
+    { label:"Ciano",    value:"#06b6d4" },
+    { label:"Branco",   value:"#e5e7eb" },
+    { label:"Preto",    value:"#374151" },
+  ];
+
+  // ── Steps: "setup" | "players" | "result"
+  const [step, setStep] = useState("setup");
+
+  // ── Setup state
+  const [numTeams, setNumTeams] = useState(2);
+  const [playersPerTeam, setPlayersPerTeam] = useState(5);
+  const [teamColors, setTeamColors] = useState([TEAM_COLORS[0].value, TEAM_COLORS[1].value, TEAM_COLORS[2].value, TEAM_COLORS[3].value, TEAM_COLORS[4].value, TEAM_COLORS[5].value]);
+  const [teamNames, setTeamNames] = useState(["Time A","Time B","Time C","Time D","Time E","Time F"]);
+
+  // ── Players state
+  const [players, setPlayers] = useState([]); // [{id, name, source:"agenda"|"avulso"|"manual"}]
+  const [agendas, setAgendas] = useState([]);
+  const [loadingAgendas, setLoadingAgendas] = useState(false);
+  const [showAgendaModal, setShowAgendaModal] = useState(false);
+  const [selectedAgendaId, setSelectedAgendaId] = useState(null);
+  const [avulsoName, setAvulsoName] = useState("");
+  const [manualName, setManualName] = useState("");
+  const [showManualInput, setShowManualInput] = useState(false);
+  const [showAvulsoInput, setShowAvulsoInput] = useState(false);
+
+  // ── Result state
+  const [teams, setTeams] = useState([]); // [{name, color, players:[{id,name}]}]
+  const [manualAssign, setManualAssign] = useState(null); // {playerId, playerName} currently being reassigned
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2200); };
+
+  // Load agendas from Firestore
+  useEffect(() => {
+    if (!uid) return;
+    const fb = getFirebase(); if (!fb) return;
+    setLoadingAgendas(true);
+    const { db, collection, query, orderBy, getDocs } = fb;
+    const q = query(collection(db, `users/${uid}/mensalistas`), orderBy("createdAt","asc"));
+    getDocs(q).then(snap => {
+      setAgendas(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoadingAgendas(false);
+    }).catch(() => setLoadingAgendas(false));
+  }, [uid]);
+
+  const totalSlots = numTeams * playersPerTeam;
+
+  // ── Add players from agenda
+  const addFromAgenda = (agenda) => {
+    const existing = new Set(players.map(p => p.id));
+    const toAdd = (agenda.players || [])
+      .filter(p => !existing.has(`agenda_${agenda.id}_${p.id}`))
+      .map(p => ({ id: `agenda_${agenda.id}_${p.id}`, name: p.name, source: "agenda", agendaName: agenda.name }));
+    if (toAdd.length === 0) { showToast("Todos os jogadores desta agenda já foram adicionados"); return; }
+    setPlayers(prev => [...prev, ...toAdd]);
+    showToast(`${toAdd.length} jogador(es) adicionado(s) de ${agenda.name}`);
+    setShowAgendaModal(false);
+  };
+
+  const addAvulso = () => {
+    const name = avulsoName.trim();
+    if (!name) return;
+    setPlayers(prev => [...prev, { id: genUUID(), name, source: "avulso" }]);
+    setAvulsoName("");
+    setShowAvulsoInput(false);
+    showToast("Avulso adicionado!");
+  };
+
+  const addManual = () => {
+    const name = manualName.trim();
+    if (!name) return;
+    setPlayers(prev => [...prev, { id: genUUID(), name, source: "manual" }]);
+    setManualName("");
+  };
+
+  const removePlayer = (id) => setPlayers(prev => prev.filter(p => p.id !== id));
+
+  // ── Sorteio
+  const doSorteio = () => {
+    if (players.length < 2) { showToast("Adicione pelo menos 2 jogadores"); return; }
+    const shuffled = [...players].sort(() => Math.random() - 0.5);
+    const result = Array.from({ length: numTeams }, (_, i) => ({
+      name: teamNames[i] || `Time ${i + 1}`,
+      color: teamColors[i] || TEAM_COLORS[i % TEAM_COLORS.length].value,
+      players: [],
+    }));
+    shuffled.forEach((p, i) => {
+      const teamIdx = i % numTeams;
+      result[teamIdx].players.push(p);
+    });
+    setTeams(result);
+    setStep("result");
+  };
+
+  // ── Manual reassign
+  const reassignPlayer = (playerId, toTeamIdx) => {
+    setTeams(prev => {
+      const next = prev.map(t => ({ ...t, players: t.players.filter(p => p.id !== playerId) }));
+      const player = prev.flatMap(t => t.players).find(p => p.id === playerId);
+      if (player) next[toTeamIdx].players.push(player);
+      return next;
+    });
+    setManualAssign(null);
+    showToast("Jogador movido!");
+  };
+
+  const resorteio = () => {
+    setTeams([]);
+    setStep("players");
+  };
+
+  const startOver = () => {
+    setPlayers([]);
+    setTeams([]);
+    setStep("setup");
+  };
+
+  // ── Color picker
+  const ColorPicker = ({ value, onChange }) => (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+      {TEAM_COLORS.map(c => (
+        <button key={c.value} onClick={() => onChange(c.value)} title={c.label} style={{
+          width:26, height:26, borderRadius:"50%", background:c.value, border:`2px solid ${value===c.value?"#fff":"transparent"}`,
+          cursor:"pointer", outline:"none", transition:"border 0.15s", boxShadow:value===c.value?"0 0 0 2px rgba(255,255,255,0.4)":"none"
+        }}/>
+      ))}
+    </div>
+  );
+
+  // ─────────────── STEP: SETUP ───────────────
+  if (step === "setup") return (
+    <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
+      <style>{`
+        .sl-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:10px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
+        .sl-input:focus{border-color:rgba(52,211,153,0.5);}
+        .sl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:14px;border:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;transition:opacity 0.15s;}
+        .sl-btn:active{opacity:0.8;}
+        .sl-stepper{display:flex;align-items:center;gap:12px;}
+        .sl-step-btn{width:36px;height:36px;border-radius:10px;border:1px solid rgba(52,211,153,0.3);background:rgba(52,211,153,0.08);color:#34d399;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;}
+        .sl-step-val{font-size:24px;font-family:'Bebas Neue',sans-serif;color:#fff;min-width:32px;text-align:center;letter-spacing:1px;}
+      `}</style>
+
+      {/* Header */}
+      <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
+        <button onClick={onBack} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#34d399" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+          <div style={{ fontSize:36 }}>🎲</div>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
+          <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure o sorteio</div>
+        </div>
+      </div>
+
+      <div style={{ flex:1, padding:"24px 20px 40px", display:"flex", flexDirection:"column", gap:20, overflowY:"auto" }}>
+
+        {/* Número de times */}
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
+          <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Número de Times</div>
+          <div className="sl-stepper">
+            <button className="sl-step-btn" onClick={() => setNumTeams(n => Math.max(2, n-1))}>−</button>
+            <span className="sl-step-val">{numTeams}</span>
+            <button className="sl-step-btn" onClick={() => setNumTeams(n => Math.min(6, n+1))}>+</button>
+            <span style={{ color:"#6B7280", fontSize:12, marginLeft:4 }}>times (máx. 6)</span>
+          </div>
+        </div>
+
+        {/* Jogadores por time */}
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
+          <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Jogadores por Time</div>
+          <div className="sl-stepper">
+            <button className="sl-step-btn" onClick={() => setPlayersPerTeam(n => Math.max(1, n-1))}>−</button>
+            <span className="sl-step-val">{playersPerTeam}</span>
+            <button className="sl-step-btn" onClick={() => setPlayersPerTeam(n => Math.min(20, n+1))}>+</button>
+            <span style={{ color:"#6B7280", fontSize:12, marginLeft:4 }}>por time</span>
+          </div>
+          <div style={{ marginTop:10, color:"#4B5563", fontSize:11 }}>Total de vagas: <span style={{ color:"#34d399", fontWeight:700 }}>{totalSlots}</span> jogadores</div>
+        </div>
+
+        {/* Times — nome e cor */}
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
+          <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Times</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+            {Array.from({ length: numTeams }, (_, i) => (
+              <div key={i} style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:14, height:14, borderRadius:4, background:teamColors[i]||TEAM_COLORS[i%TEAM_COLORS.length].value, flexShrink:0 }}/>
+                  <input
+                    className="sl-input"
+                    style={{ flex:1, padding:"8px 10px", fontSize:13 }}
+                    value={teamNames[i] || `Time ${String.fromCharCode(65+i)}`}
+                    onChange={e => setTeamNames(prev => { const n=[...prev]; n[i]=e.target.value; return n; })}
+                    placeholder={`Nome do Time ${i+1}`}
+                  />
+                </div>
+                <ColorPicker
+                  value={teamColors[i]||TEAM_COLORS[i%TEAM_COLORS.length].value}
+                  onChange={c => setTeamColors(prev => { const n=[...prev]; n[i]=c; return n; })}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button className="sl-btn" style={{ background:"linear-gradient(135deg,#059669,#34d399)", color:"#fff" }} onClick={() => setStep("players")}>
+          Próximo — Adicionar Jogadores →
+        </button>
+      </div>
+    </div>
+  );
+
+  // ─────────────── STEP: PLAYERS ───────────────
+  if (step === "players") return (
+    <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
+      <style>{`
+        .sl-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:10px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
+        .sl-input:focus{border-color:rgba(52,211,153,0.5);}
+        .sl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:14px;border:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;transition:opacity 0.15s;}
+        .sl-btn:active{opacity:0.8;}
+        .sl-player-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;}
+      `}</style>
+
+      {/* Header */}
+      <div style={{ padding:"52px 20px 16px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)" }}>
+        <button onClick={() => setStep("setup")} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#34d399" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:24, color:"#fff", letterSpacing:2 }}>JOGADORES</div>
+          <div style={{ color:"#34d399", fontSize:11, fontWeight:700 }}>
+            <span style={{ color: players.length >= totalSlots ? "#34d399" : "#f59e0b" }}>{players.length}</span>
+            {" "}/ {totalSlots} vagas preenchidas
+          </div>
+        </div>
+      </div>
+
+      <div style={{ flex:1, padding:"16px 16px 120px", display:"flex", flexDirection:"column", gap:14, overflowY:"auto" }}>
+
+        {/* Botões de fonte */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+          <button onClick={() => setShowAgendaModal(true)} style={{ padding:"12px 8px", borderRadius:12, border:"1px solid rgba(52,211,153,0.25)", background:"rgba(52,211,153,0.07)", color:"#34d399", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+            <span style={{ fontSize:20 }}>📋</span>
+            <span>Da Agenda</span>
+          </button>
+          <button onClick={() => { setShowAvulsoInput(v=>!v); setShowManualInput(false); }} style={{ padding:"12px 8px", borderRadius:12, border:"1px solid rgba(251,191,36,0.25)", background:"rgba(251,191,36,0.07)", color:"#FBBF24", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+            <span style={{ fontSize:20 }}>⚡</span>
+            <span>Avulso</span>
+          </button>
+        </div>
+
+        {/* Input avulso */}
+        {showAvulsoInput && (
+          <div style={{ display:"flex", gap:8 }}>
+            <input
+              className="sl-input"
+              autoFocus
+              style={{ flex:1, borderColor:"rgba(251,191,36,0.3)" }}
+              placeholder="Nome do jogador avulso"
+              value={avulsoName}
+              onChange={e => setAvulsoName(e.target.value)}
+              onKeyDown={e => e.key==="Enter" && addAvulso()}
+            />
+            <button onClick={addAvulso} style={{ padding:"10px 14px", borderRadius:10, border:"none", background:"#f59e0b", color:"#000", fontWeight:700, fontSize:13, cursor:"pointer" }}>+</button>
+          </div>
+        )}
+
+        {/* Adicionar manualmente (sem agenda) */}
+        <div style={{ borderTop:"1px solid rgba(255,255,255,0.05)", paddingTop:10 }}>
+          <button onClick={() => { setShowManualInput(v=>!v); setShowAvulsoInput(false); }} style={{ width:"100%", padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.03)", color:"#9CA3AF", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:12, cursor:"pointer" }}>
+            ✏️ Adicionar jogador na lista (sem cadastro)
+          </button>
+          {showManualInput && (
+            <div style={{ display:"flex", gap:8, marginTop:8 }}>
+              <input
+                className="sl-input"
+                autoFocus
+                style={{ flex:1 }}
+                placeholder="Nome do jogador"
+                value={manualName}
+                onChange={e => setManualName(e.target.value)}
+                onKeyDown={e => { if(e.key==="Enter"){ addManual(); } }}
+              />
+              <button onClick={addManual} style={{ padding:"10px 14px", borderRadius:10, border:"none", background:"#34d399", color:"#000", fontWeight:700, fontSize:13, cursor:"pointer" }}>+</button>
+            </div>
+          )}
+        </div>
+
+        {/* Lista de jogadores */}
+        {players.length > 0 && (
+          <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+            <div style={{ color:"#6B7280", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase" }}>Jogadores adicionados ({players.length})</div>
+            {players.map((p, i) => (
+              <div key={p.id} className="sl-player-row">
+                <div style={{ width:24, height:24, borderRadius:6, background:
+                  p.source==="agenda"?"rgba(52,211,153,0.15)":
+                  p.source==="avulso"?"rgba(251,191,36,0.15)":
+                  "rgba(96,165,250,0.15)",
+                  display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, flexShrink:0
+                }}>
+                  {p.source==="agenda"?"📋":p.source==="avulso"?"⚡":"✏️"}
+                </div>
+                <span style={{ flex:1, color:"#E5E7EB", fontSize:13, fontWeight:600 }}>{p.name}</span>
+                {p.agendaName && <span style={{ fontSize:10, color:"#34d399", background:"rgba(52,211,153,0.1)", padding:"1px 6px", borderRadius:4 }}>{p.agendaName}</span>}
+                <button onClick={() => removePlayer(p.id)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:16, padding:"2px 4px", lineHeight:1 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {players.length === 0 && (
+          <div style={{ textAlign:"center", color:"#4B5563", padding:"40px 20px", fontSize:13 }}>
+            Nenhum jogador adicionado ainda.<br/>Use os botões acima para adicionar.
+          </div>
+        )}
+      </div>
+
+      {/* Botão fixo sorteio */}
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"16px 20px 32px", background:"linear-gradient(to top,#050c0a 60%,transparent)", zIndex:50 }}>
+        <button
+          onClick={doSorteio}
+          disabled={players.length < 2}
+          style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, width:"100%", padding:16, borderRadius:14, border:"none", background: players.length>=2?"linear-gradient(135deg,#7c3aed,#a855f7)":"rgba(255,255,255,0.05)", color: players.length>=2?"#fff":"#4B5563", fontFamily:"'Bebas Neue',sans-serif", fontSize:20, letterSpacing:1.5, cursor: players.length>=2?"pointer":"not-allowed" }}
+        >
+          🎲 SORTEAR TIMES
+        </button>
+      </div>
+
+      {/* Modal agendas */}
+      {showAgendaModal && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:200, display:"flex", alignItems:"flex-end" }} onClick={() => setShowAgendaModal(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0d1f17", borderRadius:"20px 20px 0 0", width:"100%", maxHeight:"70vh", overflowY:"auto", padding:"20px 20px 40px" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:"#fff", letterSpacing:1, marginBottom:16 }}>ESCOLHER AGENDA</div>
+            {loadingAgendas ? (
+              <div style={{ textAlign:"center", color:"#6B7280", padding:20 }}>Carregando...</div>
+            ) : agendas.length === 0 ? (
+              <div style={{ textAlign:"center", color:"#6B7280", fontSize:13, padding:20 }}>Nenhuma agenda cadastrada em Mensalistas.</div>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                {agendas.map(ag => (
+                  <button key={ag.id} onClick={() => addFromAgenda(ag)} style={{ padding:"12px 14px", borderRadius:12, border:"1px solid rgba(52,211,153,0.2)", background:"rgba(52,211,153,0.06)", color:"#E5E7EB", textAlign:"left", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                    <span style={{ fontWeight:700, fontSize:13 }}>{ag.name}</span>
+                    <span style={{ fontSize:11, color:"#34d399" }}>{(ag.players||[]).length} jogador(es)</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {toast && <div style={{ position:"fixed", bottom:100, left:"50%", transform:"translateX(-50%)", background:"#1d4ed8", color:"#fff", padding:"10px 22px", borderRadius:20, fontSize:13, fontWeight:600, zIndex:999, whiteSpace:"nowrap", pointerEvents:"none" }}>{toast}</div>}
+    </div>
+  );
+
+  // ─────────────── STEP: RESULT ───────────────
+  return (
+    <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
+      <style>{`
+        .sl-team-card{border-radius:16px;padding:14px;margin-bottom:0;}
+        .sl-p-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);cursor:pointer;}
+        .sl-p-chip:active{opacity:0.75;}
+        .sl-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px;border-radius:14px;border:none;font-family:'DM Sans',sans-serif;font-weight:700;font-size:15px;cursor:pointer;}
+      `}</style>
+
+      {/* Header */}
+      <div style={{ padding:"52px 20px 16px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
+        <button onClick={resorteio} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#34d399" }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>TIMES SORTEADOS 🎉</div>
+          <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1 }}>Toque em um jogador para mover de time</div>
+        </div>
+      </div>
+
+      <div style={{ flex:1, padding:"16px 16px 140px", display:"flex", flexDirection:"column", gap:14, overflowY:"auto" }}>
+        {teams.map((team, teamIdx) => (
+          <div key={teamIdx} className="sl-team-card" style={{ border:`1.5px solid ${team.color}30`, background:`${team.color}0d` }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+              <div style={{ width:14, height:14, borderRadius:4, background:team.color, flexShrink:0 }}/>
+              <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:team.color, letterSpacing:1 }}>{team.name}</div>
+              <div style={{ marginLeft:"auto", fontSize:11, color:"#6B7280", fontWeight:600 }}>{team.players.length} jog.</div>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+              {team.players.map((p, pi) => (
+                <div key={p.id} className="sl-p-chip" onClick={() => setManualAssign({ playerId:p.id, playerName:p.name })}>
+                  <div style={{ width:20, height:20, borderRadius:"50%", background:team.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#000", flexShrink:0 }}>{pi+1}</div>
+                  <span style={{ flex:1, color:"#E5E7EB", fontSize:13 }}>{p.name}</span>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round"><path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/></svg>
+                </div>
+              ))}
+              {team.players.length === 0 && (
+                <div style={{ color:"#4B5563", fontSize:12, padding:"8px 0", textAlign:"center" }}>Sem jogadores</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Botões fixos */}
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"12px 20px 32px", background:"linear-gradient(to top,#050c0a 60%,transparent)", zIndex:50, display:"flex", flexDirection:"column", gap:8 }}>
+        <button className="sl-btn" style={{ background:"linear-gradient(135deg,#7c3aed,#a855f7)", color:"#fff", fontFamily:"'Bebas Neue',sans-serif", fontSize:18, letterSpacing:1 }} onClick={doSorteio}>
+          🎲 RESSORTEAR
+        </button>
+        <button className="sl-btn" style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"#9CA3AF", fontSize:13 }} onClick={startOver}>
+          Começar do zero
+        </button>
+      </div>
+
+      {/* Modal: mover jogador */}
+      {manualAssign && (
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.85)", zIndex:200, display:"flex", alignItems:"flex-end" }} onClick={() => setManualAssign(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#0d1f17", borderRadius:"20px 20px 0 0", width:"100%", padding:"20px 20px 40px" }}>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:"#fff", letterSpacing:1, marginBottom:4 }}>MOVER JOGADOR</div>
+            <div style={{ color:"#34d399", fontSize:13, fontWeight:600, marginBottom:16 }}>{manualAssign.playerName}</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {teams.map((t, i) => (
+                <button key={i} onClick={() => reassignPlayer(manualAssign.playerId, i)} style={{ padding:"12px 14px", borderRadius:12, border:`1px solid ${t.color}40`, background:`${t.color}12`, color:"#E5E7EB", textAlign:"left", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:12, height:12, borderRadius:3, background:t.color, flexShrink:0 }}/>
+                  <span style={{ fontWeight:700, fontSize:13 }}>{t.name}</span>
+                  <span style={{ marginLeft:"auto", color:"#6B7280", fontSize:11 }}>{t.players.length} jog.</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <div style={{ position:"fixed", bottom:140, left:"50%", transform:"translateX(-50%)", background:"#059669", color:"#fff", padding:"10px 22px", borderRadius:20, fontSize:13, fontWeight:600, zIndex:999, whiteSpace:"nowrap", pointerEvents:"none" }}>{toast}</div>}
+    </div>
+  );
+}
+
 // ─── Pelada Mensal Screen ─────────────────────────────────────────────────────
 function PeladaMensalScreen({onBack, onSelect, uid}) {
   function ripple(e, cb) {
@@ -2975,7 +3418,7 @@ function PeladaMensalScreen({onBack, onSelect, uid}) {
       bg: "linear-gradient(135deg,#0c1d4d 0%,#1e40af 60%,#2563eb 100%)",
       overlayTop: "linear-gradient(135deg,rgba(37,99,235,0.4) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.4) 40%,rgba(5,10,30,0.93) 100%)",
-      badge: {bg:"rgba(96,165,250,0.22)",color:"#bfdbfe",border:"1px solid rgba(147,197,253,0.35)",dot:"#60a5fa",label:"EM BREVE"},
+      badge: {bg:"rgba(52,211,153,0.18)",color:"#6ee7b7",border:"1px solid rgba(52,211,153,0.3)",dot:"#34d399",label:"NOVO"},
       tagStyle: {background:"rgba(37,99,235,0.22)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
     },
     {
@@ -8235,12 +8678,17 @@ function App() {
 
       {/* ── Monthly mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "monthly" && (
-        <PeladaMensalScreen onBack={()=>setProfileMode(null)} uid={uid} onSelect={(key)=>{ if(key==="mensalistas") setProfileMode("mensalistas"); }}/>
+        <PeladaMensalScreen onBack={()=>setProfileMode(null)} uid={uid} onSelect={(key)=>{ if(key==="mensalistas") setProfileMode("mensalistas"); if(key==="sorteio-lista") setProfileMode("sorteio-lista"); }}/>
       )}
 
       {/* ── Mensalistas mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "mensalistas" && (
         <MensalistasScreen onBack={()=>setProfileMode("monthly")} uid={uid}/>
+      )}
+
+      {/* ── Sorteio Lista mode ── */}
+      {authState === "loggedIn" && loaded && profileMode === "sorteio-lista" && (
+        <SorteioListaScreen onBack={()=>setProfileMode("monthly")} uid={uid}/>
       )}
 
       {/* ── Field mode: full app ── */}
