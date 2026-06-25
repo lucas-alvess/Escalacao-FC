@@ -2186,6 +2186,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   const [gastoValor, setGastoValor] = useState("");
   const [showDeleteGasto, setShowDeleteGasto] = useState(null);
   const [valorCampo, setValorCampo] = useState("");
+  const [saldoCaixaAnterior, setSaldoCaixaAnterior] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const [copiedReport, setCopiedReport] = useState(false);
   const saveTimer = useRef(null);
@@ -2206,12 +2207,14 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
         const d = snap.data();
         setData(d);
         setValorCampo(d.valorCampo || "");
+        setSaldoCaixaAnterior(d.saldoCaixaAnterior || "");
       } else {
         const initialPagamentos = mensalistasPlayers.map(p => ({
           id: p.id, name: p.name, tipo: "mensalista", pago: false, dataPagamento: "", obs: ""
         }));
-        setData({ pagamentos: initialPagamentos, avulsos: [], gastos: [], valorCampo: "" });
+        setData({ pagamentos: initialPagamentos, avulsos: [], gastos: [], valorCampo: "", saldoCaixaAnterior: "" });
         setValorCampo("");
+        setSaldoCaixaAnterior("");
       }
       setLoading(false);
     }, () => setLoading(false));
@@ -2258,7 +2261,8 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
     (data?.avulsos||[]).filter(a=>a.pago).reduce((s,a)=>s+(parseFloat(String(a.valor||0).replace(",","."))||0),0);
   const totalGastos = (data?.gastos||[]).reduce((s,g)=>s+(parseFloat(String(g.valor||0).replace(",","."))||0),0);
   const valorCampoNum = parseFloat(String(valorCampo||"").replace(/[^\d.,]/g,"").replace(",",".")) || 0;
-  const saldo = totalArrecadado - totalGastos - valorCampoNum;
+  const saldoCaixaAnteriorNum = parseFloat(String(saldoCaixaAnterior||"").replace(/[^\d.,]/g,"").replace(",",".")) || 0;
+  const saldo = totalArrecadado - totalGastos - valorCampoNum + saldoCaixaAnteriorNum;
 
   const navMes = (dir) => {
     let m = mes + dir, a = ano;
@@ -2321,6 +2325,12 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
     setValorCampo(v);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => save({ ...data, valorCampo: v }), 800);
+  };
+
+  const handleSaldoCaixaAnterior = (v) => {
+    setSaldoCaixaAnterior(v);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => save({ ...data, saldoCaixaAnterior: v }), 800);
   };
 
   const PlayerRow = ({ item, tipo }) => {
@@ -2421,9 +2431,15 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
           <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700 }}>SALDO FINAL</div>
           <div style={{ color:saldo>=0?"#34d399":"#F87171", fontFamily:"'Bebas Neue',sans-serif", fontSize:26, letterSpacing:1 }}>R$ {saldo.toFixed(2).replace(".",",")}</div>
         </div>
-        <div>
-          <label className="men-label">🏟️ Valor do Campo (abater do caixa)</label>
-          <input className="men-input" placeholder="Ex: 300,00" value={valorCampo} onChange={e=>handleValorCampo(e.target.value)}/>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          <div>
+            <label className="men-label">💵 Saldo em Caixa Anterior (adicionar ao total)</label>
+            <input className="men-input" placeholder="Ex: 50,00" value={saldoCaixaAnterior} onChange={e=>handleSaldoCaixaAnterior(e.target.value)}/>
+          </div>
+          <div>
+            <label className="men-label">🏟️ Valor do Campo (abater do caixa)</label>
+            <input className="men-input" placeholder="Ex: 300,00" value={valorCampo} onChange={e=>handleValorCampo(e.target.value)}/>
+          </div>
         </div>
       </div>
 
