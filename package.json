@@ -1,0 +1,26 @@
+{
+  "name": "escalacaofc",
+  "version": "1.0.0",
+  "description": "Aplicativo para escalações de futebol",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lucas-alvess/Escalacao-FC.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/lucas-alvess/Escalacao-FC/issues"
+  },
+  "homepage": "https://github.com/lucas-alvess/Escalacao-FC#readme",
+  "dependencies": {
+    "@capacitor/android": "^8.4.1",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1"
+  }
+}

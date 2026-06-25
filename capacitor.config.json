@@ -1,0 +1,13 @@
+{
+  "appId": "com.escalacaofc.app",
+  "appName": "Escalação FC",
+  "webDir": "public",
+  "server": {
+    "url": "https://escalacao-fc.web.app",
+    "cleartext": false
+  },
+  "android": {
+    "backgroundColor": "#050c0a",
+    "allowMixedContent": false
+  }
+}
