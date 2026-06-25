@@ -3304,23 +3304,31 @@ function MensalistasScreen({ onBack, uid, user }) {
     const name = newAgendaName.trim();
     if (!name) return;
     setSaving(true);
-    const fb = getFirebase();
-    if (fb && uid) {
-      const { db, collection, doc, setDoc, serverTimestamp } = fb;
-      const ref = doc(collection(db, `users/${uid}/mensalistas`));
-      await setDoc(ref, {
-        name,
-        local: "",
-        horario: "",
-        mensalidade: "",
-        players: [],
-        createdAt: serverTimestamp(),
-      });
+    try {
+      const fb = getFirebase();
+      if (fb && uid) {
+        const { db, doc, setDoc, serverTimestamp } = fb;
+        // Gerar ID único com timestamp + random (evita doc(collection()) que requer addDoc)
+        const newId = String(Date.now()) + Math.random().toString(36).slice(2, 7);
+        await setDoc(doc(db, "users", uid, "mensalistas", newId), {
+          id: newId,
+          name,
+          local: "",
+          horario: "",
+          mensalidade: "",
+          players: [],
+          createdAt: serverTimestamp(),
+        });
+      }
+      setNewAgendaName("");
+      setShowNewAgenda(false);
+      showToast("Agenda criada!");
+    } catch(e) {
+      console.warn("createAgenda error:", e);
+      showToast("Erro ao criar agenda. Tente novamente.");
+    } finally {
+      setSaving(false);
     }
-    setNewAgendaName("");
-    setShowNewAgenda(false);
-    setSaving(false);
-    showToast("Agenda criada!");
   };
 
   const deleteAgenda = async (id) => {
