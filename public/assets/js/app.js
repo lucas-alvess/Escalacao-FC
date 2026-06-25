@@ -2943,7 +2943,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
               <div key={row.label} style={{ display:"flex",alignItems:"center",gap:12 }}>
                 <div style={{ flex:1,color:"#D1D5DB",fontSize:13,fontWeight:600 }}>{row.label}</div>
                 <div style={{ display:"flex",alignItems:"center",gap:8 }}>
-                  <button className="ad-num-btn" onClick={() => row.set(v => Math.max(1,v-1))}>−</button>
+                  <button className="ad-num-btn" onClick={() => row.set(v => Math.max(1,v-1))}>-</button>
                   <span style={{ color:row.color,fontFamily:"'Bebas Neue',sans-serif",fontSize:22,minWidth:28,textAlign:"center" }}>{row.value}</span>
                   <button className="ad-num-btn" onClick={() => row.set(v => Math.min(50,v+1))}>+</button>
                 </div>
@@ -3287,7 +3287,7 @@ function SorteioListaScreen({ onBack, uid }) {
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
           <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Número de Times</div>
           <div className="sl-stepper">
-            <button className="sl-step-btn" onClick={() => setNumTeams(n => Math.max(2, n-1))}>−</button>
+            <button className="sl-step-btn" onClick={() => setNumTeams(n => Math.max(2, n-1))}>-</button>
             <span className="sl-step-val">{numTeams}</span>
             <button className="sl-step-btn" onClick={() => setNumTeams(n => Math.min(6, n+1))}>+</button>
             <span style={{ color:"#6B7280", fontSize:12, marginLeft:4 }}>times (máx. 6)</span>
@@ -3298,7 +3298,7 @@ function SorteioListaScreen({ onBack, uid }) {
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
           <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Jogadores por Time</div>
           <div className="sl-stepper">
-            <button className="sl-step-btn" onClick={() => setPlayersPerTeam(n => Math.max(1, n-1))}>−</button>
+            <button className="sl-step-btn" onClick={() => setPlayersPerTeam(n => Math.max(1, n-1))}>-</button>
             <span className="sl-step-val">{playersPerTeam}</span>
             <button className="sl-step-btn" onClick={() => setPlayersPerTeam(n => Math.min(20, n+1))}>+</button>
             <span style={{ color:"#6B7280", fontSize:12, marginLeft:4 }}>por time</span>
@@ -3735,7 +3735,7 @@ function SorteioTampinhasScreen({ onBack }) {
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
           <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Número de Times</div>
           <div className="st-stepper">
-            <button className="st-step-btn" onClick={() => setNumTeams(n => Math.max(2, n-1))}>−</button>
+            <button className="st-step-btn" onClick={() => setNumTeams(n => Math.max(2, n-1))}>-</button>
             <span className="st-step-val">{numTeams}</span>
             <button className="st-step-btn" onClick={() => setNumTeams(n => Math.min(6, n+1))}>+</button>
             <span style={{ color:"#6B7280", fontSize:12, marginLeft:4 }}>times (máx. 6)</span>
@@ -3746,7 +3746,7 @@ function SorteioTampinhasScreen({ onBack }) {
         <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
           <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Jogadores por Time</div>
           <div className="st-stepper">
-            <button className="st-step-btn" onClick={() => setPlayersPerTeam(n => Math.max(1, n-1))}>−</button>
+            <button className="st-step-btn" onClick={() => setPlayersPerTeam(n => Math.max(1, n-1))}>-</button>
             <span className="st-step-val">{playersPerTeam}</span>
             <button className="st-step-btn" onClick={() => setPlayersPerTeam(n => Math.min(20, n+1))}>+</button>
             <span style={{ color:"#6B7280", fontSize:12, marginLeft:4 }}>por time</span>
@@ -6586,6 +6586,8 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
     upd({lineup:updatedLineup,lineups:updatedLineups});
     if(onSaveLineup){const al=getActiveLineup(team,updatedLineups);if(al)onSaveLineup(team.id,al);}
   };
+
+  const handleForceSave=async()=>{
     if(saveStatus==="saving")return;
     setSaveStatus("saving");
     try{
@@ -7157,7 +7159,7 @@ function MatchModal({initial,players,onSave,onClose}) {
                 </span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>set("scorers",adjustCount(form.scorers,pid,-1))} disabled={goals===0}
-                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:goals===0?"#2d3748":"#9CA3AF",cursor:goals===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:goals===0?"#2d3748":"#9CA3AF",cursor:goals===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>-</button>
                   <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:goals>0?"#34d399":"#4B5563",minWidth:22,textAlign:"center"}}>{goals}</span>
                   <button onClick={()=>set("scorers",adjustCount(form.scorers,pid,1))}
                     style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
@@ -7173,7 +7175,7 @@ function MatchModal({initial,players,onSave,onClose}) {
                 </span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>set("assisters",adjustCount(form.assisters,pid,-1))} disabled={assists===0}
-                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:assists===0?"#2d3748":"#9CA3AF",cursor:assists===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:assists===0?"#2d3748":"#9CA3AF",cursor:assists===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>-</button>
                   <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:assists>0?"#f59e0b":"#4B5563",minWidth:22,textAlign:"center"}}>{assists}</span>
                   <button onClick={()=>set("assisters",adjustCount(form.assisters,pid,1))}
                     style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
@@ -7189,7 +7191,7 @@ function MatchModal({initial,players,onSave,onClose}) {
                 </span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[pid]:Math.max(0,gkGA-1)})} disabled={gkGA===0}
-                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:gkGA===0?"#2d3748":"#9CA3AF",cursor:gkGA===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                    style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:gkGA===0?"#2d3748":"#9CA3AF",cursor:gkGA===0?"default":"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>-</button>
                   <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:gkGA>0?"#f87171":"#4B5563",minWidth:22,textAlign:"center"}}>{gkGA}</span>
                   <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[pid]:gkGA+1})}
                     style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",cursor:"pointer",fontSize:17,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
@@ -7421,7 +7423,7 @@ function StatsView({team,stats,onUpdateStat}) {
               <Icon id={icon} size={14} title={label} style={{color}}/>
               <div style={{display:"flex",alignItems:"center",gap:3}}>
                 <button onClick={()=>onUpdateStat(p.id,key,Math.max(0,(st[key]||0)-1))}
-                  style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
+                  style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>-</button>
                 <span style={{color,fontFamily:"'Bebas Neue',sans-serif",fontSize:18,minWidth:20,textAlign:"center"}}>{st[key]||0}</span>
                 <button onClick={()=>onUpdateStat(p.id,key,(st[key]||0)+1)}
                   style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
