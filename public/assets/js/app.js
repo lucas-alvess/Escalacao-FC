@@ -984,8 +984,9 @@ async function acceptCollabInvite(inviteData, uid, user) {
     const now = fb.serverTimestamp();
 
     // Verifica se já é membro
-    const memberSnap = await fb.getDoc(fb.doc(fb.db, "collab_teams", teamId, "members", uid));
-    if (memberSnap.exists()) return "already_member";
+    // Verificar via índice reverso (users/ é acessível pelo próprio usuário)
+    const refSnap = await fb.getDoc(fb.doc(fb.db, "users", uid, "collab_refs", teamId));
+    if (refSnap.exists()) return "already_member";
 
     // Adiciona membro editor
     await fb.setDoc(fb.doc(fb.db, "collab_teams", teamId, "members", uid), {
@@ -1607,8 +1608,8 @@ async function acceptCollabAgendaInvite(inviteData, uid, user) {
   try {
     const agendaId = inviteData.agendaId;
     const now = fb.serverTimestamp();
-    const memberSnap = await fb.getDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid));
-    if (memberSnap.exists()) return "already_member";
+    const refSnapA = await fb.getDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId));
+    if (refSnapA.exists()) return "already_member";
     await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid), {
       uid, name: user.displayName || user.email || "Editor",
       email: user.email || "", role: "editor", joinedAt: now,
