@@ -3652,7 +3652,7 @@ function SorteioTampinhasScreen({ onBack }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-          <div style={{ fontSize:36 }}>🍺</div>
+          <img src="/assets/images/tampinha-gold.png" alt="Tampinha" style={{ width:52, height:52, objectFit:"contain" }}/>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO TAMPINHAS</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure os times</div>
         </div>
@@ -3704,7 +3704,7 @@ function SorteioTampinhasScreen({ onBack }) {
         </div>
 
         <button onClick={startDraw} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, width:"100%", padding:16, borderRadius:14, border:"none", background:"linear-gradient(135deg,#d97706,#f59e0b)", color:"#000", fontFamily:"'Bebas Neue',sans-serif", fontSize:20, letterSpacing:1.5, cursor:"pointer", fontWeight:700 }}>
-          🍺 INICIAR SORTEIO
+          <img src="/assets/images/tampinha-gold.png" alt="" style={{ width:24, height:24, objectFit:"contain" }}/> INICIAR SORTEIO
         </button>
       </div>
     </div>
@@ -3722,7 +3722,11 @@ function SorteioTampinhasScreen({ onBack }) {
       <div style={{ padding:"52px 20px 16px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={reset}/>
         <div style={{ textAlign:"center" }}>
-          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color:"#fff", letterSpacing:2 }}>SORTEIO TAMPINHAS 🍺</div>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <img src="/assets/images/tampinha-gold.png" alt="" style={{ width:26, height:26, objectFit:"contain" }}/>
+            <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color:"#fff", letterSpacing:2 }}>SORTEIO TAMPINHAS</span>
+            <img src="/assets/images/tampinha-gold.png" alt="" style={{ width:26, height:26, objectFit:"contain" }}/>
+          </div>
           <div style={{ color:"#6B7280", fontSize:11, fontWeight:700, marginTop:2 }}>
             {done
               ? <span style={{ color:"#34d399" }}>Todos os times formados! ✅</span>
@@ -3776,29 +3780,28 @@ function SorteioTampinhasScreen({ onBack }) {
 
           {/* BOTÃO CENTRAL GRANDE */}
           {!done ? (
-            <button
-              onClick={handlePress}
-              disabled={revealing}
-              style={{
-                width:200, height:200, borderRadius:"50%",
-                background: revealing
-                  ? "radial-gradient(circle,#374151,#1f2937)"
-                  : "radial-gradient(circle at 35% 35%,#f59e0b,#d97706 50%,#92400e)",
-                border:"none", cursor: revealing ? "not-allowed" : "pointer",
-                display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8,
-                boxShadow: revealing
-                  ? "0 4px 24px rgba(0,0,0,0.5)"
-                  : "0 8px 40px rgba(245,158,11,0.5), inset 0 2px 0 rgba(255,255,255,0.2)",
-                transition:"all 0.2s",
-                animation: !revealing && !revealed ? "st-pulse 2s ease-in-out infinite" : "none",
-                transform: revealing ? "scale(0.96)" : "scale(1)",
-              }}
-            >
-              <span style={{ fontSize:44 }}>🍺</span>
-              <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color: revealing ? "#6B7280" : "#000", letterSpacing:2, fontWeight:700 }}>
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:14 }}>
+              <button
+                onClick={handlePress}
+                disabled={revealing}
+                style={{
+                  width:200, height:200, borderRadius:"50%",
+                  background:"transparent",
+                  border:"none", cursor: revealing ? "not-allowed" : "pointer",
+                  display:"flex", alignItems:"center", justifyContent:"center", padding:0,
+                  transition:"all 0.2s",
+                  animation: !revealing && !revealed ? "st-pulse 2s ease-in-out infinite" : "none",
+                  transform: revealing ? "scale(0.93)" : "scale(1)",
+                  opacity: revealing ? 0.7 : 1,
+                  filter: revealing ? "brightness(0.75)" : "drop-shadow(0 8px 24px rgba(245,158,11,0.55))",
+                }}
+              >
+                <img src="/assets/images/tampinha-gold.png" alt="Sortear" style={{ width:200, height:200, objectFit:"contain", pointerEvents:"none" }}/>
+              </button>
+              <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color: revealing ? "#6B7280" : "#f5c542", letterSpacing:3, fontWeight:700, textShadow: revealing ? "none" : "0 0 16px rgba(245,197,66,0.5)" }}>
                 {revealing ? "SORTEANDO..." : "TOCA AQUI!"}
               </span>
-            </button>
+            </div>
           ) : (
             <div style={{ textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:16 }}>
               <div style={{ fontSize:60 }}>🎉</div>
