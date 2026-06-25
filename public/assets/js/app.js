@@ -3503,17 +3503,18 @@ function SorteioListaScreen({ onBack, uid }) {
 // ─── Sorteio Tampinhas Screen ─────────────────────────────────────────────────
 function SorteioTampinhasScreen({ onBack }) {
   const TEAM_COLORS = [
-    { label:"Verde",    value:"#22c55e" },
-    { label:"Vermelho", value:"#ef4444" },
-    { label:"Azul",     value:"#3b82f6" },
-    { label:"Amarelo",  value:"#f59e0b" },
-    { label:"Roxo",     value:"#a855f7" },
-    { label:"Laranja",  value:"#f97316" },
-    { label:"Rosa",     value:"#ec4899" },
-    { label:"Ciano",    value:"#06b6d4" },
-    { label:"Branco",   value:"#e5e7eb" },
-    { label:"Preto",    value:"#374151" },
+    { label:"Verde",    value:"#22c55e", img:"/assets/images/tampinha-green.png"  },
+    { label:"Vermelho", value:"#ef4444", img:"/assets/images/tampinha-red.png"    },
+    { label:"Azul",     value:"#3b82f6", img:"/assets/images/tampinha-blue.png"   },
+    { label:"Amarelo",  value:"#f59e0b", img:"/assets/images/tampinha-yellow.png" },
+    { label:"Roxo",     value:"#a855f7", img:"/assets/images/tampinha-purple.png" },
+    { label:"Laranja",  value:"#f97316", img:"/assets/images/tampinha-orange.png" },
+    { label:"Rosa",     value:"#ec4899", img:"/assets/images/tampinha-pink.png"   },
+    { label:"Ciano",    value:"#06b6d4", img:"/assets/images/tampinha-ciano.png"  },
+    { label:"Branco",   value:"#e5e7eb", img:"/assets/images/tampinha-white.png"  },
+    { label:"Preto",    value:"#374151", img:"/assets/images/tampinha-black.png"  },
   ];
+  const COLOR_IMG = Object.fromEntries(TEAM_COLORS.map(c => [c.value, c.img]));
 
   // ── Steps: "setup" | "draw"
   const [step, setStep] = useState("setup");
