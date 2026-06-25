@@ -1261,6 +1261,19 @@ function makeTeam(name="Novo Time", colorIdx=0) {
   };
 }
 
+// ─── Icon component (SVG sprite) ─────────────────────────────────────────────
+const Icon = ({ id, size = 18, style = {}, className = "" }) => (
+  <svg
+    width={size}
+    height={size}
+    style={{ display:"inline-block", verticalAlign:"middle", flexShrink:0, ...style }}
+    className={className}
+    aria-hidden="true"
+  >
+    <use href={`/assets/icons/icons.svg#${id}`} />
+  </svg>
+);
+
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const Ico = {
   Plus:    ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
@@ -1354,6 +1367,64 @@ const Ico = {
   Bell:    ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>,
   Image:   ()=><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/></svg>,
   Send:    ()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+  // ── Novos ícones (substituem emojis) ──
+  Soccer:       (p={})=><Icon id="soccer-ball"  size={p.size||18} style={p.style}/>,
+  Goalkeeper:   (p={})=><Icon id="goalkeeper"   size={p.size||18} style={p.style}/>,
+  Ticket:       (p={})=><Icon id="ticket"        size={p.size||14} style={p.style}/>,
+  CheckCircle:  (p={})=><Icon id="check-circle" size={p.size||16} style={p.style}/>,
+  XCircle:      (p={})=><Icon id="x-circle"     size={p.size||16} style={p.style}/>,
+  Warning:      (p={})=><Icon id="warning"       size={p.size||16} style={p.style}/>,
+  InfoIco:      (p={})=><Icon id="info"          size={p.size||16} style={p.style}/>,
+  Clipboard:    (p={})=><Icon id="clipboard"     size={p.size||16} style={p.style}/>,
+  ChartBar:     (p={})=><Icon id="chart-bar"    size={p.size||18} style={p.style}/>,
+  CalendarIco:  (p={})=><Icon id="calendar"      size={p.size||18} style={p.style}/>,
+  ClockIco:     (p={})=><Icon id="clock"         size={p.size||14} style={p.style}/>,
+  Stopwatch:    (p={})=><Icon id="stopwatch"     size={p.size||14} style={p.style}/>,
+  People:       (p={})=><Icon id="users"         size={p.size||16} style={p.style}/>,
+  Person:       (p={})=><Icon id="person"        size={p.size||16} style={p.style}/>,
+  Jersey:       (p={})=><Icon id="jersey"        size={p.size||16} style={p.style}/>,
+  TrophyIco:    (p={})=><Icon id="trophy"        size={p.size||18} style={p.style}/>,
+  Medal:        (p={})=><Icon id="medal"         size={p.size||16} style={p.style}/>,
+  Target:       (p={})=><Icon id="target"        size={p.size||16} style={p.style}/>,
+  Balance:      (p={})=><Icon id="balance"       size={p.size||22} style={p.style}/>,
+  Dice:         (p={})=><Icon id="dice"          size={p.size||22} style={p.style}/>,
+  Lightning:    (p={})=><Icon id="lightning"     size={p.size||20} style={p.style}/>,
+  Fire:         (p={})=><Icon id="fire"          size={p.size||18} style={p.style}/>,
+  Stadium:      (p={})=><Icon id="stadium"       size={p.size||18} style={p.style}/>,
+  Money:        (p={})=><Icon id="money-bag"    size={p.size||18} style={p.style}/>,
+  Banknote:     (p={})=><Icon id="banknote"      size={p.size||16} style={p.style}/>,
+  Receipt:      (p={})=><Icon id="receipt"       size={p.size||18} style={p.style}/>,
+  CreditCard:   (p={})=><Icon id="credit-card"  size={p.size||16} style={p.style}/>,
+  LockIco:      (p={})=><Icon id="lock"          size={p.size||14} style={p.style}/>,
+  EyeIco:       (p={})=><Icon id="eye"           size={p.size||16} style={p.style}/>,
+  SearchIco:    (p={})=><Icon id="search"        size={p.size||16} style={p.style}/>,
+  Refresh:      (p={})=><Icon id="refresh"       size={p.size||16} style={p.style}/>,
+  Shuffle:      (p={})=><Icon id="shuffle"       size={p.size||16} style={p.style}/>,
+  RepeatIco:    (p={})=><Icon id="repeat"        size={p.size||16} style={p.style}/>,
+  LinkIco:      (p={})=><Icon id="link"          size={p.size||48} style={p.style}/>,
+  PinIco:       (p={})=><Icon id="pin"           size={p.size||14} style={p.style}/>,
+  TagIco:       (p={})=><Icon id="tag"           size={p.size||16} style={p.style}/>,
+  Bulb:         (p={})=><Icon id="bulb"          size={p.size||18} style={p.style}/>,
+  Cloud:        (p={})=><Icon id="cloud"         size={p.size||16} style={p.style}/>,
+  Moon:         (p={})=><Icon id="moon"          size={p.size||16} style={p.style}/>,
+  Sun:          (p={})=><Icon id="sun"           size={p.size||16} style={p.style}/>,
+  Radio:        (p={})=><Icon id="radio"         size={p.size||16} style={p.style}/>,
+  Party:        (p={})=><Icon id="party"         size={p.size||36} style={p.style}/>,
+  Sad:          (p={})=><Icon id="sad"           size={p.size||44} style={p.style}/>,
+  Gem:          (p={})=><Icon id="gem"           size={p.size||16} style={p.style}/>,
+  Memo:         (p={})=><Icon id="memo"          size={p.size||13} style={p.style}/>,
+  FolderOpen:   (p={})=><Icon id="folder-open"  size={p.size||16} style={p.style}/>,
+  UploadIco:    (p={})=><Icon id="upload"        size={p.size||18} style={p.style}/>,
+  Crown:        (p={})=><Icon id="crown"         size={p.size||54} style={p.style}/>,
+  HomeIco:      (p={})=><Icon id="home"          size={p.size||16} style={p.style}/>,
+  Airplane:     (p={})=><Icon id="airplane"      size={p.size||16} style={p.style}/>,
+  Handshake:    (p={})=><Icon id="handshake"     size={p.size||16} style={p.style}/>,
+  FestivalIco:  (p={})=><Icon id="festival"      size={p.size||16} style={p.style}/>,
+  Competition:  (p={})=><Icon id="competition"   size={p.size||16} style={p.style}/>,
+  ActiveDot:    (p={})=><Icon id="active"        size={p.size||12} style={p.style}/>,
+  InjuredIco:   (p={})=><Icon id="injured"       size={p.size||12} style={p.style}/>,
+  Suspended:    (p={})=><Icon id="suspended"     size={p.size||12} style={p.style}/>,
+  InactiveIco:  (p={})=><Icon id="inactive"      size={p.size||12} style={p.style}/>,
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
