@@ -3652,7 +3652,7 @@ function SorteioTampinhasScreen({ onBack }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-          <img src="/assets/images/tampinha-gold.png" alt="Tampinha" style={{ width:52, height:52, objectFit:"contain" }}/>
+          <img src="/assets/images/tampinha-ouro.png" alt="Tampinha" style={{ width:52, height:52, objectFit:"contain" }}/>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO TAMPINHAS</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure os times</div>
         </div>
@@ -3704,7 +3704,7 @@ function SorteioTampinhasScreen({ onBack }) {
         </div>
 
         <button onClick={startDraw} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, width:"100%", padding:16, borderRadius:14, border:"none", background:"linear-gradient(135deg,#d97706,#f59e0b)", color:"#000", fontFamily:"'Bebas Neue',sans-serif", fontSize:20, letterSpacing:1.5, cursor:"pointer", fontWeight:700 }}>
-          <img src="/assets/images/tampinha-gold.png" alt="" style={{ width:24, height:24, objectFit:"contain" }}/> INICIAR SORTEIO
+          <img src="/assets/images/tampinha-ouro.png" alt="" style={{ width:24, height:24, objectFit:"contain" }}/> INICIAR SORTEIO
         </button>
       </div>
     </div>
