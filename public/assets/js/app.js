@@ -9402,6 +9402,5 @@ function App() {
     root.render(React.createElement(App));
     document.getElementById('loading').style.display = 'none';
 
-    // Bloqueia menu de contexto e long-press em imagens (mobile e desktop)
+    // Bloqueia menu de contexto em imagens (mobile e desktop)
     document.addEventListener('contextmenu', e => { if(e.target.closest('img')) e.preventDefault(); }, true);
-    document.addEventListener('touchstart', e => { if(e.target.closest('img')) e.target.closest('img').addEventListener('touchend', ev => ev.preventDefault(), {once:true,passive:false}); }, {passive:true});
