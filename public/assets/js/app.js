@@ -4844,7 +4844,7 @@ function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose,team})
 }
 
 // ─── Football Field ───────────────────────────────────────────────────────────
-function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
+function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team,freeMode,onFreeMoveEnd}) {
   const fieldRef=useRef();
   const dragState=useRef(null);
   const [ghost,setGhost]=useState(null);
@@ -4891,14 +4891,24 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
     const rect=getFieldRect();if(!rect)return;
     const player=players.find(p=>p.id===lineup.find(l=>l.slotId===dragState.current.slotId)?.playerId);
     setGhost({slotId:dragState.current.slotId,x:cx-rect.left,y:cy-rect.top,player});
-    setHighlight(getSlotUnder(cx,cy));
-  },[lineup,players,getSlotUnder]);
+    if(!freeMode) setHighlight(getSlotUnder(cx,cy));
+  },[lineup,players,getSlotUnder,freeMode]);
 
   const finishDrag=useCallback((cx,cy)=>{
     if(!dragState.current)return;
     const{slotId,isDragging}=dragState.current;
     dragState.current=null;setGhost(null);setHighlight(null);
     if(!isDragging){onSlotTap(slotId,slots.find(s=>s.id===slotId)?.label||"");return;}
+
+    // ── Free mode: reposition player to wherever the user dropped ──
+    if(freeMode){
+      const rect=getFieldRect();if(!rect)return;
+      const px=Math.min(98,Math.max(2,((cx-rect.left)/rect.width)*100));
+      const py=Math.min(98,Math.max(2,((cy-rect.top)/rect.height)*100));
+      if(onFreeMoveEnd) onFreeMoveEnd(slotId,px,py);
+      return;
+    }
+
     const targetSlotId=getSlotUnder(cx,cy);
     if(targetSlotId===null||targetSlotId===slotId)return;
     onLineupChange(prev=>{
@@ -4909,7 +4919,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
       if(tgt)next.push({slotId,playerId:tgt.playerId});
       return next;
     });
-  },[slots,getSlotUnder,onLineupChange,onSlotTap]);
+  },[slots,getSlotUnder,onLineupChange,onSlotTap,freeMode,onFreeMoveEnd]);
 
   const onMouseUp=useCallback(e=>{const{cx,cy}=clientXY(e);finishDrag(cx,cy);},[finishDrag]);
 
@@ -4951,13 +4961,27 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
     // quando dragState é null, o touchmove não chama preventDefault
   },[getNearestSlot]);
 
+  // In freeMode, slots come from lineup entries (with x/y); otherwise from formation slots
+  const displaySlots = freeMode
+    ? lineup.filter(e=>e.playerId).map(e=>{
+        const formSlot = slots.find(s=>s.id===e.slotId);
+        return { id:e.slotId, label:formSlot?.label||"", x:e.x??formSlot?.x??50, y:e.y??formSlot?.y??50 };
+      })
+    : slots;
+
   return (
     <div ref={fieldRef}
       onTouchStart={onFieldTouchStart}
       style={{position:"relative",width:"100%",aspectRatio:"0.65",borderRadius:12,overflow:"hidden",userSelect:"none",
-        // pan-y permite scroll vertical quando não há drag ativo;
-        // os slots individuais chamam e.stopPropagation no touchstart para assumir o controle
-        touchAction:"pan-y"}}>
+        touchAction:"pan-y",
+        outline: freeMode ? "2px solid rgba(250,204,21,0.5)" : "none",
+        boxShadow: freeMode ? "0 0 24px rgba(250,204,21,0.18)" : "none",
+      }}>
+      {freeMode&&(
+        <div style={{position:"absolute",top:6,left:"50%",transform:"translateX(-50%)",zIndex:20,background:"rgba(250,204,21,0.18)",border:"1px solid rgba(250,204,21,0.5)",borderRadius:20,padding:"3px 12px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,color:"#facc15",letterSpacing:0.5,pointerEvents:"none",whiteSpace:"nowrap"}}>
+          ✦ FORMAÇÃO LIVRE — arraste livremente
+        </div>
+      )}
       <svg width="100%" height="100%" viewBox="0 0 100 154" preserveAspectRatio="none" style={{position:"absolute",inset:0,display:"block"}}>
         {[...Array(8)].map((_,i)=><rect key={i} x={0} y={i*19.25} width={100} height={9.625} fill={i%2===0?"#1c7a40":"#18703a"}/>)}
         <rect x="3" y="3" width="94" height="148" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.65"/>
@@ -4976,11 +5000,15 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
           <circle key={i} cx={cx} cy={cy} r="3" fill="none" stroke="rgba(255,255,255,0.75)" strokeWidth="0.5"/>
         ))}
       </svg>
-      {slots.map(slot=>{
+
+      {/* In normal mode: also render empty slots (no player). In freeMode: only occupied positions. */}
+      {(!freeMode ? slots : displaySlots).map(slot=>{
         const entry=lineup.find(l=>l.slotId===slot.id);
         const player=entry?players.find(p=>p.id===entry.playerId):null;
         const isHL=highlight===slot.id;
         const isDragged=ghost?.slotId===slot.id;
+        const slotX = freeMode ? (entry?.x??slot.x) : slot.x;
+        const slotY = freeMode ? (entry?.y??slot.y) : slot.y;
         // Long-press de 180ms para iniciar drag; toque rápido = tap; scroll vertical livre enquanto não confirma drag
         const handleSlotTouchStart=e=>{
           const touch=e.touches[0];
@@ -4990,7 +5018,6 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
           const onMove=ev=>{
             const t=ev.touches[0];
             const dx=Math.abs(t.clientX-startX),dy=Math.abs(t.clientY-startY);
-            // Se moveu muito antes do long-press confirmar, é scroll — cancela
             if(dx>8||dy>8){moved=true;clearTimeout(longPressTimer);cleanup();}
           };
           const onEnd=()=>{clearTimeout(longPressTimer);cleanup();};
@@ -5001,7 +5028,6 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
           longPressTimer=setTimeout(()=>{
             cleanup();
             if(moved)return;
-            // Confirmar drag: registrar no dragState e bloquear scroll daqui em diante
             onPointerDown(e,slot.id);
           },180);
           window.addEventListener("touchmove",onMove,{passive:true});
@@ -5011,7 +5037,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
           <div key={slot.id}
             onMouseDown={e=>onPointerDown(e,slot.id)}
             onTouchStart={handleSlotTouchStart}
-            style={{position:"absolute",left:`${slot.x}%`,top:`${slot.y}%`,transform:"translate(-50%,-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"grab",zIndex:10,padding:4,opacity:isDragged?0.25:1,transition:"opacity 0.12s"}}>
+            style={{position:"absolute",left:`${slotX}%`,top:`${slotY}%`,transform:"translate(-50%,-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:2,cursor:"grab",zIndex:10,padding:4,opacity:isDragged?0.25:1,transition:isDragged?"opacity 0.12s":"opacity 0.12s, left 0.0s, top 0.0s"}}>
             {player?(
               <>
                 <div style={{width:54,height:54,borderRadius:"50%",overflow:"hidden",border:isHL?"3px solid #facc15":"2.5px solid #34d399",boxShadow:isHL?"0 0 22px rgba(250,204,21,0.9)":"0 0 16px rgba(52,211,153,0.6)",transition:"border 0.12s,box-shadow 0.12s",flexShrink:0}}>
@@ -5027,7 +5053,8 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
                 </div>
               </>
             ):(
-              <>
+              // Empty slots only shown in normal mode
+              !freeMode&&<>
                 <div style={{width:48,height:48,borderRadius:"50%",border:isHL?"2.5px solid #facc15":"2px dashed rgba(255,255,255,0.4)",background:isHL?"rgba(250,204,21,0.18)":"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.12s",boxShadow:isHL?"0 0 16px rgba(250,204,21,0.6)":"none"}}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </div>
@@ -6398,6 +6425,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [toast,setToast]=useState(null);
   const [showEditTeam,setShowEditTeam]=useState(false);
   const [showLineupMgr,setShowLineupMgr]=useState(false);
+  const [freeMode,setFreeMode]=useState(false);
   const [saveStatus,setSaveStatus]=useState("idle"); // "idle" | "saving" | "saved" | "error"
   // Appearances per player (computed from match presentPlayerIds, loaded lazily)
   const [teamAppearances,setTeamAppearances]=useState({});
@@ -6545,7 +6573,19 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   };
   const escalados=(team.lineup||[]).filter(l=>l.playerId).length;
 
-  const handleForceSave=async()=>{
+  // ── Free mode: persist new x/y for a player after drag ──────────────────
+  const handleFreeMoveEnd=(slotId,px,py)=>{
+    const updatedLineup=(team.lineup||[]).map(e=>
+      e.slotId===slotId ? {...e,x:Math.round(px*10)/10,y:Math.round(py*10)/10} : e
+    );
+    const updatedLineups=(team.lineups||[]).map(l=>{
+      if(String(l.id)===String(team.activeLineupId)||(l.isActive&&!team.activeLineupId))
+        return{...l,entries:updatedLineup};
+      return l;
+    });
+    upd({lineup:updatedLineup,lineups:updatedLineups});
+    if(onSaveLineup){const al=getActiveLineup(team,updatedLineups);if(al)onSaveLineup(team.id,al);}
+  };
     if(saveStatus==="saving")return;
     setSaveStatus("saving");
     try{
@@ -6640,6 +6680,29 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             <button onClick={()=>setShowLineupMgr(true)} title="Gerenciar escalações" aria-label="Gerenciar escalações" style={{background:`${c1}18`,border:`1px solid ${c1}40`,borderRadius:9,padding:"7px 9px",color:c2,cursor:"pointer",display:"flex",alignItems:"center",gap:4,fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800}}>
               <Ico.Lineup/>{(team.lineups||[]).length>1?<span style={{background:c1,color:"#000",borderRadius:4,padding:"0 4px",fontSize:9,fontWeight:900}}>{(team.lineups||[]).length}</span>:null}
             </button>
+            {/* Formação Livre — premium only */}
+            {isPremium?(
+              <button onClick={()=>setFreeMode(f=>!f)} title={freeMode?"Voltar à formação fixa":"Ativar formação livre"} style={{
+                background:freeMode?"rgba(250,204,21,0.2)":"rgba(255,255,255,0.06)",
+                border:freeMode?"1px solid rgba(250,204,21,0.6)":"1px solid rgba(255,255,255,0.12)",
+                borderRadius:9,padding:"7px 9px",color:freeMode?"#facc15":"#9CA3AF",
+                cursor:"pointer",display:"flex",alignItems:"center",gap:4,
+                fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,letterSpacing:0.3,whiteSpace:"nowrap"
+              }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                {freeMode?"FIXO":"LIVRE"}
+              </button>
+            ):(
+              <button onClick={()=>setToast("⭐ Formação Livre é exclusiva para usuários Premium!")} title="Formação Livre — Premium" style={{
+                background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",
+                borderRadius:9,padding:"7px 9px",color:"#4B5563",
+                cursor:"pointer",display:"flex",alignItems:"center",gap:4,
+                fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,letterSpacing:0.3,whiteSpace:"nowrap"
+              }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#facc15" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                LIVRE
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -6663,7 +6726,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           <>
             <div style={{marginBottom:9,display:"flex",alignItems:"center",gap:8}}>
               <div style={{flex:1,padding:"6px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#6B7280"}}>
-                <Icon id="bulb" size={14} style={{color:"#6B7280",flexShrink:0}}/> <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar
+                <Icon id="bulb" size={14} style={{color:"#6B7280",flexShrink:0}}/> {freeMode?<><b style={{color:"#facc15"}}>Livre</b> — arraste jogadores para qualquer posição</>:<><b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar</>}
               </div>
               <button onClick={()=>{
                 const updatedLineups=(team.lineups||[]).map(l=>String(l.id)===String(activeLineup?.id)?{...l,entries:[]}:l);
@@ -6692,7 +6755,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                 </button>
               </div>
             </div>
-            <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={handleSlotTap} team={team}/>
+            <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={freeMode?(slotId,label)=>{/* no tap action in free mode */}:handleSlotTap} team={team} freeMode={freeMode} onFreeMoveEnd={handleFreeMoveEnd}/>
 
             {/* Banco de reservas */}
             <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:7}}>
