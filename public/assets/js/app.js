@@ -1171,7 +1171,11 @@ function subscribeCollabTeam(teamId, onUpdate) {
   const unsubMeta = fb.onSnapshot(
     fb.doc(fb.db, "collab_teams", String(teamId)),
     metaDoc => {
-      if (!metaDoc.exists()) return;
+      if (!metaDoc.exists()) {
+        // Time foi encerrado pelo dono — notificar o App para remover da lista
+        onUpdate({ type: "deleted" });
+        return;
+      }
       onUpdate({ type: "meta", data: metaDoc.data() });
     },
     () => {}
@@ -1305,6 +1309,13 @@ function CollabInviteModal({ team, user, onClose }) {
     else setStep("error");
   };
 
+  const handleRevokeCode = async () => {
+    if (!code) return;
+    const fb = getFirebase(); if (!fb) return;
+    try { await fb.deleteDoc(fb.doc(fb.db, "collab_invites", code)); } catch {}
+    setCode("");
+  };
+
   const handleCopy = async () => {
     const msg = `Oi! Te convido para coeditar o time *${team.name}* no Escalação FC 🤝\nCódigo colaborativo: *${code}*\nAbra o app → Importar time → cole o código.`;
     try {
@@ -1315,11 +1326,13 @@ function CollabInviteModal({ team, user, onClose }) {
     }
   };
 
-  const handleRemove = async (uid) => {
-    setRemovingUid(uid);
-    await removeCollabMember(team.id, uid);
-    setMembers(prev => prev.filter(m => m.uid !== uid));
+  const handleRemove = async (mUid) => {
+    setRemovingUid(mUid);
+    await removeCollabMember(team.id, mUid);
+    setMembers(prev => prev.filter(m => m.uid !== mUid));
     setRemovingUid(null);
+    // Se o próprio usuário saiu, fechar o modal
+    if (mUid === user.uid) onClose();
   };
 
   const roleLabel = { owner: "Dono", editor: "Editor" };
@@ -1389,9 +1402,14 @@ function CollabInviteModal({ team, user, onClose }) {
                   <button onClick={handleCopy} style={{padding:"13px 0",borderRadius:12,border:"1px solid rgba(59,130,246,0.35)",cursor:"pointer",background:copied?"rgba(59,130,246,0.2)":"rgba(59,130,246,0.08)",color:"#60a5fa",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1}}>
                     {copied?"✓ COPIADO!":"📋 COMPARTILHAR CÓDIGO"}
                   </button>
-                  <button onClick={handleGenerateCode} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>
-                    Gerar novo código
-                  </button>
+                  <div style={{display:"flex",gap:8}}>
+                    <button onClick={handleGenerateCode} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>
+                      Gerar novo
+                    </button>
+                    <button onClick={handleRevokeCode} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.06)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>
+                      Revogar
+                    </button>
+                  </div>
                 </>
               ) : (
                 <button onClick={handleGenerateCode} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1.5,boxShadow:"0 4px 16px rgba(59,130,246,0.3)"}}>
@@ -1414,16 +1432,23 @@ function CollabInviteModal({ team, user, onClose }) {
 }
 
 // ── Modal: Entrar em time colaborativo por código ─────────────────────────────
-function JoinCollabModal({ user, onClose, onJoined }) {
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState("input"); // input | loading | preview | joining | done | error | already
+function JoinCollabModal({ user, onClose, onJoined, initialCode }) {
+  const [code, setCode] = useState(initialCode || "");
+  const [step, setStep] = useState(initialCode && initialCode.length >= 7 ? "loading" : "input");
   const [invite, setInvite] = useState(null);
   const [errMsg, setErrMsg] = useState("");
 
-  const handleLookup = async () => {
-    if (code.length < 7) return; // "C" + 6 chars
+  // Auto-buscar se veio com código pré-preenchido
+  useEffect(() => {
+    if (initialCode && initialCode.length >= 7) handleLookup(initialCode);
+  }, []);
+
+  const handleLookup = async (overrideCode) => {
+    const q = (overrideCode || code).trim().toUpperCase();
+    if (q.length < 7) return; // "C" + 6 chars
+    setCode(q);
     setStep("loading");
-    const data = await fetchCollabInvite(code);
+    const data = await fetchCollabInvite(q);
     if (!data) { setErrMsg("Código colaborativo não encontrado. Verifique e tente novamente."); setStep("error"); return; }
     setInvite(data);
     setStep("preview");
@@ -2953,6 +2978,8 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
     await removeCollabAgendaMember(agenda.id, mUid);
     setMembers(prev => prev.filter(m => m.uid !== mUid));
     setRemovingUid(null);
+    // Se o próprio usuário saiu, fechar o modal
+    if (mUid === user.uid) onClose();
   };
 
   const roleColor = { owner:"#f59e0b", editor:"#60a5fa" };
@@ -3011,7 +3038,10 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
                 <button onClick={handleCopy} style={{padding:"13px 0",borderRadius:12,border:"1px solid rgba(59,130,246,0.35)",cursor:"pointer",background:copied?"rgba(59,130,246,0.2)":"rgba(59,130,246,0.08)",color:"#60a5fa",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1}}>
                   {copied?"COPIADO!":"COMPARTILHAR CODIGO"}
                 </button>
-                <button onClick={handleGenerateCode} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Gerar novo codigo</button>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={handleGenerateCode} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Novo</button>
+                  <button onClick={async()=>{ if(!code) return; const fb=getFirebase(); if(!fb) return; try{await fb.deleteDoc(fb.doc(fb.db,"collab_agenda_invites",code));}catch{} setCode(""); }} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.06)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Revogar</button>
+                </div>
               </>) : (
                 <button onClick={handleGenerateCode} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1.5}}>GERAR CODIGO DE CONVITE</button>
               )}
@@ -3369,7 +3399,22 @@ function MensalistasScreen({ onBack, uid, user }) {
 }
 
 // ─── Agenda Detail Screen ─────────────────────────────────────────────────────
-function AgendaDetailScreen({ agenda, uid, user, onBack }) {
+function AgendaDetailScreen({ agenda: agendaProp, uid, user, onBack }) {
+  // Para agendas colaborativas, manter os dados em tempo real via onSnapshot
+  const [agenda, setAgenda] = React.useState(agendaProp);
+  useEffect(() => {
+    setAgenda(agendaProp); // sync quando a prop muda (ex: lista atualiza)
+  }, [agendaProp.id]);
+  useEffect(() => {
+    if (!agendaProp.isCollab) return;
+    const fb = getFirebase(); if (!fb) return;
+    const unsub = fb.onSnapshot(
+      fb.doc(fb.db, "collab_agendas", String(agendaProp.id)),
+      snap => { if (snap.exists()) setAgenda({ id: snap.id, ...snap.data(), isCollab: true }); },
+      () => {}
+    );
+    return () => unsub();
+  }, [agendaProp.id, agendaProp.isCollab]);
 // ─── Mensalidade Tab ─────────────────────────────────────────────────────────
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
@@ -3420,7 +3465,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
       setLoading(false);
     }, () => setLoading(false));
     return () => unsub();
-  }, [mesAnoKey, uid]);
+  }, [mesAnoKey, uid, docPath]);;
 
   const save = async (next) => {
     const fb = getFirebase();
@@ -5352,7 +5397,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                     </span>
                     {team.isCollab&&(
                       <span style={{display:"flex",alignItems:"center",gap:3,background:"rgba(59,130,246,0.12)",color:"#60a5fa",border:"1px solid rgba(59,130,246,0.25)",borderRadius:6,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
-                        🤝 Colaborativo
+                        🤝 {team.ownerUid===user?.uid?"Colab · Dono":"Colab · Editor"}
                       </span>
                     )}
                   </div>
@@ -5365,8 +5410,13 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                     style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",color:"#34d399"}}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                   </button>
-                  <button onClick={e=>{e.stopPropagation();setConfirmDel(team.id);}} aria-label={`Excluir ${team.name}`} className="tc-action-btn"
-                    style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171"}}><Ico.Trash/></button>
+                  <button onClick={e=>{e.stopPropagation();setConfirmDel(team.id);}} aria-label={team.isCollab&&team.ownerUid!==user?.uid?`Sair de ${team.name}`:`Excluir ${team.name}`} className="tc-action-btn"
+                    title={team.isCollab?(team.ownerUid===user?.uid?"Encerrar colaboração":"Sair do time"):undefined}
+                    style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171"}}>
+                    {team.isCollab&&team.ownerUid!==user?.uid
+                      ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                      : <Ico.Trash/>}
+                  </button>
                 </div>
               </div>
 
@@ -5388,24 +5438,34 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
       </button>
 
       {/* Confirm delete overlay */}
-      {confirmDel&&(
-        <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.75)",backdropFilter:"blur(6px)",padding:20}}
-          onClick={()=>setConfirmDel(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#0c1b14",border:"1px solid rgba(239,68,68,0.25)",borderRadius:22,padding:"28px 22px",maxWidth:320,width:"100%",textAlign:"center",boxShadow:"0 24px 64px rgba(0,0,0,0.9)"}}>
-            <div style={{width:56,height:56,borderRadius:16,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-            </div>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:8}}>Excluir time?</div>
-            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6,marginBottom:22}}>Esta ação é irreversível. Todos os jogadores e escalações serão perdidos.</div>
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setConfirmDel(null)} style={{flex:1,padding:"13px 0",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,transition:"background 0.15s"}}>Cancelar</button>
-              <button onClick={()=>{onDeleteTeam(confirmDel);setConfirmDel(null);}} style={{flex:1,padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#dc2626,#ef4444)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:800,boxShadow:"0 4px 16px rgba(220,38,38,0.4)",transition:"transform 0.15s"}}
-                onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
-                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>Excluir</button>
+      {confirmDel&&(()=>{
+        const delTeam = teams.find(t => t.id === confirmDel);
+        const isCollabTeam = delTeam?.isCollab;
+        const isCollabOwner = isCollabTeam && delTeam?.ownerUid === user?.uid;
+        const title = isCollabTeam ? (isCollabOwner ? "Encerrar colaboração?" : "Sair do time?") : "Excluir time?";
+        const desc  = isCollabTeam
+          ? (isCollabOwner ? "O time colaborativo será removido para todos os membros. Esta ação é irreversível." : "Você sairá deste time colaborativo. O time continuará existindo para os outros membros.")
+          : "Esta ação é irreversível. Todos os jogadores e escalações serão perdidos.";
+        const btnLabel = isCollabTeam ? (isCollabOwner ? "Encerrar" : "Sair") : "Excluir";
+        return (
+          <div style={{position:"fixed",inset:0,zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.75)",backdropFilter:"blur(6px)",padding:20}}
+            onClick={()=>setConfirmDel(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:"#0c1b14",border:"1px solid rgba(239,68,68,0.25)",borderRadius:22,padding:"28px 22px",maxWidth:320,width:"100%",textAlign:"center",boxShadow:"0 24px 64px rgba(0,0,0,0.9)"}}>
+              <div style={{width:56,height:56,borderRadius:16,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="1.8" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              </div>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:8}}>{title}</div>
+              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6,marginBottom:22}}>{desc}</div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setConfirmDel(null)} style={{flex:1,padding:"13px 0",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Cancelar</button>
+                <button onClick={()=>{onDeleteTeam(confirmDel);setConfirmDel(null);}} style={{flex:1,padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#dc2626,#ef4444)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:800,boxShadow:"0 4px 16px rgba(220,38,38,0.4)"}}
+                  onMouseEnter={e=>e.currentTarget.style.transform="scale(1.02)"}
+                  onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>{btnLabel}</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Share modal */}
       {shareTeam&&(
@@ -10262,11 +10322,9 @@ function App() {
                       collabUnsubsRef.current[ct.id] = subscribeCollabTeam(ct.id, ({ type, data }) => {
                         setTeams(prev => prev.map(t => {
                           if (String(t.id) !== String(ct.id)) return t;
+                          if (type === "deleted") { setTeams(prev => prev.filter(tm => String(tm.id) !== String(ct.id))); setActiveTeamId(prev => String(prev) === String(ct.id) ? null : prev); return t; }
                           if (type === "meta") return { ...t, ...data };
-                          if (type === "players") {
-                            const activeLineup = getActiveLineup(t, t.lineups || []);
-                            return { ...t, players: data };
-                          }
+                          if (type === "players") return { ...t, players: data };
                           if (type === "lineups") {
                             const activeLineup = getActiveLineup(t, data);
                             return { ...t, lineups: data, formation: activeLineup?.formation || t.formation, lineup: activeLineup?.entries || t.lineup };
@@ -10348,9 +10406,11 @@ function App() {
   }, []);
 
   // ── Persist to localStorage whenever teams change ──────────────────────────
+  // Times colaborativos são carregados sempre do Firestore; não persistir
+  // localmente para evitar exibir um time collab vazio quando offline.
   useEffect(() => {
     if (!loaded) return;
-    saveDataLocal({ teams });
+    saveDataLocal({ teams: teams.filter(t => !t.isCollab) });
   }, [teams, loaded]);
 
   // ── Save a single team metadata to cloud (debounced 600ms) ──────────────────
@@ -10391,7 +10451,10 @@ function App() {
     const handleUnload = (e) => {
       if (!loaded || !user) return;
       saveDataLocal({ teams });
-      teams.forEach(t => saveTeamCloud(user.uid, t));
+      teams.forEach(t => {
+        if (t.isCollab) saveCollabTeamMeta(t);
+        else saveTeamCloud(user.uid, t);
+      });
       // saveTeamCloud above is fire-and-forget — beforeunload can't reliably
       // await promises, so on a slow connection it may not finish before the
       // tab closes. Warn the user if a sync is still pending/in-flight or
@@ -10411,7 +10474,14 @@ function App() {
     if (!user || !loaded) return false;
     saveDataLocal({ teams });
     startSyncing();
-    const ok = await saveAllTeamsCloud(user.uid, teams);
+    // Separar times pessoais de colaborativos — cada um usa o path correto
+    const personalTeams = teams.filter(t => !t.isCollab);
+    const collabTeams   = teams.filter(t =>  t.isCollab);
+    const [ok1, ok2] = await Promise.all([
+      personalTeams.length > 0 ? saveAllTeamsCloud(user.uid, personalTeams) : Promise.resolve(true),
+      collabTeams.length   > 0 ? Promise.all(collabTeams.map(t => saveCollabTeamMeta(t))).then(rs => rs.every(Boolean)) : Promise.resolve(true),
+    ]);
+    const ok = ok1 && ok2;
     if (ok) {
       // Force-save covers everything pending — clear the counter entirely
       pendingOpsRef.current = 0;
@@ -10562,7 +10632,10 @@ function App() {
     setTeams(prev => prev.map(t => t.id === editingTeam.id ? updated : t));
     setEditingTeam(null);
     setToast("Time atualizado!");
-    if (uid) saveTeamCloud(uid, updated);
+    if (uid) {
+      if (updated.isCollab) saveCollabTeamMeta(updated);
+      else saveTeamCloud(uid, updated);
+    }
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -10861,6 +10934,7 @@ function App() {
       {showJoinCollab && (
         <JoinCollabModal
           user={user}
+          initialCode={joinCollabCode}
           onClose={()=>{ setShowJoinCollab(false); setJoinCollabCode(""); }}
           onJoined={async (teamId) => {
             // Carregar o time colaborativo que acabou de entrar
