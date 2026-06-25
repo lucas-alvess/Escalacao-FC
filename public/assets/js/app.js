@@ -2232,16 +2232,23 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   };
 
   // Sync novos mensalistas cadastrados na agenda
+  // Usa ref para evitar loop: só salva quando há jogadores realmente novos
+  // e evita re-trigger causado pelo proprio save
+  const syncedKeyRef = useRef(null);
   useEffect(() => {
     if (!data || loading) return;
+    // Chave única que representa o estado atual: mês+jogadores
+    const key = mesAnoKey + "_" + mensalistasPlayers.map(p=>p.id).join(",");
+    if (syncedKeyRef.current === key) return;
     const existingIds = new Set((data.pagamentos||[]).map(p=>p.id));
     const novos = mensalistasPlayers.filter(p=>!existingIds.has(p.id));
+    syncedKeyRef.current = key;
     if (novos.length > 0) {
       const added = novos.map(p=>({ id:p.id, name:p.name, tipo:"mensalista", pago:false, dataPagamento:"", obs:"" }));
       const next = { ...data, pagamentos: [...(data.pagamentos||[]), ...added] };
       setData(next); save(next);
     }
-  }, [mensalistasPlayers.length]);
+  }, [data, mensalistasPlayers.length, mesAnoKey, loading]);
 
   if (!data && !loading) return null;
 
