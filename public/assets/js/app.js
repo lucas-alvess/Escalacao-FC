@@ -1004,10 +1004,10 @@ function migrateLineup(oldLineup, oldSlots, newSlots) {
 const POSITIONS = ["Goleiro","Lateral Direito","Lateral Esquerdo","Zagueiro","Volante","Meio-campo","Meia Atacante","Ponta Direita","Ponta Esquerda","Centroavante","Atacante","Segundo Volante","Líbero"];
 
 const PLAYER_STATUSES = [
-  { id:"active",    label:"Ativo",      emoji:"🟢", color:"#34d399" },
-  { id:"injured",   label:"Lesionado",  emoji:"🤕", color:"#f97316" },
-  { id:"suspended", label:"Suspenso",   emoji:"🟥", color:"#f87171" },
-  { id:"inactive",  label:"Inativo",    emoji:"⚫", color:"#6B7280" },
+  { id:"active",    label:"Ativo",      icon:"active",    color:"#34d399" },
+  { id:"injured",   label:"Lesionado",  icon:"injured",   color:"#f97316" },
+  { id:"suspended", label:"Suspenso",   icon:"suspended", color:"#f87171" },
+  { id:"inactive",  label:"Inativo",    icon:"inactive",  color:"#6B7280" },
 ];
 function getPlayerStatus(player) {
   return PLAYER_STATUSES.find(s=>s.id===(player?.status||"active"))||PLAYER_STATUSES[0];
@@ -1758,7 +1758,7 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                     transition:"all 0.15s"
                   }}>
                     {isActive&&<div style={{position:"absolute",top:4,right:4,fontSize:8,fontWeight:900,color:"#1a1a0a",background:"#facc15",borderRadius:4,padding:"1px 4px",fontFamily:"'DM Sans',sans-serif"}}>ATIVO</div>}
-                    {locked&&<div style={{position:"absolute",top:4,left:4,fontSize:11}}>🔒</div>}
+                    {locked&&<div style={{position:"absolute",top:4,left:4}}><Icon id="lock" size={11} style={{color:"#9CA3AF"}}/></div>}
                     <div style={{width:38,height:38,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
                       <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:15,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)"}}>{sampleNum}</span>
                     </div>
@@ -1775,7 +1775,7 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                 transition:"all 0.15s"
               }}>
                 <div style={{width:38,height:38,borderRadius:"50%",border:"2px dashed rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {isPremium?<Ico.Plus/>:"🔒"}
+                  {isPremium?<Ico.Plus/>:<Icon id="lock" size={14} style={{color:"#9CA3AF"}}/>}
                 </div>
                 <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>Novo</span>
               </button>
@@ -2145,7 +2145,7 @@ function MensalistasScreen({ onBack, uid }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:8,position:"relative",zIndex:1 }}>
-          <div style={{ fontSize:32 }}>⚽</div>
+          <div style={{ fontSize:32 }}><Icon id="soccer-ball" size={32} style={{color:"#374ea8"}}/></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#fff",letterSpacing:2 }}>MENSALISTAS</div>
           <div style={{ color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase" }}>Suas Agendas de Futebol</div>
         </div>
@@ -2159,7 +2159,7 @@ function MensalistasScreen({ onBack, uid }) {
           </div>
         ) : agendas.length === 0 ? (
           <div style={{ textAlign:"center",paddingTop:60,color:"#4B5563" }}>
-            <div style={{ fontSize:48,marginBottom:16 }}>📅</div>
+            <div style={{ marginBottom:16 }}><Icon id="calendar" size={48} style={{color:"#4B5563"}}/></div>
             <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#6B7280",letterSpacing:1,marginBottom:8 }}>NENHUMA AGENDA CRIADA</div>
             <div style={{ fontSize:13,color:"#374151",lineHeight:1.6 }}>Crie sua primeira agenda de futebol,<br/>ex: Fut de Terça, Fut de Quinta...</div>
           </div>
@@ -2168,13 +2168,13 @@ function MensalistasScreen({ onBack, uid }) {
             {agendas.map((ag, i) => (
               <div key={ag.id} className="ms-card" style={{ animationDelay:`${i*0.06}s` }} onClick={() => setActiveAgendaId(ag.id)}>
                 <div style={{ display:"flex",alignItems:"center",gap:14 }}>
-                  <div style={{ width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0 }}>⚽</div>
+                  <div style={{ width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}><Icon id="soccer-ball" size={22} style={{color:"#fff"}}/></div>
                   <div style={{ flex:1,minWidth:0 }}>
                     <div style={{ color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1,lineHeight:1.2 }}>{ag.name}</div>
                     <div style={{ display:"flex",gap:10,marginTop:4,flexWrap:"wrap" }}>
-                      {ag.horario && <span style={{ color:"#60a5fa",fontSize:11,fontWeight:600 }}>🕐 {ag.horario}</span>}
-                      {ag.local && <span style={{ color:"#9CA3AF",fontSize:11 }}>📍 {ag.local}</span>}
-                      <span style={{ color:"#9CA3AF",fontSize:11 }}>👥 {(ag.players||[]).length} jogador{(ag.players||[]).length!==1?"es":""}</span>
+                      {ag.horario && <span style={{ color:"#60a5fa",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:3 }}><Icon id="clock" size={11}/> {ag.horario}</span>}
+                      {ag.local && <span style={{ color:"#9CA3AF",fontSize:11,display:"flex",alignItems:"center",gap:3 }}><Icon id="map-pin" size={11}/> {ag.local}</span>}
+                      <span style={{ color:"#9CA3AF",fontSize:11,display:"flex",alignItems:"center",gap:3 }}><Icon id="users" size={11}/> {(ag.players||[]).length} jogador{(ag.players||[]).length!==1?"es":""}</span>
                     </div>
                   </div>
                   <div style={{ display:"flex",alignItems:"center",gap:8 }}>
@@ -2419,7 +2419,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
               {item.pago
                 ? <span style={{ fontSize:10,color:"#34d399",fontWeight:600 }}>✓ Pago{item.dataPagamento?` em ${item.dataPagamento}`:""}</span>
                 : <span style={{ fontSize:10,color:"#6B7280" }}>Aguardando</span>}
-              {item.obs && <span style={{ fontSize:10,color:"#60a5fa" }}>📝 {item.obs.slice(0,22)}{item.obs.length>22?"…":""}</span>}
+              {item.obs && <span style={{ fontSize:10,color:"#60a5fa",display:"flex",alignItems:"center",gap:2 }}><Icon id="memo" size={10}/> {item.obs.slice(0,22)}{item.obs.length>22?"…":""}</span>}
             </div>
           </div>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2" strokeLinecap="round" style={{ transform:isExp?"rotate(90deg)":"none", transition:"transform 0.2s", flexShrink:0 }}><polyline points="9 18 15 12 9 6"/></svg>
@@ -2485,7 +2485,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
 
       {/* Caixa */}
       <div style={{ background:"linear-gradient(135deg,#0a1628,#0d1f38)", border:"1px solid rgba(59,130,246,0.2)", borderRadius:16, padding:"16px" }}>
-        <div className="men-section-title" style={{ color:"#60a5fa" }}>💰 CAIXA DO MÊS</div>
+        <div className="men-section-title" style={{ color:"#60a5fa",display:"flex",alignItems:"center",gap:6 }}><Icon id="money-bag" size={14} style={{color:"#60a5fa"}}/> CAIXA DO MÊS</div>
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
           <div style={{ background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"10px 12px" }}>
             <div style={{ color:"#6B7280",fontSize:10,fontWeight:700 }}>ARRECADADO</div>
@@ -2504,11 +2504,11 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
           <div>
-            <label className="men-label">💵 Saldo em Caixa Anterior (adicionar ao total)</label>
+            <label className="men-label"><Icon id="banknote" size={12}/> Saldo em Caixa Anterior (adicionar ao total)</label>
             <input className="men-input" placeholder="Ex: 50,00" value={saldoCaixaAnterior} onChange={e=>handleSaldoCaixaAnterior(e.target.value)}/>
           </div>
           <div>
-            <label className="men-label">🏟️ Valor do Campo (abater do caixa)</label>
+            <label className="men-label"><Icon id="stadium" size={12}/> Valor do Campo (abater do caixa)</label>
             <input className="men-input" placeholder="Ex: 300,00" value={valorCampo} onChange={e=>handleValorCampo(e.target.value)}/>
           </div>
         </div>
@@ -2517,7 +2517,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
       {/* Mensalistas */}
       <div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-          <div className="men-section-title" style={{ color:"#60a5fa",marginBottom:0 }}>👥 MENSALISTAS ({(data?.pagamentos||[]).length})</div>
+          <div className="men-section-title" style={{ color:"#60a5fa",marginBottom:0,display:"flex",alignItems:"center",gap:6 }}><Icon id="users" size={14} style={{color:"#60a5fa"}}/> MENSALISTAS ({(data?.pagamentos||[]).length})</div>
           <span style={{ fontSize:11,color:"#34d399",fontWeight:700 }}>{pagosMensalistas} pagos</span>
         </div>
         {(data?.pagamentos||[]).length === 0 ? (
@@ -2532,7 +2532,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
       {/* Avulsos */}
       <div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-          <div className="men-section-title" style={{ color:"#FBBF24",marginBottom:0 }}>⚡ AVULSOS ({(data?.avulsos||[]).length})</div>
+          <div className="men-section-title" style={{ color:"#FBBF24",marginBottom:0,display:"flex",alignItems:"center",gap:6 }}><Icon id="lightning" size={14} style={{color:"#FBBF24"}}/> AVULSOS ({(data?.avulsos||[]).length})</div>
           <button onClick={()=>setShowAddAvulso(true)} style={{ background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.3)",borderRadius:8,padding:"5px 12px",color:"#FBBF24",fontSize:11,fontWeight:700,cursor:"pointer" }}>+ Adicionar</button>
         </div>
         {(data?.avulsos||[]).length === 0 ? (
@@ -2547,7 +2547,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
       {/* Gastos */}
       <div>
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-          <div className="men-section-title" style={{ color:"#F87171",marginBottom:0 }}>🧾 GASTOS / SAÍDAS</div>
+          <div className="men-section-title" style={{ color:"#F87171",marginBottom:0,display:"flex",alignItems:"center",gap:6 }}><Icon id="receipt" size={14} style={{color:"#F87171"}}/> GASTOS / SAÍDAS</div>
           <button onClick={()=>setShowGasto(true)} style={{ background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"5px 12px",color:"#F87171",fontSize:11,fontWeight:700,cursor:"pointer" }}>+ Registrar</button>
         </div>
         {(data?.gastos||[]).length === 0 ? (
@@ -2573,7 +2573,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
       {/* ── Extrato para WhatsApp ── */}
       {!loading && data && (
         <div style={{ background:"linear-gradient(135deg,rgba(37,99,235,0.08),rgba(29,78,216,0.04))", border:"1px solid rgba(59,130,246,0.2)", borderRadius:16, padding:"16px" }}>
-          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:15, color:"#60a5fa", letterSpacing:1, marginBottom:10 }}>📋 EXTRATO PARA WHATSAPP</div>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:15, color:"#60a5fa", letterSpacing:1, marginBottom:10, display:"flex",alignItems:"center",gap:6 }}><Icon id="clipboard" size={14} style={{color:"#60a5fa"}}/> EXTRATO PARA WHATSAPP</div>
           <textarea
             readOnly
             value={(() => {
@@ -2836,19 +2836,19 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
 
         <div style={{ textAlign:"center",paddingBottom:16 }}>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:"#fff",letterSpacing:2,lineHeight:1 }}>{agenda.name}</div>
-          <div style={{ color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1,marginTop:4 }}>⚽ AGENDA DE FUTEBOL</div>
+          <div style={{ color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:4 }}><Icon id="soccer-ball" size={11} style={{color:"#374ea8"}}/> AGENDA DE FUTEBOL</div>
         </div>
 
         {/* Tabs */}
         <div style={{ display:"flex",gap:0,borderTop:"1px solid rgba(59,130,246,0.1)",marginTop:4 }}>
           {[
-            { key:"info", label:"Info", icon:"ℹ️" },
-            { key:"players", label:"Jogadores", icon:"👥" },
-            { key:"mensalidade", label:"Mensalidade", icon:"💳" },
-            { key:"export", label:"WhatsApp", icon:"📤" },
+            { key:"info", label:"Info", iconId:"info" },
+            { key:"players", label:"Jogadores", iconId:"users" },
+            { key:"mensalidade", label:"Mensalidade", iconId:"credit-card" },
+            { key:"export", label:"WhatsApp", iconId:"upload" },
           ].map(t => (
             <button key={t.key} className="ad-tab" onClick={() => setTab(t.key)} style={{ color: tab===t.key ? "#60a5fa" : "#6B7280" }}>
-              {t.icon} {t.label}
+              <Icon id={t.iconId} size={14}/> {t.label}
               {tab===t.key && <div style={{ position:"absolute",bottom:0,left:"8%",right:"8%",height:2,background:"linear-gradient(90deg,#1d4ed8,#60a5fa)",borderRadius:2 }}/>}
             </button>
           ))}
@@ -2859,19 +2859,19 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
       {tab === "info" && (
         <div style={{ flex:1,padding:"24px 20px 40px",overflowY:"auto",display:"flex",flexDirection:"column",gap:20 }}>
           <div>
-            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase" }}>📍 Localização do Campo</div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5 }}><Icon id="map-pin" size={11}/> Localização do Campo</div>
             <input className="ad-input" placeholder="Ex: Campo do Zé, Rua das Flores, 120" value={info.local} onChange={e => handleInfoChange("local", e.target.value)}/>
           </div>
           <div>
-            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase" }}>🕐 Horário do Jogo</div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5 }}><Icon id="clock" size={11}/> Horário do Jogo</div>
             <input className="ad-input" placeholder="Ex: Terças às 20h" value={info.horario} onChange={e => handleInfoChange("horario", e.target.value)}/>
           </div>
           <div>
-            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase" }}>💰 Valor da Mensalidade</div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,marginBottom:8,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5 }}><Icon id="money-bag" size={11}/> Valor da Mensalidade</div>
             <input className="ad-input" placeholder="Ex: R$ 80,00" value={info.mensalidade} onChange={e => handleInfoChange("mensalidade", e.target.value)}/>
           </div>
           <div style={{ background:"linear-gradient(135deg,rgba(59,130,246,0.08),rgba(29,78,216,0.05))",border:"1px solid rgba(59,130,246,0.15)",borderRadius:14,padding:"14px 16px",display:"flex",alignItems:"center",gap:10 }}>
-            <span style={{ fontSize:18 }}>💡</span>
+            <span style={{ fontSize:18 }}><Icon id="bulb" size={18} style={{color:"#60a5fa"}}/></span>
             <span style={{ color:"#6B7280",fontSize:12,lineHeight:1.5 }}>As informações são salvas automaticamente enquanto você digita.</span>
           </div>
         </div>
@@ -2882,7 +2882,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
         <div style={{ flex:1,padding:"20px 20px 100px",overflowY:"auto" }}>
           {players.length === 0 ? (
             <div style={{ textAlign:"center",paddingTop:50,color:"#4B5563" }}>
-              <div style={{ fontSize:44,marginBottom:12 }}>👤</div>
+              <div style={{ marginBottom:12 }}><Icon id="person" size={44} style={{color:"#4B5563"}}/></div>
               <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#6B7280",letterSpacing:1,marginBottom:6 }}>NENHUM JOGADOR</div>
               <div style={{ fontSize:12,color:"#374151" }}>Adicione os mensalistas desta agenda</div>
             </div>
@@ -2933,7 +2933,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
 
           {/* Configurações da lista */}
           <div style={{ background:"rgba(255,255,255,0.03)",border:"1px solid rgba(59,130,246,0.15)",borderRadius:16,padding:"18px 16px",display:"flex",flexDirection:"column",gap:14 }}>
-            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:2 }}>⚙️ Configurar Lista</div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:2,display:"flex",alignItems:"center",gap:5 }}><Icon id="settings" size={12}/> Configurar Lista</div>
 
             {[
               { label:"Vagas — Confirmados", value:numConfirmados, set:setNumConfirmados, color:"#34d399" },
@@ -2953,7 +2953,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
 
           {/* Preview da lista */}
           <div>
-            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8 }}>👁️ Pré-visualização</div>
+            <div style={{ color:"#9CA3AF",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8,display:"flex",alignItems:"center",gap:5 }}><Icon id="eye" size={11}/> Pré-visualização</div>
             <textarea
               className="ad-preview"
               readOnly
@@ -2983,7 +2983,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
           </div>
 
           <div style={{ background:"rgba(37,211,102,0.06)",border:"1px solid rgba(37,211,102,0.15)",borderRadius:12,padding:"12px 14px",display:"flex",gap:8,alignItems:"flex-start" }}>
-            <span style={{ fontSize:16 }}>💡</span>
+            <span style={{ fontSize:16 }}><Icon id="bulb" size={16} style={{color:"#37d399"}}/></span>
             <span style={{ color:"#6B7280",fontSize:12,lineHeight:1.6 }}>A lista é gerada com vagas em branco para os jogadores preencherem no grupo. Ajuste as quantidades acima conforme sua pelada.</span>
           </div>
         </div>
@@ -3052,7 +3052,7 @@ function SorteioListaScreen({ onBack, uid }) {
 
   const SKILL_LABELS = ["Fraco","Regular","Bom","Ótimo","Craque"];
   const SKILL_COLORS = ["#6B7280","#60a5fa","#34d399","#f59e0b","#f43f5e"];
-  const SKILL_EMOJI  = ["😐","🙂","😊","😎","⭐"];
+  const SKILL_EMOJI  = ["skill-1","skill-2","skill-3","skill-4","star"];
 
   // ── Steps: "setup" | "players" | "result"
   const [step, setStep] = useState("setup");
@@ -3250,7 +3250,7 @@ function SorteioListaScreen({ onBack, uid }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-          <div style={{ fontSize:36 }}>🎲</div>
+          <div style={{ marginBottom:8 }}><Icon id="dice" size={36} style={{color:"#a855f7"}}/></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure o sorteio</div>
         </div>
@@ -3267,7 +3267,7 @@ function SorteioListaScreen({ onBack, uid }) {
               background: drawMode==="balanced" ? "rgba(52,211,153,0.1)" : "rgba(255,255,255,0.03)",
               color: drawMode==="balanced" ? "#34d399" : "#9CA3AF"
             }}>
-              <span style={{ fontSize:22 }}>⚖️</span>
+              <Icon id="balance" size={22}/>
               <span>Equilibrado</span>
               <span style={{ fontSize:10, fontWeight:400, opacity:0.7, textAlign:"center" }}>Distribui bons e fracos nos times</span>
             </button>
@@ -3276,7 +3276,7 @@ function SorteioListaScreen({ onBack, uid }) {
               background: drawMode==="random" ? "rgba(168,85,247,0.1)" : "rgba(255,255,255,0.03)",
               color: drawMode==="random" ? "#a855f7" : "#9CA3AF"
             }}>
-              <span style={{ fontSize:22 }}>🎲</span>
+              <Icon id="dice" size={22}/>
               <span>Aleatório</span>
               <span style={{ fontSize:10, fontWeight:400, opacity:0.7, textAlign:"center" }}>Sorteio puro sem considerar nível</span>
             </button>
@@ -3344,7 +3344,7 @@ function SorteioListaScreen({ onBack, uid }) {
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700 }}>
             <span style={{ color: players.length >= totalSlots ? "#34d399" : "#f59e0b" }}>{players.length}</span>
             {" "}/ {totalSlots} vagas
-            {drawMode === "balanced" && <span style={{ color:"#6B7280", marginLeft:6 }}>· Modo Equilibrado ⚖️</span>}
+            {drawMode === "balanced" && <span style={{ color:"#6B7280", marginLeft:6, display:"inline-flex",alignItems:"center",gap:3 }}>· <Icon id="balance" size={11}/> Modo Equilibrado</span>}
           </div>
         </div>
       </div>
@@ -3354,10 +3354,10 @@ function SorteioListaScreen({ onBack, uid }) {
         {/* Fontes */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
           <button onClick={() => setShowAgendaModal(true)} style={{ padding:"12px 8px", borderRadius:12, border:"1px solid rgba(52,211,153,0.25)", background:"rgba(52,211,153,0.07)", color:"#34d399", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-            <span style={{ fontSize:20 }}>📋</span><span>Da Agenda</span>
+            <Icon id="clipboard" size={20}/><span>Da Agenda</span>
           </button>
           <button onClick={() => { setShowAvulsoInput(v=>!v); setShowManualInput(false); }} style={{ padding:"12px 8px", borderRadius:12, border:"1px solid rgba(251,191,36,0.25)", background:"rgba(251,191,36,0.07)", color:"#FBBF24", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
-            <span style={{ fontSize:20 }}>⚡</span><span>Avulso</span>
+            <Icon id="lightning" size={20}/><span>Avulso</span>
           </button>
         </div>
 
@@ -3374,7 +3374,7 @@ function SorteioListaScreen({ onBack, uid }) {
               <div style={{ color:"#6B7280", fontSize:10, fontWeight:700, letterSpacing:0.8, marginBottom:6 }}>NÍVEL DE HABILIDADE</div>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                 <SkillBar value={avulsoSkill} onChange={setAvulsoSkill}/>
-                <span style={{ color:SKILL_COLORS[avulsoSkill-1], fontSize:12, fontWeight:700 }}>{SKILL_EMOJI[avulsoSkill-1]} {SKILL_LABELS[avulsoSkill-1]}</span>
+                <span style={{ color:SKILL_COLORS[avulsoSkill-1], fontSize:12, fontWeight:700, display:"flex",alignItems:"center",gap:4 }}><Icon id={SKILL_EMOJI[avulsoSkill-1]} size={14}/> {SKILL_LABELS[avulsoSkill-1]}</span>
               </div>
             </div>
           </div>
@@ -3383,7 +3383,7 @@ function SorteioListaScreen({ onBack, uid }) {
         {/* Input manual */}
         <div style={{ borderTop:"1px solid rgba(255,255,255,0.05)", paddingTop:10 }}>
           <button onClick={() => { setShowManualInput(v=>!v); setShowAvulsoInput(false); }} style={{ width:"100%", padding:"10px", borderRadius:10, border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.03)", color:"#9CA3AF", fontFamily:"'DM Sans',sans-serif", fontWeight:600, fontSize:12, cursor:"pointer" }}>
-            ✏️ Adicionar na lista (sem cadastro)
+            <Icon id="edit" size={14}/> Adicionar na lista (sem cadastro)
           </button>
           {showManualInput && (
             <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(255,255,255,0.08)", borderRadius:12, padding:12, marginTop:8, display:"flex", flexDirection:"column", gap:10 }}>
@@ -3397,7 +3397,7 @@ function SorteioListaScreen({ onBack, uid }) {
                 <div style={{ color:"#6B7280", fontSize:10, fontWeight:700, letterSpacing:0.8, marginBottom:6 }}>NÍVEL DE HABILIDADE</div>
                 <div style={{ display:"flex", alignItems:"center", gap:10 }}>
                   <SkillBar value={manualSkill} onChange={setManualSkill}/>
-                  <span style={{ color:SKILL_COLORS[manualSkill-1], fontSize:12, fontWeight:700 }}>{SKILL_EMOJI[manualSkill-1]} {SKILL_LABELS[manualSkill-1]}</span>
+                  <span style={{ color:SKILL_COLORS[manualSkill-1], fontSize:12, fontWeight:700, display:"flex",alignItems:"center",gap:4 }}><Icon id={SKILL_EMOJI[manualSkill-1]} size={14}/> {SKILL_LABELS[manualSkill-1]}</span>
                 </div>
               </div>
             </div>
@@ -3411,8 +3411,8 @@ function SorteioListaScreen({ onBack, uid }) {
             {players.map(p => (
               <div key={p.id}>
                 <div className="sl-player-row">
-                  <div style={{ width:24, height:24, borderRadius:6, background: p.source==="agenda"?"rgba(52,211,153,0.15)":p.source==="avulso"?"rgba(251,191,36,0.15)":"rgba(96,165,250,0.15)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, flexShrink:0 }}>
-                    {p.source==="agenda"?"📋":p.source==="avulso"?"⚡":"✏️"}
+                  <div style={{ width:24, height:24, borderRadius:6, background: p.source==="agenda"?"rgba(52,211,153,0.15)":p.source==="avulso"?"rgba(251,191,36,0.15)":"rgba(96,165,250,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                    <Icon id={p.source==="agenda"?"clipboard":p.source==="avulso"?"lightning":"edit"} size={13}/>
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ color:"#E5E7EB", fontSize:13, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</div>
@@ -3421,13 +3421,13 @@ function SorteioListaScreen({ onBack, uid }) {
                       <span style={{ fontSize:10, color:SKILL_COLORS[(p.skill||3)-1], fontWeight:700 }}>{SKILL_LABELS[(p.skill||3)-1]}</span>
                     </div>
                   </div>
-                  <button onClick={() => setEditingSkill(editingSkill===p.id?null:p.id)} style={{ background:"none", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, color:"#6B7280", cursor:"pointer", fontSize:11, padding:"3px 7px" }}>✏️</button>
+                  <button onClick={() => setEditingSkill(editingSkill===p.id?null:p.id)} style={{ background:"none", border:"1px solid rgba(255,255,255,0.1)", borderRadius:6, color:"#6B7280", cursor:"pointer", fontSize:11, padding:"3px 7px", display:"flex",alignItems:"center",gap:3 }}><Icon id="edit" size={11}/></button>
                   <button onClick={() => removePlayer(p.id)} style={{ background:"none", border:"none", color:"#EF4444", cursor:"pointer", fontSize:16, padding:"2px 4px", lineHeight:1 }}>×</button>
                 </div>
                 {editingSkill === p.id && (
                   <div style={{ margin:"4px 0 0 34px", padding:"10px 12px", background:"rgba(255,255,255,0.04)", borderRadius:10, display:"flex", alignItems:"center", gap:10 }}>
                     <SkillBar value={p.skill||3} onChange={v => updateSkill(p.id, v)}/>
-                    <span style={{ fontSize:11, color:SKILL_COLORS[(p.skill||3)-1], fontWeight:700 }}>{SKILL_EMOJI[(p.skill||3)-1]} {SKILL_LABELS[(p.skill||3)-1]}</span>
+                    <span style={{ fontSize:11, color:SKILL_COLORS[(p.skill||3)-1], fontWeight:700, display:"flex",alignItems:"center",gap:4 }}><Icon id={SKILL_EMOJI[(p.skill||3)-1]} size={13}/> {SKILL_LABELS[(p.skill||3)-1]}</span>
                   </div>
                 )}
               </div>
@@ -3449,7 +3449,7 @@ function SorteioListaScreen({ onBack, uid }) {
           background: players.length>=2 ? (drawMode==="balanced"?"linear-gradient(135deg,#059669,#34d399)":"linear-gradient(135deg,#7c3aed,#a855f7)") : "rgba(255,255,255,0.05)",
           color: players.length>=2?"#fff":"#4B5563", fontFamily:"'Bebas Neue',sans-serif", fontSize:20, letterSpacing:1.5, cursor: players.length>=2?"pointer":"not-allowed"
         }}>
-          {drawMode==="balanced"?"⚖️ SORTEAR EQUILIBRADO":"🎲 SORTEAR ALEATÓRIO"}
+          {drawMode==="balanced"?<><Icon id="balance" size={20}/> SORTEAR EQUILIBRADO</>:<><Icon id="dice" size={20}/> SORTEAR ALEATÓRIO</>}
         </button>
       </div>
 
@@ -3490,9 +3490,9 @@ function SorteioListaScreen({ onBack, uid }) {
       <div style={{ padding:"52px 20px 16px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={resorteio}/>
         <div style={{ textAlign:"center" }}>
-          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:24, color:"#fff", letterSpacing:2 }}>TIMES SORTEADOS 🎉</div>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:24, color:"#fff", letterSpacing:2 }}>TIMES SORTEADOS</div>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:6, marginTop:2 }}>
-            <span style={{ fontSize:11, color:"#6B7280", fontWeight:600 }}>{lastMode==="balanced"?"⚖️ Equilibrado":"🎲 Aleatório"}</span>
+            <span style={{ fontSize:11, color:"#6B7280", fontWeight:600, display:"flex",alignItems:"center",gap:4 }}>{lastMode==="balanced"?<><Icon id="balance" size={12}/> Equilibrado</>:<><Icon id="dice" size={12}/> Aleatório</>}</span>
             <span style={{ color:"#374151" }}>·</span>
             <span style={{ fontSize:11, color:"#34d399", fontWeight:600 }}>Toque para mover jogador</span>
           </div>
@@ -3508,8 +3508,8 @@ function SorteioListaScreen({ onBack, uid }) {
               <div style={{ marginLeft:"auto", display:"flex", gap:8, alignItems:"center" }}>
                 <span style={{ fontSize:10, color:"#6B7280", fontWeight:600 }}>{team.players.length} jog.</span>
                 {lastMode==="balanced" && team.players.length > 0 && (
-                  <span style={{ fontSize:10, fontWeight:700, color:team.color, background:`${team.color}18`, padding:"2px 7px", borderRadius:6 }}>
-                    ⭐ {teamSkillAvg(team)}
+                  <span style={{ fontSize:10, fontWeight:700, color:team.color, background:`${team.color}18`, padding:"2px 7px", borderRadius:6, display:"flex",alignItems:"center",gap:3 }}>
+                    <Icon id="star" size={10}/> {teamSkillAvg(team)}
                   </span>
                 )}
               </div>
@@ -3519,7 +3519,7 @@ function SorteioListaScreen({ onBack, uid }) {
                 <div key={p.id} className="sl-p-chip" onClick={() => setManualAssign({ playerId:p.id, playerName:p.name })}>
                   <div style={{ width:20, height:20, borderRadius:"50%", background:team.color, display:"flex", alignItems:"center", justifyContent:"center", fontSize:9, fontWeight:700, color:"#000", flexShrink:0 }}>{pi+1}</div>
                   <span style={{ flex:1, color:"#E5E7EB", fontSize:13 }}>{p.name}</span>
-                  <span style={{ fontSize:10, color:SKILL_COLORS[(p.skill||3)-1], fontWeight:700, marginRight:4 }}>{SKILL_EMOJI[(p.skill||3)-1]}</span>
+                  <Icon id={SKILL_EMOJI[(p.skill||3)-1]} size={12} style={{color:SKILL_COLORS[(p.skill||3)-1],marginRight:4}}/>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2" strokeLinecap="round"><path d="M15 3h6v6M14 10l6.1-6.1M9 21H3v-6M10 14l-6.1 6.1"/></svg>
                 </div>
               ))}
@@ -3532,11 +3532,11 @@ function SorteioListaScreen({ onBack, uid }) {
       {/* Botões fixos */}
       <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"12px 20px 32px", background:"linear-gradient(to top,#050c0a 60%,transparent)", zIndex:50, display:"flex", flexDirection:"column", gap:8 }}>
         <div style={{ display:"flex", gap:8 }}>
-          <button onClick={() => doSorteio("balanced")} style={{ flex:1, padding:"12px 8px", borderRadius:12, border:`2px solid ${lastMode==="balanced"?"#34d399":"rgba(52,211,153,0.2)"}`, background:lastMode==="balanced"?"rgba(52,211,153,0.12)":"rgba(255,255,255,0.03)", color:lastMode==="balanced"?"#34d399":"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer" }}>
-            ⚖️ Equilibrado
+          <button onClick={() => doSorteio("balanced")} style={{ flex:1, padding:"12px 8px", borderRadius:12, border:`2px solid ${lastMode==="balanced"?"#34d399":"rgba(52,211,153,0.2)"}`, background:lastMode==="balanced"?"rgba(52,211,153,0.12)":"rgba(255,255,255,0.03)", color:lastMode==="balanced"?"#34d399":"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer", display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}>
+            <Icon id="balance" size={14}/> Equilibrado
           </button>
-          <button onClick={() => doSorteio("random")} style={{ flex:1, padding:"12px 8px", borderRadius:12, border:`2px solid ${lastMode==="random"?"#a855f7":"rgba(168,85,247,0.2)"}`, background:lastMode==="random"?"rgba(168,85,247,0.12)":"rgba(255,255,255,0.03)", color:lastMode==="random"?"#a855f7":"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer" }}>
-            🎲 Aleatório
+          <button onClick={() => doSorteio("random")} style={{ flex:1, padding:"12px 8px", borderRadius:12, border:`2px solid ${lastMode==="random"?"#a855f7":"rgba(168,85,247,0.2)"}`, background:lastMode==="random"?"rgba(168,85,247,0.12)":"rgba(255,255,255,0.03)", color:lastMode==="random"?"#a855f7":"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:12, cursor:"pointer", display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}>
+            <Icon id="dice" size={14}/> Aleatório
           </button>
         </div>
         <button className="sl-btn" style={{ background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)", color:"#9CA3AF", fontSize:13 }} onClick={startOver}>
@@ -3800,7 +3800,7 @@ function SorteioTampinhasScreen({ onBack }) {
           </div>
           <div style={{ color:"#6B7280", fontSize:11, fontWeight:700, marginTop:2 }}>
             {done
-              ? <span style={{ color:"#34d399" }}>Todos os times formados! ✅</span>
+              ? <span style={{ color:"#34d399", display:"inline-flex",alignItems:"center",gap:4 }}><Icon id="check-circle" size={14}/> Todos os times formados!</span>
               : <span><span style={{ color:"#f59e0b" }}>{drawnCount}</span> / {totalSlots} jogadores sorteados</span>}
           </div>
         </div>
@@ -3875,7 +3875,7 @@ function SorteioTampinhasScreen({ onBack }) {
             </div>
           ) : (
             <div style={{ textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:16 }}>
-              <div style={{ fontSize:60 }}>🎉</div>
+              <Icon id="party" size={60} style={{color:"#34d399"}}/>
               <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color:"#34d399", letterSpacing:2 }}>TIMES FORMADOS!</div>
             </div>
           )}
@@ -3898,12 +3898,12 @@ function SorteioTampinhasScreen({ onBack }) {
         {/* Botões de controle */}
         <div style={{ width:"100%", display:"flex", gap:8, marginTop:16 }}>
           {done && (
-            <button onClick={restartDraw} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(245,158,11,0.3)", background:"rgba(245,158,11,0.08)", color:"#f59e0b", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:13, cursor:"pointer" }}>
-              🔁 Ressortear
+            <button onClick={restartDraw} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(245,158,11,0.3)", background:"rgba(245,158,11,0.08)", color:"#f59e0b", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}>
+              <Icon id="repeat" size={14}/> Ressortear
             </button>
           )}
-          <button onClick={reset} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.03)", color:"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:13, cursor:"pointer" }}>
-            ⚙️ Reconfigurar
+          <button onClick={reset} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.03)", color:"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:13, cursor:"pointer", display:"flex",alignItems:"center",justifyContent:"center",gap:6 }}>
+            <Icon id="settings" size={14}/> Reconfigurar
           </button>
         </div>
       </div>
@@ -4319,13 +4319,13 @@ Válido por 24h — abra o app e clique em IMPORTAR!`;
     }
   };
 
-  const OptionRow = ({k, emoji, label, desc}) => (
+  const OptionRow = ({k, icon, label, desc}) => (
     <button onClick={()=>toggle(k)} style={{
       display:"flex",alignItems:"center",gap:12,padding:"10px 12px",borderRadius:11,border:"1px solid",cursor:"pointer",textAlign:"left",
       borderColor:options[k]?"rgba(52,211,153,0.35)":"rgba(255,255,255,0.08)",
       background:options[k]?"rgba(52,211,153,0.07)":"rgba(255,255,255,0.02)",transition:"all 0.12s"
     }}>
-      <span style={{fontSize:20}}>{emoji}</span>
+      <Icon id={icon} size={20} style={{color:options[k]?"#34d399":"#6B7280",flexShrink:0}}/>
       <div style={{flex:1}}>
         <div style={{color:options[k]?"#e5e7eb":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>{label}</div>
         <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{desc}</div>
@@ -4359,18 +4359,18 @@ Válido por 24h — abra o app e clique em IMPORTAR!`;
             <div style={{display:"flex",flexDirection:"column",gap:7}}>
               <div style={{padding:"9px 12px",borderRadius:11,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
                 <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
-                  <span>👕</span> Elenco (sempre incluído)
+                  <Icon id="jersey" size={16} style={{color:"#34d399"}}/> Elenco (sempre incluído)
                 </div>
                 <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Nome, posição, pé, estrelas e status de todos os jogadores</div>
               </div>
-              <OptionRow k="includeLineups" emoji="📋" label="Escalações salvas" desc="Todas as formações e posições definidas"/>
-              <OptionRow k="includeStats" emoji="📊" label="Estatísticas" desc="Gols, assistências e presenças dos jogadores"/>
-              <OptionRow k="includeMatches" emoji="📅" label="Calendário de partidas" desc="Histórico de jogos e resultados"/>
+              <OptionRow k="includeLineups" icon="clipboard" label="Escalações salvas" desc="Todas as formações e posições definidas"/>
+              <OptionRow k="includeStats" icon="chart-bar" label="Estatísticas" desc="Gols, assistências e presenças dos jogadores"/>
+              <OptionRow k="includeMatches" icon="calendar" label="Calendário de partidas" desc="Histórico de jogos e resultados"/>
             </div>
           </div>
 
           <div style={{padding:"10px 12px",background:"rgba(250,204,21,0.06)",borderRadius:10,border:"1px solid rgba(250,204,21,0.15)"}}>
-            <div style={{color:"#fbbf24",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>⏱ Código válido por 24 horas</div>
+            <div style={{color:"#fbbf24",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon id="stopwatch" size={11}/> Código válido por 24 horas</div>
             <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>O outro usuário receberá uma cópia independente — alterações dele não afetam seu time.</div>
           </div>
 
@@ -4391,7 +4391,7 @@ Válido por 24h — abra o app e clique em IMPORTAR!`;
 
         {step==="done"&&(<>
           <div style={{textAlign:"center",padding:"8px 0"}}>
-            <div style={{fontSize:48,marginBottom:8}}>🔗</div>
+            <Icon id="link" size={48} style={{color:"#34d399",marginBottom:8}}/>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>CÓDIGO GERADO!</div>
             <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Envie para o outro usuário do Escalação FC</div>
           </div>
@@ -4405,7 +4405,7 @@ Válido por 24h — abra o app e clique em IMPORTAR!`;
           </div>
 
           <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
-            <span style={{color:"#f87171",fontSize:12}}>⏱</span>
+            <span style={{color:"#f87171",fontSize:12,display:"flex",alignItems:"center"}}><Icon id="stopwatch" size={12}/></span>
             <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Expira em 24h · cópia independente do seu time</span>
           </div>
 
@@ -4413,13 +4413,13 @@ Válido por 24h — abra o app e clique em IMPORTAR!`;
             padding:"14px 0",borderRadius:13,border:"1px solid rgba(52,211,153,0.35)",cursor:"pointer",
             background:copied?"rgba(52,211,153,0.15)":"rgba(52,211,153,0.08)",
             color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,transition:"all 0.15s"
-          }}>{copied?"✓ COPIADO!":"📤 COMPARTILHAR CONVITE"}</button>
+          }}>{copied?"✓ COPIADO!":<><Icon id="upload" size={16}/> COMPARTILHAR CONVITE</>}</button>
           <button onClick={onClose} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#6B7280",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600}}>Fechar</button>
         </>)}
 
         {step==="error"&&(<>
           <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:44,marginBottom:8}}>⚠️</div>
+            <Icon id="warning" size={44} style={{color:"#f87171",marginBottom:8}}/>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>ERRO AO GERAR CÓDIGO</div>
             <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Verifique sua conexão e tente novamente.</div>
           </div>
@@ -4462,13 +4462,13 @@ function ImportTeamModal({user, onClose, onImported}) {
   };
 
   const snap = shareData?.teamSnapshot || {};
-  const OptionCheck = ({k, emoji, label, count}) => (
+  const OptionCheck = ({k, icon, label, count}) => (
     <button onClick={()=>toggle(k)} style={{
       display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:10,border:"1px solid",cursor:"pointer",textAlign:"left",
       borderColor:options[k]?"rgba(52,211,153,0.3)":"rgba(255,255,255,0.08)",
       background:options[k]?"rgba(52,211,153,0.06)":"rgba(255,255,255,0.02)",transition:"all 0.12s"
     }}>
-      <span style={{fontSize:18}}>{emoji}</span>
+      <Icon id={icon} size={18} style={{color:options[k]?"#34d399":"#6B7280",flexShrink:0}}/>
       <div style={{flex:1}}>
         <div style={{color:options[k]?"#e5e7eb":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>{label}</div>
         <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{count}</div>
@@ -4532,11 +4532,11 @@ function ImportTeamModal({user, onClose, onImported}) {
             <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>O que importar?</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <div style={{padding:"9px 12px",borderRadius:10,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
-                <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>👕 Elenco — {(snap.players||[]).length} jogadores (sempre incluído)</div>
+                <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon id="jersey" size={14}/> Elenco — {(snap.players||[]).length} jogadores (sempre incluído)</div>
               </div>
-              {(snap.lineups||[]).length>0&&<OptionCheck k="includeLineups" emoji="📋" label="Escalações" count={`${(snap.lineups||[]).length} formação(ões) salva(s)`}/>}
-              {Object.keys(snap.stats||{}).length>0&&<OptionCheck k="includeStats" emoji="📊" label="Estatísticas" count="Gols, assistências e presenças"/>}
-              {(snap.matches||[]).length>0&&<OptionCheck k="includeMatches" emoji="📅" label="Partidas" count={`${(snap.matches||[]).length} partida(s) no calendário`}/>}
+              {(snap.lineups||[]).length>0&&<OptionCheck k="includeLineups" icon="clipboard" label="Escalações" count={`${(snap.lineups||[]).length} formação(ões) salva(s)`}/>}
+              {Object.keys(snap.stats||{}).length>0&&<OptionCheck k="includeStats" icon="chart-bar" label="Estatísticas" count="Gols, assistências e presenças"/>}
+              {(snap.matches||[]).length>0&&<OptionCheck k="includeMatches" icon="calendar" label="Partidas" count={`${(snap.matches||[]).length} partida(s) no calendário`}/>}
             </div>
           </div>
 
@@ -4553,7 +4553,7 @@ function ImportTeamModal({user, onClose, onImported}) {
 
         {step==="done"&&(<>
           <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:52,marginBottom:8}}>🎉</div>
+            <Icon id="party" size={52} style={{color:"#34d399",marginBottom:8}}/>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:6}}>TIME IMPORTADO!</div>
             <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>
               "{shareData?.teamName} (cópia)" foi adicionado à sua lista de times. É totalmente seu para editar!
@@ -4564,7 +4564,7 @@ function ImportTeamModal({user, onClose, onImported}) {
 
         {step==="error"&&(<>
           <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{fontSize:44,marginBottom:8}}>😕</div>
+            <Icon id="sad" size={44} style={{color:"#6B7280",marginBottom:8}}/>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:6}}>OPS!</div>
             <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>{errMsg}</div>
           </div>
@@ -4594,15 +4594,15 @@ function PlayerFormModal({initial,onSave,onClose,teamColor,isGuest}) {
       <div style={{background:"#0d1f17",border:`1px solid ${form.isGuest?"rgba(251,146,60,0.35)":"rgba(255,255,255,0.1)"}`,borderRadius:20,width:"100%",maxWidth:420,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(0,0,0,0.9)"}}>
         <div style={{padding:"16px 18px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid rgba(255,255,255,0.08)"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            {form.isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:8,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5}}>🎟️ Convidado</span>}
+            {form.isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:8,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,display:"flex",alignItems:"center",gap:4}}><Icon id="ticket" size={10}/> Convidado</span>}
             <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:21,color:"#fff",letterSpacing:1}}>{initial?"Editar":(form.isGuest?"Novo Convidado":"Novo Jogador")}</span>
           </div>
           <button onClick={onClose} aria-label="Fechar" style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",padding:4}}><Ico.Close/></button>
         </div>
         <div style={{padding:"16px 18px 20px",display:"flex",flexDirection:"column",gap:15}}>
           {form.isGuest&&(
-            <div style={{background:"rgba(251,146,60,0.07)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:12,padding:"10px 13px",fontFamily:"'DM Sans',sans-serif",fontSize:12,color:"#fb923c",lineHeight:1.5}}>
-              🎟️ Jogadores convidados não contam para as estatísticas do time e aparecem separados nos relatórios.
+            <div style={{background:"rgba(251,146,60,0.07)",border:"1px solid rgba(251,146,60,0.2)",borderRadius:12,padding:"10px 13px",fontFamily:"'DM Sans',sans-serif",fontSize:12,color:"#fb923c",lineHeight:1.5,display:"flex",alignItems:"flex-start",gap:6}}>
+              <Icon id="ticket" size={14} style={{flexShrink:0,marginTop:1}}/> Jogadores convidados não contam para as estatísticas do time e aparecem separados nos relatórios.
             </div>
           )}
           <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
@@ -4660,7 +4660,7 @@ function PlayerFormModal({initial,onSave,onClose,teamColor,isGuest}) {
                   background:(form.status||"active")===s.id?`${s.color}18`:"rgba(255,255,255,0.02)",
                   transition:"all 0.15s"
                 }}>
-                  <span style={{fontSize:16}}>{s.emoji}</span>
+                  <Icon id={s.icon} size={16} style={{color:s.color}}/>
                   <span style={{color:(form.status||"active")===s.id?s.color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:800,textTransform:"uppercase"}}>{s.label}</span>
                 </button>
               ))}
@@ -4734,8 +4734,8 @@ function FormationListModal({current,onSelect,onClose}) {
 const SLOT_SORT_OPTIONS = [
   { key:"name",   label:"Nome",    icon:"A→Z" },
   { key:"number", label:"Nº",      icon:"#"   },
-  { key:"position",label:"Pos.",   icon:"🟢"  },
-  { key:"stars",  label:"Nível",   icon:"⭐"  },
+  { key:"position",label:"Pos.",   icon:"pos" },
+  { key:"stars",  label:"Nível",   icon:"★"   },
 ];
 function sortPlayers(list, sortBy, asc) {
   return [...list].sort((a,b)=>{
@@ -4801,7 +4801,7 @@ function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose,team})
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{p.name}</span>
-                      {isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:800}}>🎟️ C{guestIdx}</span>}
+                      {isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:800,display:"inline-flex",alignItems:"center",gap:2}}><Icon id="ticket" size={8}/> C{guestIdx}</span>}
                     </div>
                     <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:1}}>{isGuest?`Convidado · `:`#${p.number} · `}{p.position} · {p.foot}</div>
                     <div style={{marginTop:3}}><StarRating value={p.stars} readonly/></div>
@@ -4825,11 +4825,10 @@ function SlotPickerModal({slotLabel,players,lineup,onPick,onClear,onClose,team})
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700}}>{p.name}</span>
-                      {isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:800}}>🎟️ C{guestIdx}</span>}
+                      {isGuest&&<span style={{background:"rgba(251,146,60,0.18)",color:"#fb923c",borderRadius:5,padding:"1px 5px",fontSize:9,fontWeight:800,display:"inline-flex",alignItems:"center",gap:2}}><Icon id="ticket" size={8}/> C{guestIdx}</span>}
                     </div>
                     <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:1}}>{isGuest?`Convidado`:`#${p.number}`} · {p.position}</div>
                   </div>
-                  <div style={{color:"#facc15",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>↔ trocar</div>
                 </button>
                 );
               })}
@@ -5019,7 +5018,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
                   <div style={{position:"relative"}}>
                     <PlayerAvatar player={player} size={54} team={team} style={player?.status&&player.status!=="active"?{opacity:0.65}:{}}/>
                     {player?.status&&player.status!=="active"&&(
-                      <div style={{position:"absolute",top:-3,right:-3,fontSize:12,lineHeight:1}} title={getPlayerStatus(player).label}>{getPlayerStatus(player).emoji}</div>
+                      <div style={{position:"absolute",top:-3,right:-3,lineHeight:1}} title={getPlayerStatus(player).label}><Icon id={getPlayerStatus(player).icon} size={14} style={{color:getPlayerStatus(player).color}}/></div>
                     )}
                   </div>
                 </div>
@@ -5053,11 +5052,11 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team}) {
 // ─── Export Modal ─────────────────────────────────────────────────────────────
 // Export theme options — shown as a horizontal carousel (3 visible at a time)
 const THEME_OPTIONS = [
-  {key:"modern",label:"🌙 Moderno",desc:"Verde escuro"},
-  {key:"clean", label:"☀️ Simples", desc:"Fundo claro"},
-  {key:"retro", label:"📻 Retrô",   desc:"Vintage"},
-  {key:"neon",  label:"⚡ Neon",     desc:"E-sports"},
-  {key:"mono",  label:"⚫ Mono",     desc:"P&B"},
+  {key:"modern",label:"Moderno",desc:"Verde escuro"},
+  {key:"clean", label:"Simples", desc:"Fundo claro"},
+  {key:"retro", label:"Retrô",   desc:"Vintage"},
+  {key:"neon",  label:"Neon",    desc:"E-sports"},
+  {key:"mono",  label:"Mono",    desc:"P&B"},
 ];
 
 function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPlayerIds,onClose,isPremium}) {
@@ -5798,7 +5797,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
                   display:"flex",flexDirection:"column",alignItems:"center",gap:3,
                   opacity:locked?0.55:1,
                 }}>
-                  {locked&&<span style={{position:"absolute",top:4,right:6,fontSize:11}}>🔒</span>}
+                  {locked&&<span style={{position:"absolute",top:4,right:6}}><Icon id="lock" size={11} style={{color:"#9CA3AF"}}/></span>}
                   <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,color:theme===opt.key?"#34d399":"#9CA3AF",whiteSpace:"nowrap"}}>{opt.label}</span>
                   <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,color:"#6B7280",whiteSpace:"nowrap"}}>{opt.desc}</span>
                 </button>
@@ -5824,11 +5823,11 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
               color:logo?"#34d399":"#9CA3AF",transition:"all 0.15s",opacity:isPremium?1:0.7
             }}>
               <span style={{display:"flex",alignItems:"center",gap:8,fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
-                🏷️ Marca d'água{logo&&<span style={{background:"rgba(52,211,153,0.18)",color:"#34d399",borderRadius:5,padding:"1px 6px",fontSize:10}}>ativa</span>}
+                <Icon id="tag" size={14}/> Marca d'água{logo&&<span style={{background:"rgba(52,211,153,0.18)",color:"#34d399",borderRadius:5,padding:"1px 6px",fontSize:10}}>ativa</span>}
               </span>
               {isPremium
                 ?<span style={{display:"flex",transform:showWatermarkPanel?"rotate(180deg)":"none",transition:"transform 0.2s"}}><Ico.ChevDown/></span>
-                :<span style={{fontSize:13}}>🔒</span>}
+                :<Icon id="lock" size={13} style={{color:"#9CA3AF"}}/>}
             </button>
 
             {showWatermarkPanel&&(
@@ -5871,7 +5870,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
             </div>
           ):exportError?(
             <div style={{width:"100%",aspectRatio:"0.63",background:"rgba(239,68,68,0.06)",borderRadius:14,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:12,border:"1px solid rgba(239,68,68,0.2)",padding:20,textAlign:"center"}}>
-              <span style={{color:"#f87171",fontSize:28}}>⚠</span>
+              <Icon id="warning" size={28} style={{color:"#f87171"}}/>
               <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Não foi possível gerar a imagem.<br/>Verifique sua conexão e tente novamente.</span>
               <button onClick={()=>draw(theme)} aria-label="Tentar gerar a imagem novamente" style={{padding:"10px 20px",borderRadius:10,border:"1px solid rgba(255,255,255,0.15)",background:"rgba(255,255,255,0.05)",color:"#fff",cursor:"pointer",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1}}>TENTAR NOVAMENTE</button>
             </div>
@@ -5879,7 +5878,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
             <div onClick={()=>setShowFullPreview(true)} role="button" tabIndex={0} aria-label="Ampliar e rolar a imagem da escalação" style={{width:"100%",borderRadius:14,overflow:"hidden",border:"1px solid rgba(255,255,255,0.12)",cursor:"pointer",position:"relative"}}>
               <img src={imgUrl} alt="Escalação" style={{width:"100%",display:"block"}}/>
               <div style={{position:"absolute",bottom:8,right:8,background:"rgba(0,0,0,0.55)",borderRadius:8,padding:"4px 10px",display:"flex",alignItems:"center",gap:5,color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
-                🔍 Toque para ampliar
+                <Icon id="search" size={10}/> Toque para ampliar
               </div>
             </div>
           ):null}
@@ -5935,7 +5934,7 @@ function PlayerCard({player,onEdit,onDelete,isCaptain,onToggleCaptain,team,guest
           <div style={{position:"absolute",top:-4,right:-4,width:20,height:20,borderRadius:"50%",background:"#F59E0B",border:"2px solid #050c0a",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Bebas Neue',sans-serif",fontSize:11,fontWeight:900,color:"#1a1a0a"}}>C</div>
         )}
         {isGuest&&!isCaptain&&(
-          <div style={{position:"absolute",top:-4,right:-4,width:20,height:20,borderRadius:"50%",background:"#fb923c",border:"2px solid #050c0a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>🎟️</div>
+          <div style={{position:"absolute",top:-4,right:-4,width:20,height:20,borderRadius:"50%",background:"#fb923c",border:"2px solid #050c0a",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon id="ticket" size={10} style={{color:"#fff"}}/></div>
         )}
       </div>
       <div style={{flex:1,minWidth:0}}>
@@ -5979,8 +5978,8 @@ function Toast({msg,onDone}) {
 const SORT_OPTIONS = [
   { key: "name",     label: "Nome",    icon: "A→Z" },
   { key: "number",   label: "Número",  icon: "#" },
-  { key: "position", label: "Posição", icon: "🟢" },
-  { key: "stars",    label: "Nível",   icon: "⭐" },
+  { key: "position", label: "Posição", icon: "pos" },
+  { key: "stars",    label: "Nível",   icon: "★" },
 ];
 
 const PLAYERS_PAGE_SIZE = 20;
@@ -6133,7 +6132,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
       )}
       {regularPlayers.length > 0 && filtered.length === 0 && filteredGuests.length === 0 && (
         <div style={{ textAlign:"center", padding:"36px 20px", color:"#4B5563" }}>
-          <div style={{ fontSize:40, marginBottom:10 }}>🔍</div>
+          <Icon id="search" size={40} style={{color:"#4B5563",marginBottom:10}}/>
           <div style={{ fontSize:14, fontWeight:700, color:"#6B7280" }}>Nenhum resultado</div>
           <div style={{ fontSize:12, marginTop:5 }}>Tente outro filtro ou termo de busca</div>
         </div>
@@ -6170,7 +6169,7 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
         <div style={{marginTop:8}}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <div style={{flex:1,height:1,background:"rgba(251,146,60,0.2)"}}/>
-            <span style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.7,flexShrink:0}}>🎟️ Convidados ({filteredGuests.length})</span>
+            <span style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.7,flexShrink:0,display:"flex",alignItems:"center",gap:4}}><Icon id="ticket" size={10}/> Convidados ({filteredGuests.length})</span>
             <div style={{flex:1,height:1,background:"rgba(251,146,60,0.2)"}}/>
           </div>
           {filteredGuests.length === 0 && !search && (
@@ -6199,9 +6198,9 @@ function PlayersTab({ players, onEdit, onDelete, teamColor, captainPlayerId, onT
 
 // ─── Lineup Manager Modal ─────────────────────────────────────────────────────
 const LINEUP_TYPES = [
-  { key: "titular",      label: "Titular",      color: "#34d399", emoji: "⭐" },
-  { key: "reserva",      label: "Reserva",       color: "#60a5fa", emoji: "🔄" },
-  { key: "personalizada",label: "Personalizada", color: "#f59e0b", emoji: "✏️" },
+  { key: "titular",      label: "Titular",      color: "#34d399", icon: "star" },
+  { key: "reserva",      label: "Reserva",       color: "#60a5fa", icon: "refresh" },
+  { key: "personalizada",label: "Personalizada", color: "#f59e0b", icon: "edit" },
 ];
 
 // ─── Premium upsell modal ───────────────────────────────────────────────────
@@ -6214,12 +6213,12 @@ function PremiumUpsellModal({title,description,onClose,onUpgrade}) {
   return (
     <div style={{position:"fixed",inset:0,zIndex:1500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.78)",backdropFilter:"blur(5px)",padding:"16px"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(250,204,21,0.25)",borderRadius:18,width:"100%",maxWidth:380,padding:"24px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:12,textAlign:"center",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
-        <div style={{width:54,height:54,borderRadius:"50%",background:"rgba(250,204,21,0.12)",border:"1px solid rgba(250,204,21,0.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26}}>👑</div>
+        <div style={{width:54,height:54,borderRadius:"50%",background:"rgba(250,204,21,0.12)",border:"1px solid rgba(250,204,21,0.3)",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon id="crown" size={26} style={{color:"#facc15"}}/></div>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>{title||"Recurso Premium"}</div>
         <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,color:"#9CA3AF",lineHeight:1.5}}>{description||"Esse recurso faz parte do plano premium."}</div>
         <button onClick={onUpgrade||onClose} style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",
           background:"linear-gradient(135deg,#b45309,#facc15)",color:"#1a1305",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,
-          boxShadow:"0 6px 20px rgba(250,204,21,0.3)"}}>⭐ CONHECER O PREMIUM</button>
+          boxShadow:"0 6px 20px rgba(250,204,21,0.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><Icon id="star" size={16} style={{color:"#1a1305"}}/> CONHECER O PREMIUM</button>
         <button onClick={onClose} style={{width:"100%",padding:"11px 0",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Agora não</button>
       </div>
     </div>
@@ -6285,7 +6284,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
                     background:newType===t.key?`${t.color}20`:"rgba(255,255,255,0.03)",
                     fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,
                     color:newType===t.key?t.color:"#6B7280",
-                  }}>{t.emoji} {t.label}</button>
+                  }}><Icon id={t.icon} size={16} style={{color:newType===t.key?t.color:"#6B7280"}}/> {t.label}</button>
                 ))}
               </div>
               <div style={{display:"flex",gap:8}}>
@@ -6320,7 +6319,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
 
                 <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}} onClick={()=>{if(!isActive)onActivate(lineup.id);}}>
                   {/* Type badge */}
-                  <div style={{width:38,height:38,borderRadius:10,background:`${ti.color}20`,border:`1px solid ${ti.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{ti.emoji}</div>
+                  <div style={{width:38,height:38,borderRadius:10,background:`${ti.color}20`,border:`1px solid ${ti.color}40`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon id={ti.icon} size={18} style={{color:ti.color}}/></div>
 
                   <div style={{flex:1,minWidth:0}}>
                     {isRenaming ? (
@@ -6370,7 +6369,7 @@ function LineupManagerModal({team, onClose, onActivate, onRename, onCreate, onDe
 
           {lineups.length === 0 && (
             <div style={{textAlign:"center",padding:"36px 20px",color:"#4B5563"}}>
-              <div style={{fontSize:40,marginBottom:10}}>📋</div>
+              <Icon id="clipboard" size={40} style={{color:"#4B5563",marginBottom:10}}/>
               <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:14,color:"#6B7280"}}>Nenhuma escalação ainda</div>
             </div>
           )}
@@ -6630,7 +6629,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
         {/* Mode + Formation row */}
         <div style={{display:"flex",gap:7,alignItems:"center"}}>
           <div style={{flex:1,padding:"5px 12px",borderRadius:8,border:`1px solid ${c1}40`,background:`${c1}12`,textAlign:"center"}}>
-            <div style={{fontSize:12}}>⚽</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}><Icon id="soccer-ball" size={12} style={{color:c2}}/></div>
             <div style={{fontSize:8,fontWeight:700,color:c2}}>Campo</div>
           </div>
           <div style={{display:"flex",gap:5,alignItems:"center"}}>
@@ -6664,7 +6663,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           <>
             <div style={{marginBottom:9,display:"flex",alignItems:"center",gap:8}}>
               <div style={{flex:1,padding:"6px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#6B7280"}}>
-                💡 <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar
+                <Icon id="bulb" size={14} style={{color:"#6B7280",flexShrink:0}}/> <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar
               </div>
               <button onClick={()=>{
                 const updatedLineups=(team.lineups||[]).map(l=>String(l.id)===String(activeLineup?.id)?{...l,entries:[]}:l);
@@ -6674,7 +6673,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                 flexShrink:0,padding:"7px 12px",borderRadius:9,border:"1px solid rgba(239,68,68,0.25)",
                 background:"rgba(239,68,68,0.08)",color:"#f87171",cursor:"pointer",
                 fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"
-              }}>🔄 Resetar</button>
+              }}><Icon id="refresh" size={13}/> Resetar</button>
             </div>
             <div style={{marginBottom:9,display:"flex",flexDirection:"column",gap:5}}>
               <label htmlFor="coach-name" style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Técnico</label>
@@ -6786,7 +6785,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           onMouseEnter={e=>{e.currentTarget.style.background="rgba(251,146,60,0.28)";}}
           onMouseLeave={e=>{e.currentTarget.style.background="rgba(251,146,60,0.18)";}}
           aria-label="Adicionar jogador convidado">
-          🎟️ + Convidado
+          <Icon id="ticket" size={12}/> + Convidado
         </button>
         </>
       )}
@@ -6883,12 +6882,12 @@ function LoginScreen({onLogin, loading}) {
         {/* Features */}
         <div style={{display:"flex",flexDirection:"column",gap:10,width:"100%"}}>
           {[
-            {icon:"☁️", text:"Dados salvos na nuvem, acessíveis em qualquer dispositivo"},
-            {icon:"⚽", text:"Crie times, monte escalações e gerencie elencos"},
-            {icon:"📸", text:"Exporte e compartilhe sua escalação como imagem"},
+            {icon:"cloud",       text:"Dados salvos na nuvem, acessíveis em qualquer dispositivo"},
+            {icon:"soccer-ball", text:"Crie times, monte escalações e gerencie elencos"},
+            {icon:"camera",      text:"Exporte e compartilhe sua escalação como imagem"},
           ].map(({icon,text})=>(
             <div key={text} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 14px",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(255,255,255,0.07)"}}>
-              <span style={{fontSize:20,flexShrink:0}}>{icon}</span>
+              <Icon id={icon} size={20} style={{flexShrink:0,color:"#34d399"}}/>
               <span style={{color:"#9CA3AF",fontSize:13,lineHeight:1.4}}>{text}</span>
             </div>
           ))}
@@ -6976,10 +6975,10 @@ function BottomNav({active,onChange}) {
 
 // ─── Match Modal (add/edit a calendar event) ──────────────────────────────────
 const MATCH_TYPES=[
-  {id:"friendly",  label:"Amistoso",    emoji:"🤝"},
-  {id:"festival",  label:"Festival",    emoji:"🎪"},
-  {id:"tournament",label:"Torneio",     emoji:"🏆"},
-  {id:"league",    label:"Campeonato",  emoji:"🥇"},
+  {id:"friendly",  label:"Amistoso",    icon:"handshake"},
+  {id:"festival",  label:"Festival",    icon:"festival"},
+  {id:"tournament",label:"Torneio",     icon:"trophy"},
+  {id:"league",    label:"Campeonato",  icon:"competition"},
 ];
 const MATCH_TYPES_WITH_NAME=["festival","tournament","league"];
 
@@ -7019,10 +7018,10 @@ function MatchModal({initial,players,onSave,onClose}) {
     const assists=countInArr(form.assisters,pid);
     const present=(form.presentPlayerIds||[]).includes(pid);
     const gkGA=(form.gkGoalsConceded||{})[pid]||0;
-    if(present) badges.push({emoji:"📋",val:null,color:"#34d399"});
-    if(goals>0) badges.push({emoji:"⚽",val:goals,color:"#34d399"});
-    if(assists>0) badges.push({emoji:"🎯",val:assists,color:"#f59e0b"});
-    if(isGK&&gkGA>0) badges.push({emoji:"🧤",val:gkGA,color:"#f87171"});
+    if(present) badges.push({icon:"clipboard",val:null,color:"#34d399"});
+    if(goals>0) badges.push({icon:"soccer-ball",val:goals,color:"#34d399"});
+    if(assists>0) badges.push({icon:"target",val:assists,color:"#f59e0b"});
+    if(isGK&&gkGA>0) badges.push({icon:"goalkeeper",val:gkGA,color:"#f87171"});
     return badges;
   };
 
@@ -7055,7 +7054,7 @@ function MatchModal({initial,players,onSave,onClose}) {
             <div style={{display:"flex",gap:4,alignItems:"center"}}>
               {badges.map((b,i)=>(
                 <span key={i} style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,color:b.color,background:"rgba(0,0,0,0.25)",borderRadius:6,padding:"1px 5px",display:"flex",alignItems:"center",gap:2}}>
-                  <span style={{fontSize:11}}>{b.emoji}</span>{b.val!==null&&<span>{b.val}</span>}
+                  <Icon id={b.icon} size={11} style={{color:b.color}}/>{b.val!==null&&<span>{b.val}</span>}
                 </span>
               ))}
             </div>
@@ -7070,7 +7069,7 @@ function MatchModal({initial,players,onSave,onClose}) {
             {/* Presença toggle */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
-                <span style={{fontSize:13}}>📋</span> Presença
+                <span style={{fontSize:13}}><Icon id="clipboard" size={13} style={{color:"#9CA3AF"}}/></span> Presença
               </span>
               <button onClick={()=>{
                 const cur=form.presentPlayerIds||[];
@@ -7087,7 +7086,7 @@ function MatchModal({initial,players,onSave,onClose}) {
             {hasResult&&parseInt(form.goalsFor||0)>0&&(
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
-                  <span style={{fontSize:13}}>⚽</span> Gols
+                  <Icon id="soccer-ball" size={13} style={{color:"#9CA3AF"}}/> Gols
                 </span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>set("scorers",adjustCount(form.scorers,pid,-1))} disabled={goals===0}
@@ -7103,7 +7102,7 @@ function MatchModal({initial,players,onSave,onClose}) {
             {hasResult&&parseInt(form.goalsFor||0)>0&&(
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
-                  <span style={{fontSize:13}}>🎯</span> Assistências
+                  <Icon id="target" size={13} style={{color:"#9CA3AF"}}/> Assistências
                 </span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>set("assisters",adjustCount(form.assisters,pid,-1))} disabled={assists===0}
@@ -7119,7 +7118,7 @@ function MatchModal({initial,players,onSave,onClose}) {
             {isGK&&hasResult&&parseInt(form.goalsAgainst||0)>0&&(
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
-                  <span style={{fontSize:13}}>🧤</span> Gols sofridos
+                  <Icon id="goalkeeper" size={13} style={{color:"#9CA3AF"}}/> Gols sofridos
                 </span>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <button onClick={()=>set("gkGoalsConceded",{...(form.gkGoalsConceded||{}),[pid]:Math.max(0,gkGA-1)})} disabled={gkGA===0}
@@ -7161,7 +7160,7 @@ function MatchModal({initial,players,onSave,onClose}) {
                   background:form.matchType===t.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
                   transition:"all 0.15s"
                 }}>
-                  <span style={{fontSize:18}}>{t.emoji}</span>
+                  <Icon id={t.icon} size={18} style={{color:form.matchType===t.id?"#34d399":"#9CA3AF"}}/>
                   <span style={{color:form.matchType===t.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{t.label}</span>
                 </button>
               ))}
@@ -7172,7 +7171,7 @@ function MatchModal({initial,players,onSave,onClose}) {
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             <span style={LT}>Local do jogo</span>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-              {[{id:"home",label:"Casa",emoji:"🏠"},{id:"away",label:"Fora",emoji:"✈️"}].map(opt=>(
+              {[{id:"home",label:"Casa",icon:"home"},{id:"away",label:"Fora",icon:"airplane"}].map(opt=>(
                 <button key={opt.id} onClick={()=>set("homeAway",opt.id)} style={{
                   display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"9px 4px",
                   borderRadius:10,border:"2px solid",cursor:"pointer",
@@ -7180,7 +7179,7 @@ function MatchModal({initial,players,onSave,onClose}) {
                   background:(form.homeAway||"home")===opt.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
                   transition:"all 0.15s"
                 }}>
-                  <span style={{fontSize:18}}>{opt.emoji}</span>
+                  <Icon id={opt.icon} size={18} style={{color:(form.homeAway||"home")===opt.id?"#34d399":"#9CA3AF"}}/>
                   <span style={{color:(form.homeAway||"home")===opt.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{opt.label}</span>
                 </button>
               ))}
@@ -7239,7 +7238,7 @@ function MatchModal({initial,players,onSave,onClose}) {
 
               {/* Header + contadores */}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{...LT,fontSize:9}}>👥 Jogadores</span>
+                <span style={{...LT,fontSize:9,display:"flex",alignItems:"center",gap:3}}><Icon id="users" size={9}/> Jogadores</span>
                 <div style={{display:"flex",gap:6}}>
                   <button onClick={()=>set("presentPlayerIds",(players||[]).map(p=>String(p.id)))} style={{
                     padding:"2px 8px",borderRadius:6,border:"1px solid rgba(52,211,153,0.3)",background:"rgba(52,211,153,0.08)",
@@ -7254,7 +7253,7 @@ function MatchModal({initial,players,onSave,onClose}) {
 
               {/* Busca */}
               <div style={{position:"relative"}}>
-                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:13,pointerEvents:"none"}}>🔍</span>
+                <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none",display:"flex",alignItems:"center"}}><Icon id="search" size={13} style={{color:"#6B7280"}}/></span>
                 <input
                   value={playerSearch}
                   onChange={e=>{setPlayerSearch(e.target.value);setExpandedPlayer(null);}}
@@ -7273,8 +7272,8 @@ function MatchModal({initial,players,onSave,onClose}) {
               {/* Lista: Jogadores de linha */}
               {filteredOutfield.length>0&&(
                 <div style={{display:"flex",flexDirection:"column",gap:0}}>
-                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5,paddingLeft:2}}>
-                    ⚽ Jogadores de linha ({filteredOutfield.length})
+                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5,paddingLeft:2,display:"flex",alignItems:"center",gap:4}}>
+                    <Icon id="soccer-ball" size={9}/> Jogadores de linha ({filteredOutfield.length})
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:5}}>
                     {filteredOutfield.map(p=>renderPlayerCard(p,false))}
@@ -7285,8 +7284,8 @@ function MatchModal({initial,players,onSave,onClose}) {
               {/* Lista: Goleiros */}
               {filteredGK.length>0&&(
                 <div style={{display:"flex",flexDirection:"column",gap:0,marginTop:filteredOutfield.length>0?8:0}}>
-                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5,paddingLeft:2}}>
-                    🧤 Goleiros ({filteredGK.length})
+                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:5,paddingLeft:2,display:"flex",alignItems:"center",gap:4}}>
+                    <Icon id="goalkeeper" size={9}/> Goleiros ({filteredGK.length})
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:5}}>
                     {filteredGK.map(p=>renderPlayerCard(p,true))}
@@ -7334,10 +7333,10 @@ function StatsView({team,stats,onUpdateStat}) {
     const st=stats[String(p.id)]||{goals:0,assists:0,goalsAgainst:0,appearances:0};
     const isGK=p.position==="Goleiro";
     const statItems=[
-      {key:"appearances",  label:"Presenças",     emoji:"📋",color:"#60a5fa"},
-      {key:"goals",        label:"Gols",          emoji:"⚽",color:"#34d399"},
-      {key:"assists",      label:"Assistências",  emoji:"🎯",color:"#f59e0b"},
-      ...(isGK?[{key:"goalsAgainst",label:"Gols sofridos",emoji:"🧤",color:"#f87171"}]:[]),
+      {key:"appearances",  label:"Presenças",     icon:"clipboard",  color:"#60a5fa"},
+      {key:"goals",        label:"Gols",          icon:"soccer-ball",color:"#34d399"},
+      {key:"assists",      label:"Assistências",  icon:"target",     color:"#f59e0b"},
+      ...(isGK?[{key:"goalsAgainst",label:"Gols sofridos",icon:"goalkeeper",color:"#f87171"}]:[]),
     ];
     return (
       <div key={p.id} style={{background:isGuestPlayer?"rgba(251,146,60,0.04)":"rgba(255,255,255,0.03)",border:isGuestPlayer?"1px solid rgba(251,146,60,0.15)":"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
@@ -7350,9 +7349,9 @@ function StatsView({team,stats,onUpdateStat}) {
           <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{p.position}{isGuestPlayer?<span style={{color:"#fb923c"}}> · Convidado</span>:<span> · #{p.number}</span>}</div>
         </div>
         <div style={{display:"flex",gap:8}}>
-          {statItems.map(({key,label,emoji,color})=>(
+          {statItems.map(({key,label,icon,color})=>(
             <div key={key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-              <span title={label} style={{fontSize:14}}>{emoji}</span>
+              <Icon id={icon} size={14} title={label} style={{color}}/>
               <div style={{display:"flex",alignItems:"center",gap:3}}>
                 <button onClick={()=>onUpdateStat(p.id,key,Math.max(0,(st[key]||0)-1))}
                   style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
@@ -7374,7 +7373,7 @@ function StatsView({team,stats,onUpdateStat}) {
         <>
           <div style={{display:"flex",alignItems:"center",gap:8,marginTop:10}}>
             <div style={{flex:1,height:1,background:"rgba(251,146,60,0.2)"}}/>
-            <span style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.7,flexShrink:0}}>🎟️ Convidados</span>
+            <span style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:0.7,flexShrink:0,display:"flex",alignItems:"center",gap:4}}><Icon id="ticket" size={10}/> Convidados</span>
             <div style={{flex:1,height:1,background:"rgba(251,146,60,0.2)"}}/>
           </div>
           <div style={{background:"rgba(251,146,60,0.06)",border:"1px solid rgba(251,146,60,0.15)",borderRadius:10,padding:"8px 12px",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#fb923c",lineHeight:1.5}}>
@@ -7505,10 +7504,10 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
   },[players,aggregated,statType]);
 
   const STAT_META={
-    appearances: {label:"Presenças",     emoji:"📋"},
-    goals:       {label:"Gols",          emoji:"⚽"},
-    assists:     {label:"Assistências",  emoji:"🎯"},
-    goalsAgainst:{label:"Gols Sofridos", emoji:"🧤"},
+    appearances: {label:"Presenças",     icon:"clipboard"},
+    goals:       {label:"Gols",          icon:"soccer-ball"},
+    assists:     {label:"Assistências",  icon:"target"},
+    goalsAgainst:{label:"Gols Sofridos", icon:"goalkeeper"},
   };
 
   // Build the copyable text
@@ -7938,10 +7937,10 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
             {[
               {id:"all",    label:"Geral",    icon:"stats"},
               {id:"year",   label:"Ano",      icon:"calendar"},
-              {id:"period", label:"Período",  emoji:"🗓"},
-              {id:"matchType",label:"Tipo",   emoji:"🏟"},
-              {id:"competition",label:"Compet.",emoji:"🏆"},
-              {id:"homeAway",   label:"Casa/Fora",emoji:"🏠"},
+              {id:"period", label:"Período",  icon:"calendar"},
+              {id:"matchType",label:"Tipo",   icon:"trophy"},
+              {id:"competition",label:"Compet.",icon:"competition"},
+              {id:"homeAway",   label:"Casa/Fora",icon:"home"},
             ].map(f=>(
               <button key={f.id} onClick={()=>setFilterType(f.id)} style={{
                 padding:"8px 4px",borderRadius:10,border:"2px solid",cursor:"pointer",
@@ -7950,7 +7949,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
                 display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"all 0.15s",
                 color:filterType===f.id?"#34d399":"#9CA3AF"
               }}>
-                {f.icon==="stats"?<Ico.Stats/>:f.icon==="calendar"?<Ico.Calendar/>:<span style={{fontSize:14}}>{f.emoji}</span>}
+                {f.icon==="stats"?<Ico.Stats/>:f.icon==="calendar"?<Ico.Calendar/>:<Icon id={f.icon} size={14}/>}
                 <span style={{color:"inherit",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{f.label}</span>
               </button>
             ))}
@@ -7989,7 +7988,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
                   background:filterMatchType===t.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
                   display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"all 0.15s"
                 }}>
-                  <span style={{fontSize:14}}>{t.emoji}</span>
+                  <Icon id={t.icon} size={14} style={{color:filterMatchType===t.id?"#34d399":"#9CA3AF"}}/>
                   <span style={{color:filterMatchType===t.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:800,textTransform:"uppercase"}}>{t.label}</span>
                 </button>
               ))}
@@ -8012,7 +8011,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
           )}
           {filterType==="homeAway"&&(
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-              {[{id:"home",label:"Casa",emoji:"🏠"},{id:"away",label:"Fora",emoji:"✈️"}].map(opt=>(
+              {[{id:"home",label:"Casa",icon:"home"},{id:"away",label:"Fora",icon:"airplane"}].map(opt=>(
                 <button key={opt.id} onClick={()=>setFilterHomeAway(opt.id)} style={{
                   display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"9px 4px",
                   borderRadius:10,border:"2px solid",cursor:"pointer",
@@ -8020,7 +8019,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
                   background:filterHomeAway===opt.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
                   transition:"all 0.15s"
                 }}>
-                  <span style={{fontSize:16}}>{opt.emoji}</span>
+                  <Icon id={opt.icon} size={16} style={{color:filterHomeAway===opt.id?"#34d399":"#9CA3AF"}}/>
                   <span style={{color:filterHomeAway===opt.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase"}}>{opt.label}</span>
                 </button>
               ))}
@@ -8029,7 +8028,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
         </div>
         <div style={{background:"rgba(0,0,0,0.3)",borderRadius:12,padding:"12px 14px",marginBottom:14,minHeight:80}}>
           <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:0.5}}>
-            {STAT_META[statType].emoji} {STAT_META[statType].label} · {filteredMatches.length} partida{filteredMatches.length!==1?"s":""}
+            <Icon id={STAT_META[statType].icon} size={14} style={{color:"#6B7280"}}/> {STAT_META[statType].label} · {filteredMatches.length} partida{filteredMatches.length!==1?"s":""}
           </div>
           {ranking.length===0?(
             <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12,textAlign:"center",padding:"12px 0"}}>Sem dados para este filtro</div>
@@ -8048,7 +8047,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
           {/* Guest section */}
           {guestPlayers.length>0&&(
             <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid rgba(251,146,60,0.2)"}}>
-              <div style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>🎟️ Convidados (não contam no ranking)</div>
+              <div style={{color:"#fb923c",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6,display:"flex",alignItems:"center",gap:4}}><Icon id="ticket" size={9}/> Convidados (não contam no ranking)</div>
               <div style={{display:"flex",flexDirection:"column",gap:5}}>
                 {guestPlayers.map((p,i)=>{
                   const val=(aggregated[String(p.id)]||{})[statType]||0;
@@ -8067,7 +8066,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
         </div>
 
         <div style={{display:"flex",gap:6,marginBottom:4}}>
-          {[{id:"ranking",label:"Ranking jogadores",emoji:"🏅"},{id:"team",label:"Resumo do time",emoji:"📊"}].map(opt=>(
+          {[{id:"ranking",label:"Ranking jogadores",icon:"medal"},{id:"team",label:"Resumo do time",icon:"chart-bar"}].map(opt=>(
             <button key={opt.id} onClick={()=>setExportMode(opt.id)} style={{
               flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,
               padding:"9px 6px",borderRadius:10,border:"2px solid",cursor:"pointer",transition:"all 0.15s",
@@ -8075,7 +8074,7 @@ function StatsExportModal({team,matches,stats,onClose,isPremium}) {
               background:exportMode===opt.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
               color:exportMode===opt.id?"#34d399":"#9CA3AF",
               fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,textTransform:"uppercase"
-            }}><span style={{fontSize:14}}>{opt.emoji}</span>{opt.label}</button>
+            }}><Icon id={opt.icon} size={14}/>{opt.label}</button>
           ))}
         </div>
 
@@ -8271,7 +8270,7 @@ function ImportPlayersModal({team, onClose, onImport}) {
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {/* Instructions */}
             <div style={{background:"rgba(52,211,153,0.06)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"10px 12px"}}>
-              <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>📋 FORMATO ESPERADO</div>
+              <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6,display:"flex",alignItems:"center",gap:5}}><Icon id="clipboard" size={11}/> FORMATO ESPERADO</div>
               <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.6}}>
                 Planilha (Excel/Sheets) salva como <b style={{color:"#e5e7eb"}}>.CSV</b> ou texto copiado diretamente. Colunas reconhecidas:<br/>
                 <code style={{color:"#34d399",fontSize:10}}>nome, numero, posicao, posicao2, pe, estrelas, status, gols, assistencias, gols sofridos, presencas</code>
@@ -8290,7 +8289,7 @@ function ImportPlayersModal({team, onClose, onImport}) {
               width:"100%",padding:"11px 0",borderRadius:11,border:"1.5px dashed rgba(52,211,153,0.35)",
               background:"rgba(52,211,153,0.04)",color:"#34d399",cursor:"pointer",
               fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:8
-            }}>📂 Carregar arquivo CSV</button>
+            }}>  <Icon id="folder-open" size={16}/> Carregar arquivo CSV</button>
 
             <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,textAlign:"center"}}>— ou cole os dados abaixo —</div>
 
@@ -8316,7 +8315,7 @@ function ImportPlayersModal({team, onClose, onImport}) {
                 ✓ {parsed.players.length} jogadores detectados
                 {parsed.players.filter(p=>p._existing).length>0&&<span style={{color:"#f59e0b",marginLeft:8}}>· {parsed.players.filter(p=>p._existing).length} já existem</span>}
               </div>
-              <button onClick={()=>setStep("paste")} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"7px 10px",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>✏️ Editar</button>
+              <button onClick={()=>setStep("paste")} style={{background:"none",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,padding:"7px 10px",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:11,display:"flex",alignItems:"center",gap:4}}><Icon id="edit" size={12}/> Editar</button>
             </div>
 
             {/* Merge mode */}
@@ -8324,15 +8323,15 @@ function ImportPlayersModal({team, onClose, onImport}) {
               <div style={{display:"flex",flexDirection:"column",gap:6}}>
                 <span style={LT}>Para jogadores que já existem</span>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                  {[{id:"merge",label:"Mesclar",desc:"Atualiza só campos preenchidos",emoji:"🔀"},
-                    {id:"overwrite",label:"Substituir",desc:"Sobrescreve todos os campos",emoji:"⬆️"}].map(m=>(
+                  {[{id:"merge",label:"Mesclar",desc:"Atualiza só campos preenchidos",icon:"shuffle"},
+                    {id:"overwrite",label:"Substituir",desc:"Sobrescreve todos os campos",icon:"upload"}].map(m=>(
                     <button key={m.id} onClick={()=>setImportMode(m.id)} style={{
                       padding:"9px 8px",borderRadius:10,border:"2px solid",cursor:"pointer",
                       borderColor:importMode===m.id?"#34d399":"rgba(255,255,255,0.08)",
                       background:importMode===m.id?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.02)",
                       display:"flex",flexDirection:"column",alignItems:"center",gap:3
                     }}>
-                      <span style={{fontSize:18}}>{m.emoji}</span>
+                      <Icon id={m.icon} size={18} style={{color:importMode===m.id?"#34d399":"#9CA3AF"}}/>
                       <span style={{color:importMode===m.id?"#34d399":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800}}>{m.label}</span>
                       <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9}}>{m.desc}</span>
                     </button>
@@ -8364,14 +8363,14 @@ function ImportPlayersModal({team, onClose, onImport}) {
               display:"flex",alignItems:"center",justifyContent:"center",gap:8
             }}>
               {importing&&<div style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>}
-              {importing?"IMPORTANDO...":"✅ CONFIRMAR IMPORTAÇÃO"}
+              {importing?"IMPORTANDO...":<><Icon id="check-circle" size={16}/> CONFIRMAR IMPORTAÇÃO</>}
             </button>
           </div>
         )}
 
         {step==="done"&&results&&(
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"20px 0",textAlign:"center"}}>
-            <div style={{fontSize:52}}>✅</div>
+            <Icon id="check-circle" size={52} style={{color:"#34d399"}}/>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:0.5}}>Importação concluída!</div>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",justifyContent:"center"}}>
               {results.added>0&&<div style={{padding:"10px 16px",borderRadius:10,background:"rgba(52,211,153,0.1)",border:"1px solid rgba(52,211,153,0.2)"}}>
@@ -8620,7 +8619,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
                         <span style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>vs {m.opponent}</span>
                         {(()=>{
                           const mt=MATCH_TYPES.find(t=>t.id===(m.matchType||"friendly"));
-                          return mt&&<span style={{fontSize:10,fontFamily:"'DM Sans',sans-serif",fontWeight:700,color:"#6B7280",background:"rgba(255,255,255,0.05)",borderRadius:5,padding:"1px 6px"}}>{mt.emoji} {mt.label}{m.competitionName?` · ${m.competitionName}`:""}</span>;
+                          return mt&&<span style={{fontSize:10,fontFamily:"'DM Sans',sans-serif",fontWeight:700,color:"#6B7280",background:"rgba(255,255,255,0.05)",borderRadius:5,padding:"1px 6px",display:"flex",alignItems:"center",gap:3}}><Icon id={mt.icon} size={10}/> {mt.label}{m.competitionName?` · ${m.competitionName}`:""}</span>;
                         })()}
                       </div>
                       <div style={{display:"flex",gap:6}}>
@@ -8651,8 +8650,8 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
                     <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
                       {m.date&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.Calendar/>{formatDate(m.date)}{m.time&&` · ${m.time}`}</span>}
                       {m.location&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Ico.MapPin/>{m.location}</span>}
-                      {m.homeAway&&<span style={{display:"flex",alignItems:"center",gap:4,color:m.homeAway==="home"?"#34d399":"#a78bfa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>{m.homeAway==="home"?"🏠 Casa":"✈️ Fora"}</span>}
-                      {(m.presentPlayerIds||[]).length>0&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>📋 {m.presentPlayerIds.length} presente{m.presentPlayerIds.length!==1?"s":""}</span>}
+                      {m.homeAway&&<span style={{display:"flex",alignItems:"center",gap:4,color:m.homeAway==="home"?"#34d399":"#a78bfa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}><Icon id={m.homeAway==="home"?"home":"airplane"} size={11}/> {m.homeAway==="home"?"Casa":"Fora"}</span>}
+                      {(m.presentPlayerIds||[]).length>0&&<span style={{display:"flex",alignItems:"center",gap:4,color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11}}><Icon id="clipboard" size={11}/> {m.presentPlayerIds.length} presente{m.presentPlayerIds.length!==1?"s":""}</span>}
                     </div>
                     {m.notes&&<div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,borderTop:"1px solid rgba(255,255,255,0.05)",paddingTop:6}}>{m.notes}</div>}
 
@@ -8669,20 +8668,20 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
                             const p=playerById[pid];if(!p)return null;
                             const cnt=(m.scorers||[]).filter(x=>x===pid).length;
                             return <div key={pid} style={{display:"flex",alignItems:"center",gap:6,fontFamily:"'DM Sans',sans-serif",fontSize:11}}>
-                              <span>⚽</span><span style={{color:"#34d399",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>× {cnt}</span>
+                              <Icon id="soccer-ball" size={11} style={{color:"#34d399"}}/><span style={{color:"#34d399",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>× {cnt}</span>
                             </div>;
                           })}
                           {assisterIds.map(pid=>{
                             const p=playerById[pid];if(!p)return null;
                             const cnt=(m.assisters||[]).filter(x=>x===pid).length;
                             return <div key={pid} style={{display:"flex",alignItems:"center",gap:6,fontFamily:"'DM Sans',sans-serif",fontSize:11}}>
-                              <span>🎯</span><span style={{color:"#f59e0b",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>× {cnt}</span>
+                              <Icon id="target" size={11} style={{color:"#f59e0b"}}/><span style={{color:"#f59e0b",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>× {cnt}</span>
                             </div>;
                           })}
                           {gkEntries.map(([pid,n])=>{
                             const p=playerById[pid];if(!p)return null;
                             return <div key={pid} style={{display:"flex",alignItems:"center",gap:6,fontFamily:"'DM Sans',sans-serif",fontSize:11}}>
-                              <span>🧤</span><span style={{color:"#f87171",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>{n} gol{parseInt(n)!==1?"s":""} sofrido{parseInt(n)!==1?"s":""}</span>
+                              <Icon id="goalkeeper" size={11} style={{color:"#f87171"}}/><span style={{color:"#f87171",fontWeight:700}}>{p.name}</span><span style={{color:"#4B5563"}}>{n} gol{parseInt(n)!==1?"s":""} sofrido{parseInt(n)!==1?"s":""}</span>
                             </div>;
                           })}
                         </div>
@@ -8711,7 +8710,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
             padding:"10px 0",borderRadius:12,border:"1px solid rgba(52,211,153,0.25)",cursor:"pointer",marginBottom:12,
             background:"rgba(52,211,153,0.07)",color:"#34d399",
             fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1
-          }}>📋 EXPORTAR / FILTRAR ESTATÍSTICAS</button>
+          }}><Icon id="clipboard" size={15}/> EXPORTAR / FILTRAR ESTATÍSTICAS</button>
           {/* Goal balance summary */}
           {(()=>{
             const withResult=(matches||[]).filter(m=>m.goalsFor!==""&&m.goalsFor!==undefined&&m.goalsFor!==null);
@@ -8722,12 +8721,12 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
             return (
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
                 {[
-                  {label:"Gols marcados",value:totalGF,emoji:"⚽",color:"#34d399"},
-                  {label:"Gols sofridos",value:totalGA,emoji:"🧤",color:"#f87171"},
-                  {label:"Saldo de gols",value:(saldo>0?"+":"")+saldo,emoji:"📊",color:saldo>0?"#34d399":saldo<0?"#f87171":"#f59e0b"},
-                ].map(({label,value,emoji,color})=>(
+                  {label:"Gols marcados",value:totalGF,icon:"soccer-ball",color:"#34d399"},
+                  {label:"Gols sofridos",value:totalGA,icon:"goalkeeper",color:"#f87171"},
+                  {label:"Saldo de gols",value:(saldo>0?"+":"")+saldo,icon:"chart-bar",color:saldo>0?"#34d399":saldo<0?"#f87171":"#f59e0b"},
+                ].map(({label,value,icon,color})=>(
                   <div key={label} style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"10px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
-                    <span style={{fontSize:18}}>{emoji}</span>
+                    <Icon id={icon} size={18} style={{color}}/>
                     <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color,letterSpacing:1,lineHeight:1}}>{value}</span>
                     <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textTransform:"uppercase",textAlign:"center",lineHeight:1.3}}>{label}</span>
                   </div>
@@ -8755,7 +8754,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
               }}><Ico.Import/>INICIAR IMPORTAÇÃO</button>
             </div>
             <div style={{padding:"12px 14px",background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:12}}>
-              <div style={{color:"#f59e0b",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>📌 COMO EXPORTAR DO EXCEL / GOOGLE SHEETS</div>
+              <div style={{color:"#f59e0b",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6,display:"flex",alignItems:"center",gap:5}}><Icon id="pin" size={11}/> COMO EXPORTAR DO EXCEL / GOOGLE SHEETS</div>
               <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.7}}>
                 <b style={{color:"#e5e7eb"}}>Excel:</b> Arquivo → Salvar como → CSV (separado por vírgulas ou ponto-e-vírgula)<br/>
                 <b style={{color:"#e5e7eb"}}>Google Sheets:</b> Arquivo → Fazer download → Valores separados por vírgula (.csv)<br/>
@@ -8763,7 +8762,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
               </div>
             </div>
             <div style={{padding:"12px 14px",background:"rgba(52,211,153,0.04)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:12}}>
-              <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>✅ COLUNAS SUPORTADAS</div>
+              <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6,display:"flex",alignItems:"center",gap:5}}><Icon id="check-circle" size={11}/> COLUNAS SUPORTADAS</div>
               <div style={{display:"flex",flexDirection:"column",gap:4}}>
                 {[
                   ["nome / name","Nome do jogador (obrigatório)"],
