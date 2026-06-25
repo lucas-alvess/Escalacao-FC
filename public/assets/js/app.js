@@ -963,24 +963,41 @@ async function createCollabTeam(ownerUid, ownerUser, team) {
   } catch(e) { console.warn("createCollabTeam error:", e); return false; }
 }
 
-/** Recupera stats do path pessoal para collab_teams (para times já migrados sem stats). */
-async function recoverCollabStats(ownerUid, teamId) {
-  const fb = getFirebase(); if (!fb) return false;
+/**
+ * Copia stats e partidas do path pessoal (users/{uid}/teams/{id}/*) para
+ * collab_teams/{id}/*. Usado para times que foram ativados como colaborativos
+ * antes do fix que migrava esses dados automaticamente.
+ * Seguro de rodar múltiplas vezes (setDoc é idempotente).
+ */
+async function recoverCollabData(ownerUid, teamId) {
+  const fb = getFirebase(); if (!fb) return { stats: 0, matches: 0 };
   try {
-    const stats = await loadAllStatsCloud(ownerUid, teamId);
-    if (!stats || Object.keys(stats).length === 0) return false;
+    const [stats, matches] = await Promise.all([
+      loadAllStatsCloud(ownerUid, teamId),
+      loadMatchesCloud(ownerUid, teamId),
+    ]);
     const now = fb.serverTimestamp();
-    await Promise.all(
-      Object.values(stats).map(s =>
+    const ops = [
+      ...Object.values(stats || {}).map(s =>
         fb.setDoc(
           fb.doc(fb.db, "collab_teams", String(teamId), "stats", String(s.playerId)),
           { ...s, updatedAt: now }
         )
-      )
-    );
-    console.log(`[recoverCollabStats] Recuperadas ${Object.keys(stats).length} stats para collab_teams/${teamId}`);
-    return true;
-  } catch(e) { console.warn("recoverCollabStats error:", e); return false; }
+      ),
+      ...(matches || []).map(m =>
+        fb.setDoc(
+          fb.doc(fb.db, "collab_teams", String(teamId), "matches", String(m.id)),
+          { ...m, updatedAt: now }
+        )
+      ),
+    ];
+    if (ops.length === 0) return { stats: 0, matches: 0 };
+    await Promise.all(ops);
+    const nStats = Object.keys(stats || {}).length;
+    const nMatches = (matches || []).length;
+    console.log(`[recoverCollabData] stats=${nStats} partidas=${nMatches} → collab_teams/${teamId}`);
+    return { stats: nStats, matches: nMatches };
+  } catch(e) { console.warn("recoverCollabData error:", e); return { stats: 0, matches: 0 }; }
 }
 
 /** Gera e salva um código de convite para o time colaborativo. */
@@ -9813,24 +9830,41 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
     setMatches(null);
     if(team.isCollab){
       const fb=getFirebase();if(!fb)return;
-      fb.getDocs(fb.collection(fb.db,"collab_teams",String(team.id),"matches")).then(snap=>setMatches(snap.docs.map(d=>d.data())||[]));
-      fb.getDocs(fb.collection(fb.db,"collab_teams",String(team.id),"stats")).then(async snap=>{
-        const s={};snap.docs.forEach(d=>{s[d.id]=d.data();});
-        // Se não há stats em collab_teams mas o usuário é o dono, tentar recuperar
-        // do path pessoal (caso o time foi migrado antes do fix de stats).
-        if(snap.empty && team.ownerUid === uid){
-          const recovered = await recoverCollabStats(uid, team.id);
-          if(recovered){
+
+      const loadCollabMatchesAndStats = async () => {
+        const [matchSnap, statSnap] = await Promise.all([
+          fb.getDocs(fb.collection(fb.db,"collab_teams",String(team.id),"matches")),
+          fb.getDocs(fb.collection(fb.db,"collab_teams",String(team.id),"stats")),
+        ]);
+
+        const collabMatches = matchSnap.docs.map(d=>d.data());
+        const collabStats = {};
+        statSnap.docs.forEach(d=>{ collabStats[d.id]=d.data(); });
+
+        // Se o dono não tem stats nem partidas no collab, tentar recuperar do path pessoal.
+        // Isso cobre times ativados antes do fix de migração.
+        const ownerWithNoData = team.ownerUid === uid && statSnap.empty && matchSnap.empty;
+        const ownerWithNoStats = team.ownerUid === uid && statSnap.empty && !matchSnap.empty;
+        if(ownerWithNoData || ownerWithNoStats){
+          const result = await recoverCollabData(uid, team.id);
+          if(result.stats > 0 || result.matches > 0){
             // Recarregar após recuperação
-            const fb2=getFirebase();if(!fb2)return;
-            fb2.getDocs(fb2.collection(fb2.db,"collab_teams",String(team.id),"stats")).then(snap2=>{
-              const s2={};snap2.docs.forEach(d=>{s2[d.id]=d.data();});setStats(s2);
-            });
+            const [m2, s2snap] = await Promise.all([
+              fb.getDocs(fb.collection(fb.db,"collab_teams",String(team.id),"matches")),
+              fb.getDocs(fb.collection(fb.db,"collab_teams",String(team.id),"stats")),
+            ]);
+            setMatches(m2.docs.map(d=>d.data()));
+            const s2={};s2snap.docs.forEach(d=>{s2[d.id]=d.data();});
+            setStats(s2);
             return;
           }
         }
-        setStats(s);
-      });
+
+        setMatches(collabMatches);
+        setStats(collabStats);
+      };
+
+      loadCollabMatchesAndStats().catch(()=>{ setMatches([]); setStats({}); });
     } else {
       loadMatchesCloud(uid,team.id).then(m=>setMatches(m||[]));
       loadAllStatsCloud(uid,team.id).then(s=>setStats(s||{}));
