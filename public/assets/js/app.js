@@ -2965,17 +2965,19 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
 // ─── Sorteio Lista Screen ─────────────────────────────────────────────────────
 function SorteioListaScreen({ onBack, uid }) {
   const TEAM_COLORS = [
-    { label:"Verde",    value:"#22c55e" },
-    { label:"Vermelho", value:"#ef4444" },
-    { label:"Azul",     value:"#3b82f6" },
-    { label:"Amarelo",  value:"#f59e0b" },
-    { label:"Roxo",     value:"#a855f7" },
-    { label:"Laranja",  value:"#f97316" },
-    { label:"Rosa",     value:"#ec4899" },
-    { label:"Ciano",    value:"#06b6d4" },
-    { label:"Branco",   value:"#e5e7eb" },
-    { label:"Preto",    value:"#374151" },
+    { label:"Verde",    value:"#22c55e", img:"/assets/images/tampinha-green.png"  },
+    { label:"Vermelho", value:"#ef4444", img:"/assets/images/tampinha-red.png"    },
+    { label:"Azul",     value:"#3b82f6", img:"/assets/images/tampinha-blue.png"   },
+    { label:"Amarelo",  value:"#f59e0b", img:"/assets/images/tampinha-yellow.png" },
+    { label:"Roxo",     value:"#a855f7", img:"/assets/images/tampinha-purple.png" },
+    { label:"Laranja",  value:"#f97316", img:"/assets/images/tampinha-orange.png" },
+    { label:"Rosa",     value:"#ec4899", img:"/assets/images/tampinha-pink.png"   },
+    { label:"Ciano",    value:"#06b6d4", img:"/assets/images/tampinha-ciano.png"  },
+    { label:"Branco",   value:"#e5e7eb", img:"/assets/images/tampinha-white.png"  },
+    { label:"Preto",    value:"#374151", img:"/assets/images/tampinha-black.png"  },
   ];
+  // Map color value → tampinha image
+  const COLOR_IMG = Object.fromEntries(TEAM_COLORS.map(c => [c.value, c.img]));
 
   const SKILL_LABELS = ["Fraco","Regular","Bom","Ótimo","Craque"];
   const SKILL_COLORS = ["#6B7280","#60a5fa","#34d399","#f59e0b","#f43f5e"];
@@ -3585,14 +3587,14 @@ function SorteioTampinhasScreen({ onBack }) {
 
     const tick = () => {
       const fakeIdx = Math.floor(Math.random() * numTeams);
-      setRevealed({ teamIdx: fakeIdx, color: teamColors[fakeIdx], name: teamNames[fakeIdx] || `Time ${fakeIdx+1}`, fake: true });
+      setRevealed({ teamIdx: fakeIdx, color: teamColors[fakeIdx], img: COLOR_IMG[teamColors[fakeIdx]], name: teamNames[fakeIdx] || `Time ${fakeIdx+1}`, fake: true });
       ticks++;
       const delay = ticks < 10 ? 60 : ticks < 15 ? 100 : 180;
       if (ticks < totalTicks) {
         animRef.current = setTimeout(tick, delay);
       } else {
         // Final result
-        const result = { teamIdx, color: teamColors[teamIdx], name: teamNames[teamIdx] || `Time ${teamIdx+1}`, fake: false };
+        const result = { teamIdx, color: teamColors[teamIdx], img: COLOR_IMG[teamColors[teamIdx]], name: teamNames[teamIdx] || `Time ${teamIdx+1}`, fake: false };
         setRevealed(result);
         const nextBag = bag.slice(1);
         const nextDrawn = [...drawn, result];
@@ -3734,7 +3736,7 @@ function SorteioTampinhasScreen({ onBack }) {
         <div style={{ width:"100%", display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center", marginBottom:8 }}>
           {tally.map(t => (
             <div key={t.idx} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:20, background:`${t.color}18`, border:`1.5px solid ${t.color}50` }}>
-              <div style={{ width:10, height:10, borderRadius:"50%", background:t.color }}/>
+              <img src={COLOR_IMG[t.color]||""} alt="" style={{ width:18, height:18, objectFit:"contain" }}/>
               <span style={{ color:"#E5E7EB", fontSize:12, fontWeight:700 }}>{t.name}</span>
               <span style={{ color:t.color, fontSize:13, fontWeight:700, fontFamily:"'Bebas Neue',sans-serif", letterSpacing:1 }}>{t.count}/{playersPerTeam}</span>
             </div>
@@ -3750,12 +3752,15 @@ function SorteioTampinhasScreen({ onBack }) {
               display:"flex", flexDirection:"column", alignItems:"center", gap:10,
               animation: revealed.fake ? "st-flicker 0.12s linear infinite" : "st-pop 0.35s cubic-bezier(.34,1.56,.64,1) forwards"
             }}>
-              <div style={{
-                width:100, height:100, borderRadius:"50%",
-                background: revealed.color,
-                boxShadow: revealed.fake ? "none" : `0 0 40px ${revealed.color}80`,
-                transition: "background 0.05s"
-              }}/>
+              <img
+                src={revealed.img || ""}
+                alt={revealed.name}
+                style={{
+                  width:110, height:110, objectFit:"contain",
+                  filter: revealed.fake ? "brightness(0.7)" : `drop-shadow(0 0 16px ${revealed.color}90)`,
+                  transition:"filter 0.05s",
+                }}
+              />
               {!revealed.fake && (
                 <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:28, color: revealed.color, letterSpacing:2, textShadow:`0 0 20px ${revealed.color}80` }}>
                   {revealed.name}
@@ -3763,7 +3768,9 @@ function SorteioTampinhasScreen({ onBack }) {
               )}
             </div>
           ) : (
-            <div style={{ width:100, height:100, borderRadius:"50%", background:"rgba(255,255,255,0.06)", border:"2px dashed rgba(255,255,255,0.12)" }}/>
+            <div style={{ width:110, height:110, opacity:0.2 }}>
+              <img src="/assets/images/tampinha-white.png" alt="" style={{ width:"100%", height:"100%", objectFit:"contain", filter:"grayscale(1)" }}/>
+            </div>
           )}
 
           {/* BOTÃO CENTRAL GRANDE */}
@@ -3807,7 +3814,7 @@ function SorteioTampinhasScreen({ onBack }) {
             </div>
             <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"center" }}>
               {[...drawn].reverse().slice(0, 12).map((d, i) => (
-                <div key={i} style={{ width:28, height:28, borderRadius:"50%", background:d.color, border:"2px solid rgba(255,255,255,0.15)", boxShadow:`0 2px 8px ${d.color}60`, flexShrink:0, transition:"all 0.2s" }}/>
+                <img key={i} src={d.img||""} alt="" style={{ width:32, height:32, objectFit:"contain", filter:`drop-shadow(0 2px 6px ${d.color}80)`, flexShrink:0, transition:"all 0.2s" }}/>
               ))}
             </div>
           </div>
