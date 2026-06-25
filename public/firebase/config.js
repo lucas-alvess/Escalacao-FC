@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
@@ -38,7 +38,7 @@ const provider = new GoogleAuthProvider();
 // Expose to global scope for Babel script
 window.__firebase = {
   auth, db, storage, provider,
-  signInWithPopup, signOut, onAuthStateChanged,
+  signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   doc, setDoc, getDoc, deleteDoc,
   collection, getDocs, writeBatch,
   onSnapshot, query, orderBy, serverTimestamp, limit,

@@ -9039,6 +9039,12 @@ function App() {
     };
     if (window.__firebase) { setup(); }
     else { window.addEventListener("firebase-ready", setup, { once: true }); }
+    // Captura resultado do signInWithRedirect (usado no WebView/APK)
+    const handleRedirectResult = async () => {
+      const fb = getFirebase(); if (!fb || !fb.getRedirectResult) return;
+      try { await fb.getRedirectResult(fb.auth); } catch(e) { console.warn("Redirect result:", e); }
+    };
+    handleRedirectResult();
     return () => { if (unsubAuthRef.current) unsubAuthRef.current(); };
   }, []);
 
@@ -9117,11 +9123,20 @@ function App() {
   }, [user, loaded, teams, startSyncing]);
 
   // ── Auth helpers ───────────────────────────────────────────────────────────
+  const isWebView = () => {
+    const ua = navigator.userAgent || "";
+    return /wv|WebView/.test(ua) || (window.Capacitor && window.Capacitor.isNativePlatform());
+  };
+
   const handleLogin = async () => {
     const fb = getFirebase(); if (!fb) return;
     setLoginLoading(true);
     try {
-      await fb.signInWithPopup(fb.auth, fb.provider);
+      if (isWebView()) {
+        await fb.signInWithRedirect(fb.auth, fb.provider);
+      } else {
+        await fb.signInWithPopup(fb.auth, fb.provider);
+      }
     } catch(e) {
       console.error("Login error:", e);
       setLoginLoading(false);
