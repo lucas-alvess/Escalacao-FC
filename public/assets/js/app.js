@@ -1192,6 +1192,72 @@ async function saveCollabStat(teamId, stat) {
   } catch(e) { return false; }
 }
 
+/** Desativa a colaboração: migra dados de volta para users/{uid}/teams e remove collab_teams.
+ *  Diferente de deleteCollabTeam, NÃO apaga jogadores/escalações/stats/partidas.
+ *  Os dados são copiados de volta para o path pessoal antes de remover o collab. */
+async function deactivateCollabTeam(teamId, ownerUid) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const now = fb.serverTimestamp();
+    const tid = String(teamId);
+
+    // 1. Carregar todos os dados do collab para migrar de volta
+    const [playersSnap, lineupsSnap, statsSnap, matchesSnap, membersSnap] = await Promise.all([
+      fb.getDocs(fb.collection(fb.db, "collab_teams", tid, "players")),
+      fb.getDocs(fb.collection(fb.db, "collab_teams", tid, "lineups")),
+      fb.getDocs(fb.collection(fb.db, "collab_teams", tid, "stats")),
+      fb.getDocs(fb.collection(fb.db, "collab_teams", tid, "matches")),
+      fb.getDocs(fb.collection(fb.db, "collab_teams", tid, "members")),
+    ]);
+
+    // 2. Copiar de volta para users/{uid}/teams/{teamId}/*
+    const writes = [];
+    playersSnap.docs.forEach(d => writes.push(
+      fb.setDoc(fb.doc(fb.db, "users", ownerUid, "teams", tid, "players", d.id), { ...d.data(), updatedAt: now })
+    ));
+    lineupsSnap.docs.forEach(d => writes.push(
+      fb.setDoc(fb.doc(fb.db, "users", ownerUid, "teams", tid, "lineups", d.id), { ...d.data(), updatedAt: now })
+    ));
+    statsSnap.docs.forEach(d => writes.push(
+      fb.setDoc(fb.doc(fb.db, "users", ownerUid, "teams", tid, "stats", d.id), { ...d.data(), updatedAt: now })
+    ));
+    matchesSnap.docs.forEach(d => writes.push(
+      fb.setDoc(fb.doc(fb.db, "users", ownerUid, "teams", tid, "matches", d.id), { ...d.data(), updatedAt: now })
+    ));
+    await Promise.all(writes);
+
+    // 3. Remover o flag _collabMigrated do time pessoal para ele voltar a aparecer
+    await fb.setDoc(
+      fb.doc(fb.db, "users", ownerUid, "teams", tid),
+      { _collabMigrated: false, isCollab: false },
+      { merge: true }
+    );
+
+    // 4. Remover collab_refs de todos os membros
+    const memberUids = membersSnap.docs.map(d => d.id);
+    await Promise.all(memberUids.map(mUid =>
+      fb.deleteDoc(fb.doc(fb.db, "users", mUid, "collab_refs", tid))
+    ));
+
+    // 5. Deletar subcoleções do collab (dados já foram copiados)
+    const allDocs = [
+      ...playersSnap.docs, ...lineupsSnap.docs,
+      ...statsSnap.docs, ...matchesSnap.docs, ...membersSnap.docs,
+    ];
+    const CHUNK = 400;
+    for (let i = 0; i < allDocs.length; i += CHUNK) {
+      const batch = fb.writeBatch(fb.db);
+      allDocs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // 6. Deletar o documento raiz do collab
+    await fb.deleteDoc(fb.doc(fb.db, "collab_teams", tid));
+
+    return true;
+  } catch(e) { console.warn("deactivateCollabTeam error:", e); return false; }
+}
+
 /** Cancela colaboração: remove o time colaborativo para todos (apenas dono pode). */
 async function deleteCollabTeam(teamId, ownerUid) {
   const fb = getFirebase(); if (!fb) return false;
@@ -5497,7 +5563,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
         const isCollabOwner = isCollabTeam && delTeam?.ownerUid === user?.uid;
         const title = isCollabTeam ? (isCollabOwner ? "Encerrar colaboração?" : "Sair do time?") : "Excluir time?";
         const desc  = isCollabTeam
-          ? (isCollabOwner ? "O time colaborativo será removido para todos os membros. Esta ação é irreversível." : "Você sairá deste time colaborativo. O time continuará existindo para os outros membros.")
+          ? (isCollabOwner ? "A colaboração será encerrada e o time voltará a ser pessoal. Seus dados (jogadores, stats, partidas) serão preservados." : "Você sairá deste time colaborativo. O time continuará existindo para os outros membros.")
           : "Esta ação é irreversível. Todos os jogadores e escalações serão perdidos.";
         const btnLabel = isCollabTeam ? (isCollabOwner ? "Encerrar" : "Sair") : "Excluir";
         return (
@@ -10677,16 +10743,24 @@ function App() {
     if (activeTeamId === id) setActiveTeamId(null);
 
     if (team?.isCollab) {
-      // Unsubscribe real-time listener
+      // Unsubscribe real-time listener antes de qualquer operação
       if (collabUnsubsRef.current[id]) {
         try { collabUnsubsRef.current[id](); } catch {}
         delete collabUnsubsRef.current[id];
       }
       const isOwner = team.ownerUid === uid;
       if (isOwner) {
-        setToast("Time colaborativo encerrado");
-        await deleteCollabTeam(id, uid);
+        // Dono: encerrar colaboração = desativar (migra dados de volta, não apaga)
+        setToast("Colaboração encerrada — time restaurado");
+        const ok = await deactivateCollabTeam(id, uid);
+        if (ok) {
+          // Recarregar o time pessoal que voltou (sem o flag _collabMigrated)
+          _memCache.invalidateTeam(uid, id);
+          const restored = await loadTeamFull(uid, { id, ...team, isCollab: false, _collabMigrated: false });
+          if (restored) setTeams(prev => [...prev.filter(t => t.id !== id), { ...restored, isCollab: false }]);
+        }
       } else {
+        // Editor: sair do time colaborativo (não remove nada do time em si)
         setToast("Você saiu do time colaborativo");
         await removeCollabMember(id, uid);
       }
