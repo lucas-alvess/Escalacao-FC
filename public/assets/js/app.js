@@ -3723,9 +3723,9 @@ function SorteioTampinhasScreen({ onBack }) {
         <BackBtn onClick={reset}/>
         <div style={{ textAlign:"center" }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-            <img src="/assets/images/tampinha-gold.png" alt="" style={{ width:26, height:26, objectFit:"contain" }}/>
+            <img src="/assets/images/tampinha-ouro.png" alt="" style={{ width:26, height:26, objectFit:"contain" }}/>
             <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color:"#fff", letterSpacing:2 }}>SORTEIO TAMPINHAS</span>
-            <img src="/assets/images/tampinha-gold.png" alt="" style={{ width:26, height:26, objectFit:"contain" }}/>
+            <img src="/assets/images/tampinha-ouro.png" alt="" style={{ width:26, height:26, objectFit:"contain" }}/>
           </div>
           <div style={{ color:"#6B7280", fontSize:11, fontWeight:700, marginTop:2 }}>
             {done
@@ -3796,7 +3796,7 @@ function SorteioTampinhasScreen({ onBack }) {
                   filter: revealing ? "brightness(0.75)" : "drop-shadow(0 8px 24px rgba(245,158,11,0.55))",
                 }}
               >
-                <img src="/assets/images/tampinha-gold.png" alt="Sortear" style={{ width:200, height:200, objectFit:"contain", pointerEvents:"none" }}/>
+                <img src="/assets/images/tampinha-ouro.png" alt="Sortear" style={{ width:200, height:200, objectFit:"contain", pointerEvents:"none" }}/>
               </button>
               <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color: revealing ? "#6B7280" : "#f5c542", letterSpacing:3, fontWeight:700, textShadow: revealing ? "none" : "0 0 16px rgba(245,197,66,0.5)" }}>
                 {revealing ? "SORTEANDO..." : "TOCA AQUI!"}
