@@ -2844,7 +2844,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
           {[
             { key:"info", label:"Info", iconId:"info" },
             { key:"players", label:"Jogadores", iconId:"users" },
-            { key:"mensalidade", label:"Mensalidade", iconId:"credit-card" },
+            { key:"mensalidade", label:"Finanças", iconId:"credit-card" },
             { key:"export", label:"WhatsApp", iconId:"upload" },
           ].map(t => (
             <button key={t.key} className="ad-tab" onClick={() => setTab(t.key)} style={{ color: tab===t.key ? "#60a5fa" : "#6B7280" }}>
