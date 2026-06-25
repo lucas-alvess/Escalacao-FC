@@ -3560,6 +3560,10 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   const [showDeleteGasto, setShowDeleteGasto] = useState(null);
   const [valorCampo, setValorCampo] = useState("");
   const [saldoCaixaAnterior, setSaldoCaixaAnterior] = useState("");
+  const [outrosCaixas, setOutrosCaixas] = useState([]); // [{id, nome, valor}]
+  const [showAddCaixa, setShowAddCaixa] = useState(false);
+  const [novoCaixaNome, setNovoCaixaNome] = useState("");
+  const [editingCaixaId, setEditingCaixaId] = useState(null); // renomear
   const [expandedId, setExpandedId] = useState(null);
   const [copiedReport, setCopiedReport] = useState(false);
   const saveTimer = useRef(null);
@@ -3581,13 +3585,15 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
         setData(d);
         setValorCampo(d.valorCampo || "");
         setSaldoCaixaAnterior(d.saldoCaixaAnterior || "");
+        setOutrosCaixas(d.outrosCaixas || []);
       } else {
         const initialPagamentos = mensalistasPlayers.map(p => ({
           id: p.id, name: p.name, tipo: "mensalista", pago: false, dataPagamento: "", obs: ""
         }));
-        setData({ pagamentos: initialPagamentos, avulsos: [], gastos: [], valorCampo: "", saldoCaixaAnterior: "" });
+        setData({ pagamentos: initialPagamentos, avulsos: [], gastos: [], valorCampo: "", saldoCaixaAnterior: "", outrosCaixas: [] });
         setValorCampo("");
         setSaldoCaixaAnterior("");
+        setOutrosCaixas([]);
       }
       setLoading(false);
     }, () => setLoading(false));
@@ -3635,7 +3641,8 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   const totalGastos = (data?.gastos||[]).reduce((s,g)=>s+(parseFloat(String(g.valor||0).replace(",","."))||0),0);
   const valorCampoNum = parseFloat(String(valorCampo||"").replace(/[^\d.,]/g,"").replace(",",".")) || 0;
   const saldoCaixaAnteriorNum = parseFloat(String(saldoCaixaAnterior||"").replace(/[^\d.,]/g,"").replace(",",".")) || 0;
-  const saldo = totalArrecadado - totalGastos - valorCampoNum + saldoCaixaAnteriorNum;
+  const outrosCaixasTotal = (outrosCaixas||[]).reduce((s,c) => s + (parseFloat(String(c.valor||"").replace(/[^\d.,]/g,"").replace(",",".")) || 0), 0);
+  const saldo = totalArrecadado - totalGastos - valorCampoNum + saldoCaixaAnteriorNum + outrosCaixasTotal;
 
   const navMes = (dir) => {
     let m = mes + dir, a = ano;
@@ -3698,6 +3705,34 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
     setValorCampo(v);
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => save({ ...data, valorCampo: v }), 800);
+  };
+
+  const addOutroCaixa = () => {
+    const nome = novoCaixaNome.trim();
+    if (!nome) return;
+    const novo = { id: genUUID(), nome, valor: "" };
+    const next = [...(outrosCaixas||[]), novo];
+    setOutrosCaixas(next);
+    setNovoCaixaNome(""); setShowAddCaixa(false);
+    const nextData = { ...data, outrosCaixas: next };
+    setData(nextData); save(nextData);
+  };
+
+  const updateOutroCaixa = (id, field, val) => {
+    const next = (outrosCaixas||[]).map(c => c.id === id ? { ...c, [field]: val } : c);
+    setOutrosCaixas(next);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      const nextData = { ...data, outrosCaixas: next };
+      setData(nextData); save(nextData);
+    }, 800);
+  };
+
+  const removeOutroCaixa = (id) => {
+    const next = (outrosCaixas||[]).filter(c => c.id !== id);
+    setOutrosCaixas(next);
+    const nextData = { ...data, outrosCaixas: next };
+    setData(nextData); save(nextData);
   };
 
   const handleSaldoCaixaAnterior = (v) => {
@@ -3791,8 +3826,8 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
           <div style={{ background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"10px 12px" }}>
             <div style={{ color:"#6B7280",fontSize:10,fontWeight:700 }}>ARRECADADO</div>
-            <div style={{ color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1 }}>R$ {totalArrecadado.toFixed(2).replace(".",",")}</div>
-            <div style={{ color:"#4B5563",fontSize:10,marginTop:2 }}>{pagosMensalistas} mensalistas + {(data?.avulsos||[]).filter(a=>a.pago).length} avulsos</div>
+            <div style={{ color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1 }}>R$ {(totalArrecadado + saldoCaixaAnteriorNum + outrosCaixasTotal).toFixed(2).replace(".",",")}</div>
+            <div style={{ color:"#4B5563",fontSize:10,marginTop:2 }}>{pagosMensalistas} mens. + {(data?.avulsos||[]).filter(a=>a.pago).length} avulsos{outrosCaixasTotal>0?` + outros`:""}{saldoCaixaAnteriorNum>0?` + ant.`:""}</div>
           </div>
           <div style={{ background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"10px 12px" }}>
             <div style={{ color:"#6B7280",fontSize:10,fontWeight:700 }}>SAÍDAS</div>
@@ -3813,6 +3848,55 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
             <label className="men-label"><Icon id="stadium" size={12}/> Valor do Campo (abater do caixa)</label>
             <input className="men-input" placeholder="Ex: 300,00" value={valorCampo} onChange={e=>handleValorCampo(e.target.value)}/>
           </div>
+
+          {/* Outros caixas */}
+          {(outrosCaixas||[]).map(c=>(
+            <div key={c.id} style={{display:"flex",flexDirection:"column",gap:5}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                {editingCaixaId===c.id ? (
+                  <input
+                    autoFocus
+                    value={c.nome}
+                    onChange={e=>updateOutroCaixa(c.id,"nome",e.target.value)}
+                    onBlur={()=>setEditingCaixaId(null)}
+                    onKeyDown={e=>e.key==="Enter"&&setEditingCaixaId(null)}
+                    style={{flex:1,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.4)",borderRadius:7,padding:"4px 8px",color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,outline:"none",letterSpacing:0.5,textTransform:"uppercase"}}
+                  />
+                ) : (
+                  <label className="men-label" style={{flex:1,marginBottom:0,display:"flex",alignItems:"center",gap:4,cursor:"pointer"}} onClick={()=>setEditingCaixaId(c.id)}>
+                    <Icon id="banknote" size={12}/> {c.nome} (adicionar ao total)
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2.2" strokeLinecap="round" style={{marginLeft:2}}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </label>
+                )}
+                <button onClick={()=>removeOutroCaixa(c.id)} style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:7,padding:"3px 8px",color:"#F87171",fontSize:10,fontWeight:700,cursor:"pointer",flexShrink:0,lineHeight:1.6}}>✕</button>
+              </div>
+              <input className="men-input" placeholder="Ex: 50,00" value={c.valor} onChange={e=>updateOutroCaixa(c.id,"valor",e.target.value)}/>
+            </div>
+          ))}
+
+          {/* Botão adicionar novo caixa */}
+          {showAddCaixa ? (
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input
+                autoFocus
+                className="men-input"
+                style={{flex:1}}
+                placeholder="Nome do caixa (ex: Rifa, Doação...)"
+                value={novoCaixaNome}
+                onChange={e=>setNovoCaixaNome(e.target.value)}
+                onKeyDown={e=>{ if(e.key==="Enter") addOutroCaixa(); if(e.key==="Escape") setShowAddCaixa(false); }}
+              />
+              <button onClick={addOutroCaixa} disabled={!novoCaixaNome.trim()} style={{padding:"9px 14px",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,cursor:novoCaixaNome.trim()?"pointer":"default",opacity:novoCaixaNome.trim()?1:0.5,flexShrink:0}}>OK</button>
+              <button onClick={()=>{setShowAddCaixa(false);setNovoCaixaNome("");}} style={{padding:"9px 10px",borderRadius:9,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#6B7280",cursor:"pointer",flexShrink:0,fontSize:12}}>✕</button>
+            </div>
+          ) : (
+            <button onClick={()=>setShowAddCaixa(true)} style={{alignSelf:"flex-start",display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:8,border:"1px dashed rgba(59,130,246,0.3)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,transition:"all 0.15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(59,130,246,0.6)";e.currentTarget.style.color="#60a5fa";}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(59,130,246,0.3)";e.currentTarget.style.color="#4B5563";}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Adicionar outro caixa
+            </button>
+          )}
         </div>
       </div>
 
