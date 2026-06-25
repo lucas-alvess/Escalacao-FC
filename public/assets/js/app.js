@@ -873,6 +873,660 @@ async function importTeamShare(uid, shareData, options = {}) {
   } catch(e) { console.warn("importTeamShare error:", e); return false; }
 }
 
+// ─── Collaborative Teams ──────────────────────────────────────────────────────
+// Times colaborativos ficam em uma coleção separada para que qualquer membro
+// possa ler e escrever sem precisar de acesso à coleção users/ de outra pessoa.
+//
+// Estrutura Firestore:
+//   collab_teams/{teamId}                    → metadados do time + ownerUid + members map
+//   collab_teams/{teamId}/players/{id}       → jogadores (mesmo schema de users/.../players)
+//   collab_teams/{teamId}/lineups/{id}       → escalações
+//   collab_teams/{teamId}/matches/{id}       → partidas
+//   collab_teams/{teamId}/stats/{id}         → estatísticas
+//   collab_teams/{teamId}/members/{uid}      → { uid, name, email, role, joinedAt }
+//   collab_invites/{code}                    → { teamId, teamName, ownerUid, ownerName, createdAt }
+//   users/{uid}/collab_refs/{teamId}         → { teamId, role } ← índice por usuário
+
+function collabTeamRef(teamId) {
+  const fb = getFirebase(); if (!fb) return null;
+  return fb.doc(fb.db, "collab_teams", String(teamId));
+}
+function collabSubRef(teamId, sub, docId) {
+  const fb = getFirebase(); if (!fb) return null;
+  return fb.doc(fb.db, "collab_teams", String(teamId), sub, String(docId));
+}
+function collabSubCol(teamId, sub) {
+  const fb = getFirebase(); if (!fb) return null;
+  return fb.collection(fb.db, "collab_teams", String(teamId), sub);
+}
+
+/** Marca o time como colaborativo e cria documento em collab_teams/. */
+async function createCollabTeam(ownerUid, ownerUser, team) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const teamId = String(team.id);
+    const { players: _p, lineups: _ls, lineup: _l, ...teamMeta } = team;
+    const now = fb.serverTimestamp();
+
+    // Documento principal do time
+    await fb.setDoc(fb.doc(fb.db, "collab_teams", teamId), {
+      ...teamMeta,
+      isCollab: true,
+      ownerUid,
+      updatedAt: now,
+    });
+
+    // Membro dono
+    await fb.setDoc(fb.doc(fb.db, "collab_teams", teamId, "members", ownerUid), {
+      uid: ownerUid,
+      name: ownerUser.displayName || ownerUser.email || "Dono",
+      email: ownerUser.email || "",
+      role: "owner",
+      joinedAt: now,
+    });
+
+    // Índice reverso no perfil do dono
+    await fb.setDoc(fb.doc(fb.db, "users", ownerUid, "collab_refs", teamId), {
+      teamId, role: "owner", joinedAt: now,
+    });
+
+    // Migrar jogadores e escalações existentes
+    const [players, lineups] = await Promise.all([
+      loadPlayersCloud(ownerUid, teamId, { force: true }),
+      loadLineupsCloud(ownerUid, teamId, { force: true }),
+    ]);
+    await Promise.all([
+      ...(players || []).map(p =>
+        fb.setDoc(fb.doc(fb.db, "collab_teams", teamId, "players", String(p.id)), { ...p, updatedAt: now })
+      ),
+      ...(lineups || []).map(l =>
+        fb.setDoc(fb.doc(fb.db, "collab_teams", teamId, "lineups", String(l.id)), { ...l, updatedAt: now })
+      ),
+    ]);
+
+    return true;
+  } catch(e) { console.warn("createCollabTeam error:", e); return false; }
+}
+
+/** Gera e salva um código de convite para o time colaborativo. */
+async function createCollabInvite(teamId, teamName, ownerUid, ownerName) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "C"; // prefixo "C" para distinguir de convites de cópia
+    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    await fb.setDoc(fb.doc(fb.db, "collab_invites", code), {
+      teamId: String(teamId),
+      teamName: teamName || "Time",
+      ownerUid,
+      ownerName: ownerName || "Usuário",
+      createdAt: fb.serverTimestamp(),
+    });
+    return code;
+  } catch(e) { console.warn("createCollabInvite error:", e); return null; }
+}
+
+/** Busca convite colaborativo por código. */
+async function fetchCollabInvite(code) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, "collab_invites", code.trim().toUpperCase()));
+    if (!snap.exists()) return null;
+    return snap.data();
+  } catch(e) { console.warn("fetchCollabInvite error:", e); return null; }
+}
+
+/** Aceita convite e adiciona o usuário como membro editor do time colaborativo. */
+async function acceptCollabInvite(inviteData, uid, user) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const { teamId } = inviteData;
+    const now = fb.serverTimestamp();
+
+    // Verifica se já é membro
+    const memberSnap = await fb.getDoc(fb.doc(fb.db, "collab_teams", teamId, "members", uid));
+    if (memberSnap.exists()) return "already_member";
+
+    // Adiciona membro editor
+    await fb.setDoc(fb.doc(fb.db, "collab_teams", teamId, "members", uid), {
+      uid,
+      name: user.displayName || user.email || "Editor",
+      email: user.email || "",
+      role: "editor",
+      joinedAt: now,
+    });
+
+    // Índice reverso no perfil do editor
+    await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_refs", teamId), {
+      teamId, role: "editor", joinedAt: now,
+    });
+
+    return true;
+  } catch(e) { console.warn("acceptCollabInvite error:", e); return false; }
+}
+
+/** Remove um membro do time colaborativo (dono pode remover qualquer editor; editor pode sair). */
+async function removeCollabMember(teamId, memberUid, byOwner = false) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(fb.doc(fb.db, "collab_teams", teamId, "members", memberUid));
+    await fb.deleteDoc(fb.doc(fb.db, "users", memberUid, "collab_refs", teamId));
+    return true;
+  } catch(e) { console.warn("removeCollabMember error:", e); return false; }
+}
+
+/** Carrega a lista de membros de um time colaborativo. */
+async function loadCollabMembers(teamId) {
+  const fb = getFirebase(); if (!fb) return [];
+  try {
+    const snap = await fb.getDocs(collabSubCol(teamId, "members"));
+    return snap.docs.map(d => d.data());
+  } catch(e) { return []; }
+}
+
+/** Carrega todos os teamIds colaborativos que o usuário participa. */
+async function loadCollabRefs(uid) {
+  const fb = getFirebase(); if (!fb) return [];
+  try {
+    const col = fb.collection(fb.db, "users", uid, "collab_refs");
+    const snap = await fb.getDocs(col);
+    return snap.docs.map(d => d.data());
+  } catch(e) { return []; }
+}
+
+/** Carrega um time colaborativo completo (meta + players + lineups). */
+async function loadCollabTeamFull(teamId) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const [metaSnap, playersSnap, lineupsSnap] = await Promise.all([
+      fb.getDoc(fb.doc(fb.db, "collab_teams", String(teamId))),
+      fb.getDocs(collabSubCol(teamId, "players")),
+      fb.getDocs(collabSubCol(teamId, "lineups")),
+    ]);
+    if (!metaSnap.exists()) return null;
+    const meta = metaSnap.data();
+    const players = playersSnap.docs.map(d => d.data()).sort((a, b) => compareIds(a.id, b.id));
+    const lineups = lineupsSnap.docs.map(d => d.data());
+    const activeLineup = getActiveLineup(meta, lineups);
+    return {
+      ...meta,
+      players,
+      lineups,
+      formation: activeLineup?.formation || meta.formation || "4-4-2",
+      lineup: activeLineup?.entries || [],
+      isCollab: true,
+    };
+  } catch(e) { console.warn("loadCollabTeamFull error:", e); return null; }
+}
+
+// ── Collab CRUD — gravação nas subcoleções de collab_teams/ ──────────────────
+
+async function saveCollabTeamMeta(team) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const { players: _p, lineups: _ls, lineup: _l, ...meta } = team;
+    await fb.setDoc(fb.doc(fb.db, "collab_teams", String(team.id)),
+      { ...meta, updatedAt: fb.serverTimestamp() }, { merge: true });
+    return true;
+  } catch(e) { console.warn("saveCollabTeamMeta error:", e); return false; }
+}
+
+async function saveCollabPlayer(teamId, player) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.setDoc(
+      fb.doc(fb.db, "collab_teams", String(teamId), "players", String(player.id)),
+      { ...player, updatedAt: fb.serverTimestamp() }
+    );
+    return true;
+  } catch(e) { console.warn("saveCollabPlayer error:", e); return false; }
+}
+
+async function deleteCollabPlayer(teamId, playerId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(fb.doc(fb.db, "collab_teams", String(teamId), "players", String(playerId)));
+    return true;
+  } catch(e) { return false; }
+}
+
+async function saveCollabLineup(teamId, lineup) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.setDoc(
+      fb.doc(fb.db, "collab_teams", String(teamId), "lineups", String(lineup.id)),
+      { ...lineup, updatedAt: fb.serverTimestamp() }
+    );
+    return true;
+  } catch(e) { console.warn("saveCollabLineup error:", e); return false; }
+}
+
+async function deleteCollabLineup(teamId, lineupId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(fb.doc(fb.db, "collab_teams", String(teamId), "lineups", String(lineupId)));
+    return true;
+  } catch(e) { return false; }
+}
+
+async function saveCollabMatch(teamId, match) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.setDoc(
+      fb.doc(fb.db, "collab_teams", String(teamId), "matches", String(match.id)),
+      { ...match, updatedAt: fb.serverTimestamp() }
+    );
+    return true;
+  } catch(e) { return false; }
+}
+
+async function deleteCollabMatch(teamId, matchId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(fb.doc(fb.db, "collab_teams", String(teamId), "matches", String(matchId)));
+    return true;
+  } catch(e) { return false; }
+}
+
+async function saveCollabStat(teamId, stat) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.setDoc(
+      fb.doc(fb.db, "collab_teams", String(teamId), "stats", String(stat.playerId)),
+      { ...stat, updatedAt: fb.serverTimestamp() }
+    );
+    return true;
+  } catch(e) { return false; }
+}
+
+/** Cancela colaboração: remove o time colaborativo para todos (apenas dono pode). */
+async function deleteCollabTeam(teamId, ownerUid) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    // Remover refs de todos os membros
+    const membersSnap = await fb.getDocs(collabSubCol(teamId, "members"));
+    await Promise.all(membersSnap.docs.map(d =>
+      fb.deleteDoc(fb.doc(fb.db, "users", d.id, "collab_refs", teamId))
+    ));
+    // Deletar subcoleções (players, lineups, matches, stats, members)
+    for (const sub of ["players","lineups","matches","stats","members"]) {
+      const subSnap = await fb.getDocs(collabSubCol(teamId, sub));
+      const CHUNK = 400;
+      for (let i = 0; i < subSnap.docs.length; i += CHUNK) {
+        const batch = fb.writeBatch(fb.db);
+        subSnap.docs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    await fb.deleteDoc(fb.doc(fb.db, "collab_teams", teamId));
+    return true;
+  } catch(e) { console.warn("deleteCollabTeam error:", e); return false; }
+}
+
+// ── Hook: sincronização em tempo real de um time colaborativo ─────────────────
+// Usado no App para receber updates de outros membros instantaneamente.
+// Retorna função de cleanup (unsub).
+function subscribeCollabTeam(teamId, onUpdate) {
+  const fb = getFirebase(); if (!fb) return () => {};
+  const unsubMeta = fb.onSnapshot(
+    fb.doc(fb.db, "collab_teams", String(teamId)),
+    metaDoc => {
+      if (!metaDoc.exists()) return;
+      onUpdate({ type: "meta", data: metaDoc.data() });
+    },
+    () => {}
+  );
+  const unsubPlayers = fb.onSnapshot(
+    fb.collection(fb.db, "collab_teams", String(teamId), "players"),
+    snap => {
+      const players = snap.docs.map(d => d.data()).sort((a, b) => compareIds(a.id, b.id));
+      onUpdate({ type: "players", data: players });
+    },
+    () => {}
+  );
+  const unsubLineups = fb.onSnapshot(
+    fb.collection(fb.db, "collab_teams", String(teamId), "lineups"),
+    snap => {
+      const lineups = snap.docs.map(d => d.data());
+      onUpdate({ type: "lineups", data: lineups });
+    },
+    () => {}
+  );
+  return () => { unsubMeta(); unsubPlayers(); unsubLineups(); };
+}
+
+// ── Modal: Ativar colaboração em um time próprio ──────────────────────────────
+function EnableCollabModal({ team, user, onClose, onEnabled }) {
+  const [step, setStep] = useState("confirm"); // confirm | loading | done | error
+  const handleEnable = async () => {
+    setStep("loading");
+    const ok = await createCollabTeam(user.uid, user, team);
+    if (ok) { setStep("done"); }
+    else setStep("error");
+  };
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0a1628",border:"1px solid rgba(59,130,246,0.25)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"24px 20px 40px",display:"flex",flexDirection:"column",gap:18}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>ATIVAR COLABORAÇÃO</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
+        </div>
+
+        {step==="confirm"&&(<>
+          <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(59,130,246,0.06)",borderRadius:13,border:"1px solid rgba(59,130,246,0.2)"}}>
+            <TeamShield team={team} size={44}/>
+            <div>
+              <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:0.5}}>{team.name}</div>
+              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{(team.players||[]).length} jogadores · {team.formation}</div>
+            </div>
+          </div>
+
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {[
+              {icon:"👥", title:"Edição em tempo real", desc:"Todos os membros veem as alterações instantaneamente, sem precisar recarregar."},
+              {icon:"🔗", title:"Código de convite permanente", desc:"Gere um código e envie para quem quiser. Revogue quando quiser."},
+              {icon:"⚡", title:"Sincronização automática", desc:"Qualquer mudança em jogadores, escalações e partidas se propaga para todos."},
+            ].map(({icon,title,desc})=>(
+              <div key={title} style={{display:"flex",gap:12,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:11,border:"1px solid rgba(255,255,255,0.06)"}}>
+                <span style={{fontSize:20,lineHeight:1.4}}>{icon}</span>
+                <div>
+                  <div style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>{title}</div>
+                  <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2,lineHeight:1.5}}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{padding:"10px 12px",background:"rgba(250,204,21,0.06)",borderRadius:10,border:"1px solid rgba(250,204,21,0.15)"}}>
+            <div style={{color:"#fbbf24",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:2}}>⚠️ Atenção</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.5}}>Seus dados existentes (jogadores, escalações) serão copiados para o espaço colaborativo. O time original em sua conta permanece como backup.</div>
+          </div>
+
+          <button onClick={handleEnable} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,boxShadow:"0 6px 20px rgba(59,130,246,0.35)"}}>
+            ATIVAR COLABORAÇÃO
+          </button>
+        </>)}
+
+        {step==="loading"&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
+            <div style={{width:40,height:40,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Ativando colaboração...</span>
+          </div>
+        )}
+
+        {step==="done"&&(<>
+          <div style={{textAlign:"center",padding:"16px 0"}}>
+            <div style={{fontSize:52,marginBottom:12}}>🤝</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:6}}>COLABORAÇÃO ATIVADA!</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6,maxWidth:300,margin:"0 auto"}}>
+              Agora você pode convidar outros usuários para editar o time junto com você em tempo real.
+            </div>
+          </div>
+          <button onClick={()=>{ onEnabled && onEnabled(); onClose(); }} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>
+            IR PARA O TIME
+          </button>
+        </>)}
+
+        {step==="error"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#f87171",letterSpacing:1,marginBottom:6}}>ERRO AO ATIVAR</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Verifique sua conexão e tente novamente.</div>
+          </div>
+          <button onClick={()=>setStep("confirm")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+// ── Modal: Gerenciar convite colaborativo ─────────────────────────────────────
+function CollabInviteModal({ team, user, onClose }) {
+  const [step, setStep] = useState("loading"); // loading | ready | error
+  const [code, setCode] = useState("");
+  const [members, setMembers] = useState([]);
+  const [copied, setCopied] = useState(false);
+  const [removingUid, setRemovingUid] = useState(null);
+  const isOwner = team.ownerUid === user.uid;
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const [mbrs] = await Promise.all([loadCollabMembers(team.id)]);
+      if (!cancelled) { setMembers(mbrs); setStep("ready"); }
+    };
+    load().catch(() => setStep("error"));
+    return () => { cancelled = true; };
+  }, [team.id]);
+
+  const handleGenerateCode = async () => {
+    setStep("loading");
+    const c = await createCollabInvite(team.id, team.name, user.uid, user.displayName || user.email);
+    if (c) { setCode(c); setStep("ready"); }
+    else setStep("error");
+  };
+
+  const handleCopy = async () => {
+    const msg = `Oi! Te convido para coeditar o time *${team.name}* no Escalação FC 🤝\nCódigo colaborativo: *${code}*\nAbra o app → Importar time → cole o código.`;
+    try {
+      if (navigator.share) await navigator.share({ title: "Escalação FC", text: msg });
+      else { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(() => setCopied(false), 2500); }
+    } catch {
+      try { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch {}
+    }
+  };
+
+  const handleRemove = async (uid) => {
+    setRemovingUid(uid);
+    await removeCollabMember(team.id, uid);
+    setMembers(prev => prev.filter(m => m.uid !== uid));
+    setRemovingUid(null);
+  };
+
+  const roleLabel = { owner: "Dono", editor: "Editor" };
+  const roleColor = { owner: "#f59e0b", editor: "#60a5fa" };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0a1628",border:"1px solid rgba(59,130,246,0.25)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"22px 20px 40px",display:"flex",flexDirection:"column",gap:16,maxHeight:"85vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>COLABORAÇÃO</span>
+            <div style={{color:"#3b82f6",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginTop:1}}>{team.name}</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
+        </div>
+
+        {step==="loading"&&(
+          <div style={{display:"flex",justifyContent:"center",padding:"30px 0"}}>
+            <div style={{width:36,height:36,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+          </div>
+        )}
+
+        {step==="ready"&&(<>
+          {/* Membros */}
+          <div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>
+              Membros ({members.length})
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {members.map(m => (
+                <div key={m.uid} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:11,border:"1px solid rgba(255,255,255,0.06)"}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.25)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontFamily:"'Bebas Neue',sans-serif",color:"#60a5fa",fontSize:16}}>
+                    {(m.name||"?")[0].toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name || "Usuário"}</div>
+                    <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.email || ""}</div>
+                  </div>
+                  <span style={{padding:"2px 8px",borderRadius:6,background:`${roleColor[m.role]}1a`,border:`1px solid ${roleColor[m.role]}33`,color:roleColor[m.role],fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
+                    {roleLabel[m.role] || m.role}
+                  </span>
+                  {isOwner && m.role !== "owner" && (
+                    <button onClick={()=>handleRemove(m.uid)} disabled={removingUid===m.uid} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
+                      {removingUid===m.uid?"...":"Remover"}
+                    </button>
+                  )}
+                  {!isOwner && m.uid === user.uid && (
+                    <button onClick={()=>handleRemove(m.uid)} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
+                      Sair
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Convite */}
+          {isOwner && (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Convidar alguém</div>
+              {code ? (
+                <>
+                  <div style={{display:"flex",justifyContent:"center"}}>
+                    <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:38,letterSpacing:7,color:"#3b82f6",background:"rgba(59,130,246,0.08)",border:"2px dashed rgba(59,130,246,0.35)",borderRadius:14,padding:"12px 24px",textAlign:"center"}}>{code}</div>
+                  </div>
+                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,textAlign:"center"}}>Envie este código para o outro usuário. Ele não expira até você revogar.</div>
+                  <button onClick={handleCopy} style={{padding:"13px 0",borderRadius:12,border:"1px solid rgba(59,130,246,0.35)",cursor:"pointer",background:copied?"rgba(59,130,246,0.2)":"rgba(59,130,246,0.08)",color:"#60a5fa",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1}}>
+                    {copied?"✓ COPIADO!":"📋 COMPARTILHAR CÓDIGO"}
+                  </button>
+                  <button onClick={handleGenerateCode} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>
+                    Gerar novo código
+                  </button>
+                </>
+              ) : (
+                <button onClick={handleGenerateCode} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1.5,boxShadow:"0 4px 16px rgba(59,130,246,0.3)"}}>
+                  GERAR CÓDIGO DE CONVITE
+                </button>
+              )}
+            </div>
+          )}
+        </>)}
+
+        {step==="error"&&(
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{color:"#f87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>ERRO AO CARREGAR</div>
+            <button onClick={()=>{setStep("loading");}} style={{marginTop:12,padding:"10px 20px",borderRadius:10,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Tentar novamente</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Modal: Entrar em time colaborativo por código ─────────────────────────────
+function JoinCollabModal({ user, onClose, onJoined }) {
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState("input"); // input | loading | preview | joining | done | error | already
+  const [invite, setInvite] = useState(null);
+  const [errMsg, setErrMsg] = useState("");
+
+  const handleLookup = async () => {
+    if (code.length < 7) return; // "C" + 6 chars
+    setStep("loading");
+    const data = await fetchCollabInvite(code);
+    if (!data) { setErrMsg("Código colaborativo não encontrado. Verifique e tente novamente."); setStep("error"); return; }
+    setInvite(data);
+    setStep("preview");
+  };
+
+  const handleJoin = async () => {
+    setStep("joining");
+    const result = await acceptCollabInvite(invite, user.uid, user);
+    if (result === "already_member") { setStep("already"); return; }
+    if (result) { setStep("done"); }
+    else { setErrMsg("Erro ao entrar no time. Verifique sua conexão."); setStep("error"); }
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0a1628",border:"1px solid rgba(59,130,246,0.25)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"22px 20px 40px",display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>ENTRAR EM TIME</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
+        </div>
+
+        {step==="input"&&(<>
+          <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>
+            Insira o código colaborativo recebido do dono do time. Você poderá editar o time em tempo real junto com os outros membros.
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <label style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Código colaborativo</label>
+            <input
+              value={code}
+              onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,7))}
+              placeholder="Ex: CABC123"
+              maxLength={7}
+              style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:12,padding:"12px 14px",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:26,letterSpacing:6,textAlign:"center",colorScheme:"dark",outline:"none"}}
+              onFocus={e=>e.target.style.borderColor="#3b82f6"}
+              onBlur={e=>e.target.style.borderColor="rgba(59,130,246,0.25)"}
+              autoCapitalize="characters"
+            />
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,textAlign:"center"}}>Códigos colaborativos começam com a letra C</div>
+          </div>
+          <button onClick={handleLookup} disabled={code.length<7} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<7?"default":"pointer",background:code.length<7?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:code.length<7?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>
+            BUSCAR TIME
+          </button>
+        </>)}
+
+        {(step==="loading"||step==="joining")&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
+            <div style={{width:40,height:40,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>{step==="loading"?"Buscando time...":"Entrando no time..."}</span>
+          </div>
+        )}
+
+        {step==="preview"&&invite&&(<>
+          <div style={{padding:"14px",background:"rgba(59,130,246,0.06)",borderRadius:13,border:"1px solid rgba(59,130,246,0.2)"}}>
+            <div style={{color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>🤝 TIME COLABORATIVO ENCONTRADO</div>
+            <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:0.5,marginBottom:4}}>{invite.teamName}</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Dono: {invite.ownerName}</div>
+          </div>
+
+          <div style={{padding:"10px 12px",background:"rgba(52,211,153,0.06)",borderRadius:10,border:"1px solid rgba(52,211,153,0.15)"}}>
+            <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:2}}>✅ O que você poderá fazer</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.6}}>
+              Adicionar/editar jogadores · Criar escalações · Registrar partidas · Ver estatísticas — tudo em tempo real com os outros membros.
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setStep("input")} style={{flex:1,padding:"12px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Voltar</button>
+            <button onClick={handleJoin} style={{flex:2,padding:"12px 0",borderRadius:11,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,boxShadow:"0 4px 14px rgba(59,130,246,0.3)"}}>ENTRAR NO TIME</button>
+          </div>
+        </>)}
+
+        {step==="done"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:52,marginBottom:12}}>🤝</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:6}}>VOCÊ ENTROU NO TIME!</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>
+              "{invite?.teamName}" foi adicionado à sua lista. Todas as edições são sincronizadas em tempo real.
+            </div>
+          </div>
+          <button onClick={()=>{ onJoined && onJoined(invite?.teamId); onClose(); }} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>VER TIMES</button>
+        </>)}
+
+        {step==="already"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:44,marginBottom:12}}>🏆</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1,marginBottom:6}}>VOCÊ JÁ É MEMBRO</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Você já participa deste time colaborativo.</div>
+          </div>
+          <button onClick={onClose} style={{padding:"13px 0",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Fechar</button>
+        </>)}
+
+        {step==="error"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#f87171",letterSpacing:1,marginBottom:6}}>OPS!</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>{errMsg}</div>
+          </div>
+          <button onClick={()=>setStep("input")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 // Local fallback (used while offline / before auth)
 const STORAGE_KEY = "escalacao_fc_v6";
 function loadDataLocal() {
@@ -4067,7 +4721,7 @@ function PeladaMensalScreen({onBack, onSelect, uid}) {
   );
 }
 
-function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium,onBackToMenu,onImportDone}) {
+function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onLogout,syncStatus,onRetrySync,isPremium,onTogglePremium,onBackToMenu,onImportDone,onEnableCollab,onManageCollab,onJoinCollab}) {
   const [confirmDel,setConfirmDel]=useState(null);
   const [shareTeam,setShareTeam]=useState(null);
   const [showImport,setShowImport]=useState(false);
@@ -4231,6 +4885,11 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                     <span style={{background:"rgba(255,255,255,0.06)",color:"#9CA3AF",border:"1px solid rgba(255,255,255,0.08)",borderRadius:6,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
                       {escalados}/{slots.length} escal.
                     </span>
+                    {team.isCollab&&(
+                      <span style={{display:"flex",alignItems:"center",gap:3,background:"rgba(59,130,246,0.12)",color:"#60a5fa",border:"1px solid rgba(59,130,246,0.25)",borderRadius:6,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
+                        🤝 Colaborativo
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -4289,6 +4948,11 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           team={shareTeam}
           user={user}
           onClose={()=>setShareTeam(null)}
+          onEnableCollab={(action)=>{
+            setShareTeam(null);
+            if(action==="enable") onEnableCollab&&onEnableCollab(shareTeam);
+            else if(action==="manage") onManageCollab&&onManageCollab(shareTeam);
+          }}
         />
       )}
 
@@ -4298,6 +4962,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           user={user}
           onClose={()=>setShowImport(false)}
           onImported={(newTeamId)=>{setShowImport(false);onImportDone&&onImportDone(newTeamId);}}
+          onJoinCollab={(code)=>{setShowImport(false);onJoinCollab&&onJoinCollab(code);}}
         />
       )}
     </div>
@@ -4306,12 +4971,17 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 
 
 // ─── Share Team Modal ─────────────────────────────────────────────────────────
-function ShareTeamModal({team, user, onClose}) {
+// Agora oferece duas modalidades:
+//  "copy"  → código de snapshot 24h (comportamento original)
+//  "collab"→ ativa colaboração em tempo real (novo)
+function ShareTeamModal({team, user, onClose, onEnableCollab}) {
+  const [mode, setMode] = useState("choose"); // choose | copy | collab_redirect
   const [options, setOptions] = useState({includeStats:true, includeMatches:true, includeLineups:true});
   const [step, setStep] = useState("options"); // "options" | "loading" | "done" | "error"
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
   const toggle = k => setOptions(o => ({...o, [k]:!o[k]}));
+  const isCollab = !!team.isCollab;
 
   const handleGenerate = async () => {
     setStep("loading");
@@ -4321,10 +4991,7 @@ function ShareTeamModal({team, user, onClose}) {
   };
 
   const handleCopy = async () => {
-    const msg = `Oi! Te convido para ver meu time no Escalação FC 🏆
-Time: ${team.name}
-Código: ${code}
-Válido por 24h — abra o app e clique em IMPORTAR!`;
+    const msg = `Oi! Te convido para ver meu time no Escalação FC 🏆\nTime: ${team.name}\nCódigo: ${code}\nVálido por 24h — abra o app e clique em IMPORTAR!`;
     try {
       if (navigator.share) { await navigator.share({title:"Escalação FC",text:msg}); }
       else { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(()=>setCopied(false),2500); }
@@ -4359,85 +5026,113 @@ Válido por 24h — abra o app e clique em IMPORTAR!`;
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
         </div>
 
-        {step==="options"&&(<>
-          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(52,211,153,0.06)",borderRadius:11,border:"1px solid rgba(52,211,153,0.15)"}}>
-            <TeamShield team={team} size={40}/>
-            <div>
-              <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:0.5}}>{team.name}</div>
-              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{(team.players||[]).length} jogadores · {team.formation}</div>
-            </div>
-          </div>
-
+        <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(52,211,153,0.06)",borderRadius:11,border:"1px solid rgba(52,211,153,0.15)"}}>
+          <TeamShield team={team} size={40}/>
           <div>
-            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>O que incluir na cópia?</div>
-            <div style={{display:"flex",flexDirection:"column",gap:7}}>
-              <div style={{padding:"9px 12px",borderRadius:11,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
-                <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
-                  <Icon id="jersey" size={16} style={{color:"#34d399"}}/> Elenco (sempre incluído)
-                </div>
-                <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Nome, posição, pé, estrelas e status de todos os jogadores</div>
-              </div>
-              <OptionRow k="includeLineups" icon="clipboard" label="Escalações salvas" desc="Todas as formações e posições definidas"/>
-              <OptionRow k="includeStats" icon="chart-bar" label="Estatísticas" desc="Gols, assistências e presenças dos jogadores"/>
-              <OptionRow k="includeMatches" icon="calendar" label="Calendário de partidas" desc="Histórico de jogos e resultados"/>
+            <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:0.5}}>{team.name}</div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{(team.players||[]).length} jogadores · {team.formation}</div>
+              {isCollab && <span style={{padding:"1px 6px",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:5,color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700}}>🤝 COLABORATIVO</span>}
             </div>
           </div>
+        </div>
 
-          <div style={{padding:"10px 12px",background:"rgba(250,204,21,0.06)",borderRadius:10,border:"1px solid rgba(250,204,21,0.15)"}}>
-            <div style={{color:"#fbbf24",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon id="stopwatch" size={11}/> Código válido por 24 horas</div>
-            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>O outro usuário receberá uma cópia independente — alterações dele não afetam seu time.</div>
+        {/* Tela de escolha de modo */}
+        {mode==="choose"&&(<>
+          <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Como deseja compartilhar?</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {/* Opção colaboração em tempo real */}
+            <button onClick={()=>{ if(isCollab){ onEnableCollab&&onEnableCollab("manage"); onClose(); } else { onEnableCollab&&onEnableCollab("enable"); onClose(); } }}
+              style={{display:"flex",alignItems:"flex-start",gap:13,padding:"14px",borderRadius:14,border:"2px solid rgba(59,130,246,0.35)",background:"rgba(59,130,246,0.07)",cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.12)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(59,130,246,0.07)"}>
+              <span style={{fontSize:26,lineHeight:1.2}}>🤝</span>
+              <div style={{flex:1}}>
+                <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:800,marginBottom:3}}>
+                  {isCollab ? "Gerenciar colaboração" : "Colaboração em tempo real"}{" "}
+                  <span style={{background:"rgba(59,130,246,0.2)",border:"1px solid rgba(59,130,246,0.4)",borderRadius:5,padding:"1px 6px",color:"#60a5fa",fontSize:9,fontWeight:700,verticalAlign:"middle"}}>NOVO</span>
+                </div>
+                <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.5}}>
+                  {isCollab ? "Ver membros, gerar convite ou remover alguém." : "Outros usuários editam o mesmo time junto com você — qualquer mudança aparece para todos na hora."}
+                </div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+
+            {/* Opção cópia */}
+            <button onClick={()=>setMode("copy")}
+              style={{display:"flex",alignItems:"flex-start",gap:13,padding:"14px",borderRadius:14,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)",cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(52,211,153,0.08)"}
+              onMouseLeave={e=>e.currentTarget.style.background="rgba(52,211,153,0.04)"}>
+              <span style={{fontSize:26,lineHeight:1.2}}>📋</span>
+              <div style={{flex:1}}>
+                <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:800,marginBottom:3}}>Enviar cópia (snapshot)</div>
+                <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.5}}>O outro usuário recebe uma cópia independente do time. Edições dele não afetam o seu. Código válido por 24h.</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
           </div>
-
-          <button onClick={handleGenerate} style={{
-            padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",
-            background:"linear-gradient(135deg,#166534,#34d399)",
-            color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,
-            boxShadow:"0 6px 20px rgba(52,211,153,0.35)"
-          }}>GERAR CÓDIGO DE CONVITE</button>
         </>)}
 
-        {step==="loading"&&(
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
-            <div style={{width:40,height:40,border:"3px solid rgba(52,211,153,0.2)",borderTopColor:"#34d399",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Publicando snapshot do time...</span>
-          </div>
-        )}
+        {/* Fluxo de cópia (original) */}
+        {mode==="copy"&&(<>
+          {step==="options"&&(<>
+            <button onClick={()=>setMode("choose")} style={{alignSelf:"flex-start",background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,display:"flex",alignItems:"center",gap:4,padding:0}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg> Voltar
+            </button>
+            <div>
+              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>O que incluir na cópia?</div>
+              <div style={{display:"flex",flexDirection:"column",gap:7}}>
+                <div style={{padding:"9px 12px",borderRadius:11,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
+                  <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                    <Icon id="jersey" size={16}/> Elenco (sempre incluído)
+                  </div>
+                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Nome, posição, pé, estrelas e status de todos os jogadores</div>
+                </div>
+                <OptionRow k="includeLineups" icon="clipboard" label="Escalações salvas" desc="Todas as formações e posições definidas"/>
+                <OptionRow k="includeStats" icon="chart-bar" label="Estatísticas" desc="Gols, assistências e presenças dos jogadores"/>
+                <OptionRow k="includeMatches" icon="calendar" label="Calendário de partidas" desc="Histórico de jogos e resultados"/>
+              </div>
+            </div>
+            <div style={{padding:"10px 12px",background:"rgba(250,204,21,0.06)",borderRadius:10,border:"1px solid rgba(250,204,21,0.15)"}}>
+              <div style={{color:"#fbbf24",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon id="stopwatch" size={11}/> Código válido por 24 horas</div>
+              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>O outro usuário receberá uma cópia independente — alterações dele não afetam seu time.</div>
+            </div>
+            <button onClick={handleGenerate} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,boxShadow:"0 6px 20px rgba(52,211,153,0.35)"}}>GERAR CÓDIGO DE CONVITE</button>
+          </>)}
 
-        {step==="done"&&(<>
-          <div style={{textAlign:"center",padding:"8px 0"}}>
-            <Icon id="link" size={48} style={{color:"#34d399",marginBottom:8}}/>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>CÓDIGO GERADO!</div>
-            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Envie para o outro usuário do Escalação FC</div>
-          </div>
+          {step==="loading"&&(
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
+              <div style={{width:40,height:40,border:"3px solid rgba(52,211,153,0.2)",borderTopColor:"#34d399",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+              <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Publicando snapshot do time...</span>
+            </div>
+          )}
 
-          <div style={{display:"flex",justifyContent:"center"}}>
-            <div style={{
-              fontFamily:"'Bebas Neue',sans-serif",fontSize:44,letterSpacing:8,color:"#34d399",
-              background:"rgba(52,211,153,0.08)",border:"2px dashed rgba(52,211,153,0.35)",
-              borderRadius:16,padding:"14px 28px",textAlign:"center"
-            }}>{code}</div>
-          </div>
+          {step==="done"&&(<>
+            <div style={{textAlign:"center",padding:"8px 0"}}>
+              <Icon id="link" size={48} style={{color:"#34d399",marginBottom:8}}/>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>CÓDIGO GERADO!</div>
+              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Envie para o outro usuário do Escalação FC</div>
+            </div>
+            <div style={{display:"flex",justifyContent:"center"}}>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:44,letterSpacing:8,color:"#34d399",background:"rgba(52,211,153,0.08)",border:"2px dashed rgba(52,211,153,0.35)",borderRadius:16,padding:"14px 28px",textAlign:"center"}}>{code}</div>
+            </div>
+            <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
+              <span style={{color:"#f87171",fontSize:12,display:"flex",alignItems:"center"}}><Icon id="stopwatch" size={12}/></span>
+              <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Expira em 24h · cópia independente do seu time</span>
+            </div>
+            <button onClick={handleCopy} style={{padding:"14px 0",borderRadius:13,border:"1px solid rgba(52,211,153,0.35)",cursor:"pointer",background:copied?"rgba(52,211,153,0.15)":"rgba(52,211,153,0.08)",color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,transition:"all 0.15s"}}>{copied?"✓ COPIADO!":<><Icon id="upload" size={16}/> COMPARTILHAR CONVITE</>}</button>
+            <button onClick={onClose} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#6B7280",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600}}>Fechar</button>
+          </>)}
 
-          <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
-            <span style={{color:"#f87171",fontSize:12,display:"flex",alignItems:"center"}}><Icon id="stopwatch" size={12}/></span>
-            <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Expira em 24h · cópia independente do seu time</span>
-          </div>
-
-          <button onClick={handleCopy} style={{
-            padding:"14px 0",borderRadius:13,border:"1px solid rgba(52,211,153,0.35)",cursor:"pointer",
-            background:copied?"rgba(52,211,153,0.15)":"rgba(52,211,153,0.08)",
-            color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,transition:"all 0.15s"
-          }}>{copied?"✓ COPIADO!":<><Icon id="upload" size={16}/> COMPARTILHAR CONVITE</>}</button>
-          <button onClick={onClose} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#6B7280",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600}}>Fechar</button>
-        </>)}
-
-        {step==="error"&&(<>
-          <div style={{textAlign:"center",padding:"20px 0"}}>
-            <Icon id="warning" size={44} style={{color:"#f87171",marginBottom:8}}/>
-            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>ERRO AO GERAR CÓDIGO</div>
-            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Verifique sua conexão e tente novamente.</div>
-          </div>
-          <button onClick={()=>setStep("options")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
+          {step==="error"&&(<>
+            <div style={{textAlign:"center",padding:"20px 0"}}>
+              <Icon id="warning" size={44} style={{color:"#f87171",marginBottom:8}}/>
+              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>ERRO AO GERAR CÓDIGO</div>
+              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Verifique sua conexão e tente novamente.</div>
+            </div>
+            <button onClick={()=>setStep("options")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
+          </>)}
         </>)}
       </div>
     </div>
@@ -4445,7 +5140,7 @@ Válido por 24h — abra o app e clique em IMPORTAR!`;
 }
 
 // ─── Import Team Modal ────────────────────────────────────────────────────────
-function ImportTeamModal({user, onClose, onImported}) {
+function ImportTeamModal({user, onClose, onImported, onJoinCollab}) {
   const [code, setCode] = useState("");
   const [step, setStep] = useState("input"); // "input"|"preview"|"options"|"loading"|"done"|"error"
   const [shareData, setShareData] = useState(null);
@@ -4455,6 +5150,12 @@ function ImportTeamModal({user, onClose, onImported}) {
 
   const handleLookup = async () => {
     if (!code.trim()) return;
+    // Códigos colaborativos começam com "C" e têm 7 chars (C + 6)
+    if (code.length === 7 && code.startsWith("C")) {
+      onClose();
+      onJoinCollab && onJoinCollab(code);
+      return;
+    }
     setStep("loading");
     const data = await fetchTeamShare(code);
     if (!data) { setErrMsg("Código não encontrado ou expirado. Verifique e tente novamente."); setStep("error"); return; }
@@ -4510,14 +5211,20 @@ function ImportTeamModal({user, onClose, onImported}) {
             <label style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Código de convite</label>
             <input
               value={code}
-              onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6))}
+              onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,7))}
               placeholder="Ex: ABC123"
-              maxLength={6}
+              maxLength={7}
               style={{...{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:12,padding:"12px 14px",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:28,letterSpacing:8,textAlign:"center"},colorScheme:"dark"}}
               onFocus={e=>e.target.style.borderColor="#34d399"}
               onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.12)"}
               autoCapitalize="characters"
             />
+            {code.length===7&&code.startsWith("C")&&(
+              <div style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:8}}>
+                <span style={{fontSize:12}}>🤝</span>
+                <span style={{color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>Código colaborativo detectado — você entrará como editor do time</span>
+              </div>
+            )}
           </div>
           <button onClick={handleLookup} disabled={code.length<6} style={{
             padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<6?"default":"pointer",
@@ -8513,7 +9220,8 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
           ...(s.appearances!==undefined?{appearances:s.appearances}:{}),
         };
         nextStats[s.playerId]=merged;
-        savePlayerStatsCloud(uid,team.id,merged);
+        if(team.isCollab) saveCollabStat(team.id,merged);
+        else savePlayerStatsCloud(uid,team.id,merged);
       }
       setStats(nextStats);
     }
@@ -8542,9 +9250,17 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
   useEffect(()=>{
     if(!uid||!team?.id)return;
     setMatches(null);
-    loadMatchesCloud(uid,team.id).then(m=>setMatches(m||[]));
-    loadAllStatsCloud(uid,team.id).then(s=>setStats(s||{}));
-  },[uid,team?.id]);
+    if(team.isCollab){
+      const fb=getFirebase();if(!fb)return;
+      fb.getDocs(fb.collection(fb.db,"collab_teams",String(team.id),"matches")).then(snap=>setMatches(snap.docs.map(d=>d.data())||[]));
+      fb.getDocs(fb.collection(fb.db,"collab_teams",String(team.id),"stats")).then(snap=>{
+        const s={};snap.docs.forEach(d=>{s[d.id]=d.data();});setStats(s);
+      });
+    } else {
+      loadMatchesCloud(uid,team.id).then(m=>setMatches(m||[]));
+      loadAllStatsCloud(uid,team.id).then(s=>setStats(s||{}));
+    }
+  },[uid,team?.id,team?.isCollab]);
 
   const saveMatch=async(form)=>{
     const match={...form,id:form.id||genUUID(),teamId:team.id};
@@ -8585,7 +9301,8 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
         // Persist each modified stat
         if(uid){
           for(const st of Object.values(next)){
-            savePlayerStatsCloud(uid,team.id,st);
+            if(team.isCollab) saveCollabStat(team.id,st);
+            else savePlayerStatsCloud(uid,team.id,st);
           }
         }
         return next;
@@ -8595,20 +9312,29 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
     });
 
     setShowMatchModal(false);setEditingMatch(null);
-    if(uid) saveMatchCloud(uid,team.id,match);
+    if(uid){
+      if(team.isCollab) saveCollabMatch(team.id,match);
+      else saveMatchCloud(uid,team.id,match);
+    }
   };
 
   const deleteMatch=async(id)=>{
     setMatches(prev=>(prev||[]).filter(m=>m.id!==id));
     setConfirmDelMatch(null);
-    if(uid) deleteMatchCloud(uid,team.id,id);
+    if(uid){
+      if(team.isCollab) deleteCollabMatch(team.id,id);
+      else deleteMatchCloud(uid,team.id,id);
+    }
   };
 
   const updateStat=async(playerId,key,value)=>{
     const pid=String(playerId);
     const newSt={...(stats[pid]||{goals:0,assists:0,goalsAgainst:0,appearances:0}),[key]:value,playerId:pid};
     setStats(prev=>({...prev,[pid]:newSt}));
-    if(uid) savePlayerStatsCloud(uid,team.id,newSt);
+    if(uid){
+      if(team.isCollab) saveCollabStat(team.id,newSt);
+      else savePlayerStatsCloud(uid,team.id,newSt);
+    }
   };
 
   // Sort matches: future first, then past descending
@@ -8895,6 +9621,14 @@ function App() {
   const [showTeamLimitUpsell, setShowTeamLimitUpsell] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [toast, setToast] = useState(null);
+  // ── Collab modals ──────────────────────────────────────────────────────────
+  const [enableCollabTeam, setEnableCollabTeam] = useState(null); // team | null
+  const [manageCollabTeam, setManageCollabTeam] = useState(null); // team | null
+  const [showJoinCollab, setShowJoinCollab] = useState(false);
+  const [joinCollabCode, setJoinCollabCode] = useState("");
+  // ── Collab real-time subscriptions ────────────────────────────────────────
+  // Map: teamId → unsub function
+  const collabUnsubsRef = useRef({});
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   useEffect(()=>{
     const on=()=>setIsOnline(true);
@@ -9012,8 +9746,18 @@ function App() {
               saveDataLocal({ teams: cloudTeams });
             });
             const { teams: cloudTeams, migrated } = await initTeamsFromCloud(u.uid);
-            if (cloudTeams.length > 0) {
-              apply(cloudTeams);
+
+            // Carregar times colaborativos dos quais o usuário participa
+            const collabRefs = await loadCollabRefs(u.uid);
+            let collabTeams = [];
+            if (collabRefs.length > 0) {
+              const loaded = await Promise.all(collabRefs.map(r => loadCollabTeamFull(r.teamId)));
+              collabTeams = loaded.filter(Boolean);
+            }
+            const allTeams = [...(cloudTeams || []), ...collabTeams];
+
+            if (allTeams.length > 0) {
+              apply(allTeams);
             } else if (local?.teams?.length > 0) {
               // Cloud empty but we have local data — push it up
               const teamsWithLineups = local.teams.map(t => {
@@ -9021,7 +9765,7 @@ function App() {
                 const defL = makeLineup({ id: genUUID(), name: "Titular", type: "titular", formation: t.formation || "4-4-2", entries: t.lineup || [], isActive: true });
                 return { ...t, lineups: [defL], activeLineupId: defL.id };
               });
-              await Promise.all(teamsWithLineups.map(t => saveTeamWithPlayersCloud(u.uid, t)));
+              await Promise.all(teamsWithLineups.filter(t=>!t.isCollab).map(t => saveTeamWithPlayersCloud(u.uid, t)));
               await setSchemaVersion(u.uid, SCHEMA_VERSION);
             }
             if (migrated) {
@@ -9046,6 +9790,27 @@ function App() {
                 if (teamsRef.current === teamsAtLoad) {
                   setTeams(cloudTeams);
                   saveDataLocal({ teams: cloudTeams });
+                  // Subscribe em tempo real nos times colaborativos
+                  const collabTs = cloudTeams.filter(t => t.isCollab);
+                  collabTs.forEach(ct => {
+                    if (!collabUnsubsRef.current[ct.id]) {
+                      collabUnsubsRef.current[ct.id] = subscribeCollabTeam(ct.id, ({ type, data }) => {
+                        setTeams(prev => prev.map(t => {
+                          if (String(t.id) !== String(ct.id)) return t;
+                          if (type === "meta") return { ...t, ...data };
+                          if (type === "players") {
+                            const activeLineup = getActiveLineup(t, t.lineups || []);
+                            return { ...t, players: data };
+                          }
+                          if (type === "lineups") {
+                            const activeLineup = getActiveLineup(t, data);
+                            return { ...t, lineups: data, formation: activeLineup?.formation || t.formation, lineup: activeLineup?.entries || t.lineup };
+                          }
+                          return t;
+                        }));
+                      });
+                    }
+                  });
                 } else {
                   console.log("Skipping background cloud sync overwrite — local edits detected.");
                 }
@@ -9060,6 +9825,24 @@ function App() {
             setMigrating(true);
             try {
               await syncWithCloud();
+              // Subscribe em tempo real nos times colaborativos
+              const collabTs = teamsRef.current.filter(t => t.isCollab);
+              collabTs.forEach(ct => {
+                if (!collabUnsubsRef.current[ct.id]) {
+                  collabUnsubsRef.current[ct.id] = subscribeCollabTeam(ct.id, ({ type, data }) => {
+                    setTeams(prev => prev.map(t => {
+                      if (String(t.id) !== String(ct.id)) return t;
+                      if (type === "meta") return { ...t, ...data };
+                      if (type === "players") return { ...t, players: data };
+                      if (type === "lineups") {
+                        const activeLineup = getActiveLineup(t, data);
+                        return { ...t, lineups: data, formation: activeLineup?.formation || t.formation, lineup: activeLineup?.entries || t.lineup };
+                      }
+                      return t;
+                    }));
+                  });
+                }
+              });
             } catch(e) {
               console.warn("initTeamsFromCloud failed, using localStorage:", e);
               const fallback = loadDataLocal();
@@ -9080,6 +9863,9 @@ function App() {
           // Clear all pending save timers
           Object.values(saveTimersRef.current).forEach(clearTimeout);
           saveTimersRef.current = {};
+          // Unsubscribe all collab listeners
+          Object.values(collabUnsubsRef.current).forEach(unsub => { try { unsub(); } catch {} });
+          collabUnsubsRef.current = {};
           // Wipe memory cache to prevent data leaking between accounts
           _memCache.invalidateAll(user?.uid || "");
         }
@@ -9110,7 +9896,9 @@ function App() {
     beginSync();
     saveTimersRef.current[key] = setTimeout(async () => {
       startSyncing();
-      const ok = await saveTeamCloud(user.uid, team); // metadata only (no players array)
+      const ok = team.isCollab
+        ? await saveCollabTeamMeta(team)
+        : await saveTeamCloud(user.uid, team);
       delete saveTimersRef.current[key];
       endSync(ok);
     }, 600);
@@ -9124,7 +9912,10 @@ function App() {
     beginSync();
     saveTimersRef.current[key] = setTimeout(async () => {
       startSyncing();
-      const ok = await savePlayerCloud(user.uid, teamId, player);
+      const team = teamsRef.current.find(t => String(t.id) === String(teamId));
+      const ok = team?.isCollab
+        ? await saveCollabPlayer(teamId, player)
+        : await savePlayerCloud(user.uid, teamId, player);
       delete saveTimersRef.current[key];
       endSync(ok);
     }, 800);
@@ -9252,19 +10043,41 @@ function App() {
     beginSync();
     saveTimersRef.current[key] = setTimeout(async () => {
       startSyncing();
-      const ok = await saveLineupCloud(user.uid, teamId, lineup);
+      const team = teamsRef.current.find(t => String(t.id) === String(teamId));
+      const ok = team?.isCollab
+        ? await saveCollabLineup(teamId, lineup)
+        : await saveLineupCloud(user.uid, teamId, lineup);
       delete saveTimersRef.current[key];
       endSync(ok);
     }, 600);
   }, [user, beginSync, startSyncing, endSync]);
 
   const deleteTeam = async (id) => {
+    const team = teams.find(t => t.id === id);
     setTeams(prev => prev.filter(t => t.id !== id));
     if (activeTeamId === id) setActiveTeamId(null);
+
+    if (team?.isCollab) {
+      // Unsubscribe real-time listener
+      if (collabUnsubsRef.current[id]) {
+        try { collabUnsubsRef.current[id](); } catch {}
+        delete collabUnsubsRef.current[id];
+      }
+      const isOwner = team.ownerUid === uid;
+      if (isOwner) {
+        setToast("Time colaborativo encerrado");
+        await deleteCollabTeam(id, uid);
+      } else {
+        setToast("Você saiu do time colaborativo");
+        await removeCollabMember(id, uid);
+      }
+      return;
+    }
+
     setToast("Time excluído");
     const fb = getFirebase();
-    const uid = fb?.auth?.currentUser?.uid;
-    if (uid) {
+    const uidLocal = fb?.auth?.currentUser?.uid;
+    if (uidLocal) {
       // Cancel all pending saves for this team and its players
       Object.keys(saveTimersRef.current).forEach(key => {
         if (key === `team_${id}` || key.startsWith(`player_${id}_`) || key.startsWith(`lineup_${id}_`)) {
@@ -9272,7 +10085,7 @@ function App() {
           delete saveTimersRef.current[key];
         }
       });
-      await deleteTeamCloud(uid, id); // deletes team doc + all player subcollection docs
+      await deleteTeamCloud(uidLocal, id); // deletes team doc + all player subcollection docs
     }
   };
 
@@ -9427,13 +10240,32 @@ function App() {
           onSelectTeam={async (t) => {
             const fb = getFirebase();
             const u = fb?.auth?.currentUser?.uid;
-            if (u) {
+            if (u && !t.isCollab) {
               const cacheKey = `${u}_${t.id}`;
               const needsLoad = !_memCache.has(_memCache.players, cacheKey) || !_memCache.has(_memCache.lineups, cacheKey);
               if (needsLoad) {
                 const full = await loadTeamFull(u, t);
                 setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
               }
+            } else if (t.isCollab) {
+              // Garantir subscribe ativo ao abrir time colaborativo
+              if (!collabUnsubsRef.current[t.id]) {
+                collabUnsubsRef.current[t.id] = subscribeCollabTeam(t.id, ({ type, data }) => {
+                  setTeams(prev => prev.map(tm => {
+                    if (String(tm.id) !== String(t.id)) return tm;
+                    if (type === "meta") return { ...tm, ...data };
+                    if (type === "players") return { ...tm, players: data };
+                    if (type === "lineups") {
+                      const activeLineup = getActiveLineup(tm, data);
+                      return { ...tm, lineups: data, formation: activeLineup?.formation || tm.formation, lineup: activeLineup?.entries || tm.lineup };
+                    }
+                    return tm;
+                  }));
+                });
+              }
+              // Recarregar dados completos ao abrir
+              const full = await loadCollabTeamFull(t.id);
+              if (full) setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
             }
             setActiveTeamId(t.id);
             setNavSection("tactic");
@@ -9451,6 +10283,9 @@ function App() {
               if (refreshed) setTeams(refreshed);
             }
           }}
+          onEnableCollab={(team) => setEnableCollabTeam(team)}
+          onManageCollab={(team) => setManageCollabTeam(team)}
+          onJoinCollab={(code) => { setJoinCollabCode(code || ""); setShowJoinCollab(true); }}
         />
       )}
 
@@ -9467,7 +10302,13 @@ function App() {
           isPremium={isPremium}
           uid={uid}
           onDeletePlayerCloud={(teamId, playerId) => {
-            if (uid) {
+            const team = teams.find(t => String(t.id) === String(teamId));
+            if (team?.isCollab) {
+              const key = `player_${teamId}_${playerId}`;
+              clearTimeout(saveTimersRef.current[key]);
+              delete saveTimersRef.current[key];
+              deleteCollabPlayer(teamId, playerId);
+            } else if (uid) {
               const key = `player_${teamId}_${playerId}`;
               clearTimeout(saveTimersRef.current[key]);
               delete saveTimersRef.current[key];
@@ -9475,7 +10316,13 @@ function App() {
             }
           }}
           onDeleteLineup={(teamId, lineupId) => {
-            if (uid) {
+            const team = teams.find(t => String(t.id) === String(teamId));
+            if (team?.isCollab) {
+              const key = `lineup_${teamId}_${lineupId}`;
+              clearTimeout(saveTimersRef.current[key]);
+              delete saveTimersRef.current[key];
+              deleteCollabLineup(teamId, lineupId);
+            } else if (uid) {
               const key = `lineup_${teamId}_${lineupId}`;
               clearTimeout(saveTimersRef.current[key]);
               delete saveTimersRef.current[key];
@@ -9506,6 +10353,83 @@ function App() {
         description={`No plano gratuito você pode cadastrar ${FREE_TEAM_LIMIT} time. Faça upgrade para o premium e gerencie times ilimitados.`}
         onClose={()=>setShowTeamLimitUpsell(false)}
       />}
+
+      {/* ── Modais colaborativos ── */}
+      {enableCollabTeam && (
+        <EnableCollabModal
+          team={enableCollabTeam}
+          user={user}
+          onClose={()=>setEnableCollabTeam(null)}
+          onEnabled={async () => {
+            // Recarregar o time agora como colaborativo
+            const full = await loadCollabTeamFull(enableCollabTeam.id);
+            if (full) {
+              setTeams(prev => prev.map(t => t.id === enableCollabTeam.id ? { ...t, ...full } : t));
+              // Ativar subscribe
+              if (!collabUnsubsRef.current[enableCollabTeam.id]) {
+                collabUnsubsRef.current[enableCollabTeam.id] = subscribeCollabTeam(enableCollabTeam.id, ({ type, data }) => {
+                  setTeams(prev => prev.map(t => {
+                    if (String(t.id) !== String(enableCollabTeam.id)) return t;
+                    if (type === "meta") return { ...t, ...data };
+                    if (type === "players") return { ...t, players: data };
+                    if (type === "lineups") {
+                      const activeLineup = getActiveLineup(t, data);
+                      return { ...t, lineups: data, formation: activeLineup?.formation || t.formation, lineup: activeLineup?.entries || t.lineup };
+                    }
+                    return t;
+                  }));
+                });
+              }
+            }
+            setEnableCollabTeam(null);
+            setToast("🤝 Colaboração ativada!");
+          }}
+        />
+      )}
+      {manageCollabTeam && (
+        <CollabInviteModal
+          team={manageCollabTeam}
+          user={user}
+          onClose={()=>setManageCollabTeam(null)}
+        />
+      )}
+      {showJoinCollab && (
+        <JoinCollabModal
+          user={user}
+          onClose={()=>{ setShowJoinCollab(false); setJoinCollabCode(""); }}
+          onJoined={async (teamId) => {
+            // Carregar o time colaborativo que acabou de entrar
+            if (teamId) {
+              const full = await loadCollabTeamFull(teamId);
+              if (full) {
+                setTeams(prev => {
+                  if (prev.some(t => String(t.id) === String(teamId))) {
+                    return prev.map(t => String(t.id) === String(teamId) ? { ...t, ...full } : t);
+                  }
+                  return [...prev, full];
+                });
+                // Ativar subscribe
+                if (!collabUnsubsRef.current[teamId]) {
+                  collabUnsubsRef.current[teamId] = subscribeCollabTeam(teamId, ({ type, data }) => {
+                    setTeams(prev => prev.map(t => {
+                      if (String(t.id) !== String(teamId)) return t;
+                      if (type === "meta") return { ...t, ...data };
+                      if (type === "players") return { ...t, players: data };
+                      if (type === "lineups") {
+                        const activeLineup = getActiveLineup(t, data);
+                        return { ...t, lineups: data, formation: activeLineup?.formation || t.formation, lineup: activeLineup?.entries || t.lineup };
+                      }
+                      return t;
+                    }));
+                  });
+                }
+              }
+            }
+            setShowJoinCollab(false);
+            setJoinCollabCode("");
+          }}
+        />
+      )}
       </>)}
     </div>
   );
