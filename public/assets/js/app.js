@@ -8944,6 +8944,46 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // ── Android hardware/gesture back button ────────────────────────────────────
+  // Intercepts the Capacitor "backButton" event and navega entre telas do app
+  // em vez de fechar o app imediatamente.
+  // Hierarquia de navegação (do mais profundo para o mais raso):
+  //   office/tactic → home → profileMode → menu principal (fecha o app)
+  useEffect(() => {
+    const handleBack = () => {
+      // Dentro do modo "field": navegar entre seções
+      if (profileMode === "field") {
+        if (navSection === "office" || navSection === "tactic") {
+          setNavSection("home");
+          return;
+        }
+        // Em "home" dentro de "field": volta ao menu principal
+        setProfileMode(null);
+        setActiveTeamId(null);
+        return;
+      }
+      // Sub-telas do modo "monthly"
+      if (profileMode === "mensalistas" || profileMode === "sorteio-lista" || profileMode === "sorteio-tampinhas") {
+        setProfileMode("monthly");
+        return;
+      }
+      if (profileMode === "monthly") {
+        setProfileMode(null);
+        return;
+      }
+      // No menu principal (profileMode === null): permite fechar o app normalmente
+      // Não chamamos App.exitApp() — o Capacitor usa o comportamento padrão do SO.
+    };
+
+    // Capacitor App plugin (disponível no wrapper nativo)
+    const cap = window.Capacitor;
+    if (cap && cap.Plugins && cap.Plugins.App) {
+      const listener = cap.Plugins.App.addListener("backButton", handleBack);
+      return () => { listener.remove(); };
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileMode, navSection]);
+
   // ── Auth listener + initial data load ──────────────────────────────────────
   useEffect(() => {
     const setup = () => {
