@@ -5054,7 +5054,7 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team,freeM
               </>
             ):(
               // Empty slots only shown in normal mode
-              !freeMode&&<>
+              freeMode ? null : <>
                 <div style={{width:48,height:48,borderRadius:"50%",border:isHL?"2.5px solid #facc15":"2px dashed rgba(255,255,255,0.4)",background:isHL?"rgba(250,204,21,0.18)":"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.12s",boxShadow:isHL?"0 0 16px rgba(250,204,21,0.6)":"none"}}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.65)" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 </div>
@@ -6726,7 +6726,11 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           <>
             <div style={{marginBottom:9,display:"flex",alignItems:"center",gap:8}}>
               <div style={{flex:1,padding:"6px 12px",background:"rgba(255,255,255,0.03)",borderRadius:9,border:"1px solid rgba(255,255,255,0.06)",fontFamily:"'DM Sans',sans-serif",fontSize:11,color:"#6B7280"}}>
-                <Icon id="bulb" size={14} style={{color:"#6B7280",flexShrink:0}}/> {freeMode?<><b style={{color:"#facc15"}}>Livre</b> — arraste jogadores para qualquer posição</>:<><b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar</>}
+                <Icon id="bulb" size={14} style={{color:"#6B7280",flexShrink:0}}/>
+                {freeMode
+                  ? <span> <b style={{color:"#facc15"}}>Livre</b> — arraste jogadores para qualquer posição</span>
+                  : <span> <b style={{color:"#9CA3AF"}}>Toque</b> para escalar · <b style={{color:"#9CA3AF"}}>Segure</b> para arrastar</span>
+                }
               </div>
               <button onClick={()=>{
                 const updatedLineups=(team.lineups||[]).map(l=>String(l.id)===String(activeLineup?.id)?{...l,entries:[]}:l);
@@ -6755,7 +6759,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                 </button>
               </div>
             </div>
-            <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={freeMode?(slotId,label)=>{/* no tap action in free mode */}:handleSlotTap} team={team} freeMode={freeMode} onFreeMoveEnd={handleFreeMoveEnd}/>
+            <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={freeMode?()=>{}:handleSlotTap} team={team} freeMode={freeMode} onFreeMoveEnd={handleFreeMoveEnd}/>
 
             {/* Banco de reservas */}
             <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:7}}>
