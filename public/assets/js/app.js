@@ -8881,8 +8881,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 function App() {
-  const [authState, setAuthState] = useState("loading"); // "loading" | "loggedOut" | "loggedIn"
-  const [user, setUser] = useState(null);
+  const [authState, setAuthState] = useState("loading"); // "loading" | "loggedOut" | "loggedIn"  const [user, setUser] = useState(null);
   const [isPremium, setIsPremium] = useState(false);
   const [navSection, setNavSection] = useState("home"); // "home" | "tactic" | "office"
   const [profileMode, setProfileMode] = useState(null); // null = main menu | "field" | "monthly"
@@ -8895,6 +8894,14 @@ function App() {
   const [showTeamLimitUpsell, setShowTeamLimitUpsell] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
   const [toast, setToast] = useState(null);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  useEffect(()=>{
+    const on=()=>setIsOnline(true);
+    const off=()=>setIsOnline(false);
+    window.addEventListener("online",on);
+    window.addEventListener("offline",off);
+    return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
   // ── Global sync status (auto background saves) ─────────────────────────────
   // "idle" | "pending" | "syncing" | "synced" | "error"
   const [syncStatus, setSyncStatus] = useState("idle");
@@ -9248,6 +9255,31 @@ function App() {
     </div>
   );
 
+  if (authState === "loggedOut" && !isOnline) return (
+    <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,padding:"0 32px"}}>
+      <style>{`@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.5;}}`}</style>
+      <img src="/assets/images/logo.png" alt="Escalação FC" style={{width:120,height:120,objectFit:"contain",marginBottom:8}}/>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,textAlign:"center"}}>
+        <div style={{width:56,height:56,borderRadius:"50%",background:"rgba(239,68,68,0.12)",border:"2px solid rgba(239,68,68,0.4)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+        </div>
+        <span style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:26,letterSpacing:2}}>SEM CONEXÃO</span>
+        <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:14,lineHeight:1.6,maxWidth:280}}>
+          O primeiro acesso ao <b style={{color:"#34d399"}}>Escalação FC</b> requer conexão com a internet para autenticar sua conta Google.
+        </span>
+        <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12,lineHeight:1.6,maxWidth:280}}>
+          Após o login, você poderá usar o app normalmente mesmo sem internet.
+        </span>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:8,background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:12,padding:"10px 18px",animation:"pulse 2s ease-in-out infinite"}}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span style={{color:"#ef4444",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Conecte-se ao Wi-Fi ou dados móveis</span>
+      </div>
+    </div>
+  );
+
   if (authState === "loggedOut") return (
     <>
       <LoginScreen onLogin={handleLogin} loading={loginLoading}/>
@@ -9289,6 +9321,17 @@ function App() {
       `}</style>
 
       {toast && <Toast msg={toast} onDone={() => setToast(null)}/>}
+
+      {/* ── Banner de offline (só quando logado) ── */}
+      {!isOnline && authState === "loggedIn" && (
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"rgba(17,24,39,0.97)",borderBottom:"1px solid rgba(234,179,8,0.3)",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#eab308" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.56 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+          <span style={{color:"#eab308",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Você está offline</span>
+          <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>— alterações serão sincronizadas quando voltar a internet</span>
+        </div>
+      )}
 
       {/* ── Main menu (mode selector) ── */}
       {authState === "loggedIn" && loaded && !profileMode && (
