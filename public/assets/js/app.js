@@ -1527,6 +1527,146 @@ function JoinCollabModal({ user, onClose, onJoined }) {
   );
 }
 
+// ─── Collaborative Agendas ────────────────────────────────────────────────────
+// Estrutura Firestore:
+//   collab_agendas/{agendaId}                       → metadados + ownerUid + isCollab:true
+//   collab_agendas/{agendaId}/mensalidades/{mesAno} → pagamentos do mês
+//   collab_agendas/{agendaId}/members/{uid}         → { uid, name, email, role, joinedAt }
+//   collab_agenda_invites/{code}                    → { agendaId, agendaName, ownerUid, ownerName }
+//   users/{uid}/collab_agenda_refs/{agendaId}       → { agendaId, role }
+
+async function createCollabAgenda(ownerUid, ownerUser, agenda) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const agendaId = String(agenda.id);
+    const now = fb.serverTimestamp();
+    await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId), {
+      ...agenda, isCollab: true, ownerUid, updatedAt: now,
+    });
+    await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", ownerUid), {
+      uid: ownerUid, name: ownerUser.displayName || ownerUser.email || "Dono",
+      email: ownerUser.email || "", role: "owner", joinedAt: now,
+    });
+    await fb.setDoc(fb.doc(fb.db, "users", ownerUid, "collab_agenda_refs", agendaId), {
+      agendaId, role: "owner", joinedAt: now,
+    });
+    return true;
+  } catch(e) { console.warn("createCollabAgenda error:", e); return false; }
+}
+
+async function createCollabAgendaInvite(agendaId, agendaName, ownerUid, ownerName) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "A";
+    for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    await fb.setDoc(fb.doc(fb.db, "collab_agenda_invites", code), {
+      agendaId: String(agendaId), agendaName: agendaName || "Agenda",
+      ownerUid, ownerName: ownerName || "Usuario", createdAt: fb.serverTimestamp(),
+    });
+    return code;
+  } catch(e) { console.warn("createCollabAgendaInvite error:", e); return null; }
+}
+
+async function fetchCollabAgendaInvite(code) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, "collab_agenda_invites", code.trim().toUpperCase()));
+    if (!snap.exists()) return null;
+    return snap.data();
+  } catch(e) { return null; }
+}
+
+async function acceptCollabAgendaInvite(inviteData, uid, user) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const agendaId = inviteData.agendaId;
+    const now = fb.serverTimestamp();
+    const memberSnap = await fb.getDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid));
+    if (memberSnap.exists()) return "already_member";
+    await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid), {
+      uid, name: user.displayName || user.email || "Editor",
+      email: user.email || "", role: "editor", joinedAt: now,
+    });
+    await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId), {
+      agendaId, role: "editor", joinedAt: now,
+    });
+    return true;
+  } catch(e) { console.warn("acceptCollabAgendaInvite error:", e); return false; }
+}
+
+async function removeCollabAgendaMember(agendaId, memberUid) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.deleteDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", memberUid));
+    await fb.deleteDoc(fb.doc(fb.db, "users", memberUid, "collab_agenda_refs", agendaId));
+    return true;
+  } catch(e) { return false; }
+}
+
+async function loadCollabAgendaMembers(agendaId) {
+  const fb = getFirebase(); if (!fb) return [];
+  try {
+    const snap = await fb.getDocs(fb.collection(fb.db, "collab_agendas", agendaId, "members"));
+    return snap.docs.map(d => d.data());
+  } catch(e) { return []; }
+}
+
+async function loadCollabAgendaRefs(uid) {
+  const fb = getFirebase(); if (!fb) return [];
+  try {
+    const col = fb.collection(fb.db, "users", uid, "collab_agenda_refs");
+    const snap = await fb.getDocs(col);
+    return snap.docs.map(d => d.data());
+  } catch(e) { return []; }
+}
+
+async function loadCollabAgenda(agendaId) {
+  const fb = getFirebase(); if (!fb) return null;
+  try {
+    const snap = await fb.getDoc(fb.doc(fb.db, "collab_agendas", String(agendaId)));
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data(), isCollab: true };
+  } catch(e) { return null; }
+}
+
+async function saveCollabAgendaMeta(agendaId, data) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    await fb.setDoc(fb.doc(fb.db, "collab_agendas", String(agendaId)),
+      { ...data, updatedAt: fb.serverTimestamp() }, { merge: true });
+    return true;
+  } catch(e) { return false; }
+}
+
+async function deleteCollabAgenda(agendaId) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const membersSnap = await fb.getDocs(fb.collection(fb.db, "collab_agendas", agendaId, "members"));
+    await Promise.all(membersSnap.docs.map(d =>
+      fb.deleteDoc(fb.doc(fb.db, "users", d.id, "collab_agenda_refs", agendaId))
+    ));
+    for (const sub of ["members","mensalidades"]) {
+      const subSnap = await fb.getDocs(fb.collection(fb.db, "collab_agendas", agendaId, sub));
+      const CHUNK = 400;
+      for (let i = 0; i < subSnap.docs.length; i += CHUNK) {
+        const batch = fb.writeBatch(fb.db);
+        subSnap.docs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    }
+    await fb.deleteDoc(fb.doc(fb.db, "collab_agendas", agendaId));
+    return true;
+  } catch(e) { console.warn("deleteCollabAgenda error:", e); return false; }
+}
+
+// Retorna o path de mensalidade correto (pessoal ou collab)
+function mensalidadePath(uid, agendaId, mesAnoKey, isCollab) {
+  return isCollab
+    ? "collab_agendas/" + agendaId + "/mensalidades/" + mesAnoKey
+    : "users/" + uid + "/mensalistas/" + agendaId + "/mensalidades/" + mesAnoKey;
+}
+
 // Local fallback (used while offline / before auth)
 const STORAGE_KEY = "escalacao_fc_v6";
 function loadDataLocal() {
@@ -2713,7 +2853,266 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
 }
 
 // ─── Mensalistas Screen ──────────────────────────────────────────────────────
-function MensalistasScreen({ onBack, uid }) {
+
+// ─── Collab Agenda Modals ──────────────────────────────────────────────
+
+function EnableCollabAgendaModal({ agenda, user, onClose, onEnabled }) {
+  const [step, setStep] = useState("confirm");
+  const handleEnable = async () => {
+    setStep("loading");
+    const ok = await createCollabAgenda(user.uid, user, agenda);
+    if (ok) setStep("done"); else setStep("error");
+  };
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#050e1f",border:"1px solid rgba(59,130,246,0.25)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"24px 20px 40px",display:"flex",flexDirection:"column",gap:18}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>ATIVAR COLABORACAO</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>X</button>
+        </div>
+        {step==="confirm"&&(<>
+          <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(59,130,246,0.06)",borderRadius:13,border:"1px solid rgba(59,130,246,0.2)"}}>
+            <div style={{width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon id="soccer-ball" size={22} style={{color:"#fff"}}/></div>
+            <div>
+              <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:0.5}}>{agenda.name}</div>
+              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{(agenda.players||[]).length} mensalistas</div>
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {[
+              {icon:"👥", title:"Edicao compartilhada", desc:"Qualquer membro pode registrar pagamentos, gastos e info da agenda."},
+              {icon:"💰", title:"Financas em tempo real", desc:"Cobranças aparecem para todos na hora, sem recarregar."},
+              {icon:"🔗", title:"Codigo permanente", desc:"Gere um codigo e compartilhe. Revogue removendo o membro."},
+            ].map(({icon,title,desc})=>(
+              <div key={title} style={{display:"flex",gap:12,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:11,border:"1px solid rgba(255,255,255,0.06)"}}>
+                <span style={{fontSize:20,lineHeight:1.4}}>{icon}</span>
+                <div>
+                  <div style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>{title}</div>
+                  <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2,lineHeight:1.5}}>{desc}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button onClick={handleEnable} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,boxShadow:"0 6px 20px rgba(59,130,246,0.35)"}}>ATIVAR COLABORACAO</button>
+        </>)}
+        {step==="loading"&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
+            <div style={{width:40,height:40,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Ativando colaboracao...</span>
+          </div>
+        )}
+        {step==="done"&&(<>
+          <div style={{textAlign:"center",padding:"16px 0"}}>
+            <div style={{fontSize:52,marginBottom:12}}>🤝</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:6}}>COLABORACAO ATIVADA!</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>Convide outros usuarios para gerenciar a agenda juntos.</div>
+          </div>
+          <button onClick={()=>{ onEnabled&&onEnabled(); onClose(); }} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>VER AGENDA</button>
+        </>)}
+        {step==="error"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}><div style={{color:"#f87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>ERRO AO ATIVAR</div></div>
+          <button onClick={()=>setStep("confirm")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+function CollabAgendaInviteModal({ agenda, user, onClose }) {
+  const [step, setStep] = useState("loading");
+  const [code, setCode] = useState("");
+  const [members, setMembers] = useState([]);
+  const [copied, setCopied] = useState(false);
+  const [removingUid, setRemovingUid] = useState(null);
+  const isOwner = agenda.ownerUid === user.uid;
+
+  useEffect(() => {
+    let cancelled = false;
+    loadCollabAgendaMembers(agenda.id).then(mbrs => {
+      if (!cancelled) { setMembers(mbrs); setStep("ready"); }
+    }).catch(() => setStep("error"));
+    return () => { cancelled = true; };
+  }, [agenda.id]);
+
+  const handleGenerateCode = async () => {
+    setStep("loading");
+    const c = await createCollabAgendaInvite(agenda.id, agenda.name, user.uid, user.displayName || user.email || "");
+    if (c) { setCode(c); setStep("ready"); } else setStep("error");
+  };
+
+  const handleCopy = async () => {
+    const msg = "Convite para agenda " + agenda.name + " - Codigo: " + code;
+    try {
+      if (navigator.share) await navigator.share({ title:"Escalacao FC", text:msg });
+      else { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(()=>setCopied(false),2500); }
+    } catch { try { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(()=>setCopied(false),2500); } catch {} }
+  };
+
+  const handleRemove = async (mUid) => {
+    setRemovingUid(mUid);
+    await removeCollabAgendaMember(agenda.id, mUid);
+    setMembers(prev => prev.filter(m => m.uid !== mUid));
+    setRemovingUid(null);
+  };
+
+  const roleColor = { owner:"#f59e0b", editor:"#60a5fa" };
+  const roleLabel = { owner:"Dono", editor:"Editor" };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#050e1f",border:"1px solid rgba(59,130,246,0.25)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"22px 20px 40px",display:"flex",flexDirection:"column",gap:16,maxHeight:"85vh",overflowY:"auto"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>COLABORACAO</span>
+            <div style={{color:"#3b82f6",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginTop:1}}>{agenda.name}</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>X</button>
+        </div>
+        {step==="loading"&&(
+          <div style={{display:"flex",justifyContent:"center",padding:"30px 0"}}>
+            <div style={{width:36,height:36,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+          </div>
+        )}
+        {step==="ready"&&(<>
+          <div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Membros ({members.length})</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {members.map(m=>(
+                <div key={m.uid} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:11,border:"1px solid rgba(255,255,255,0.06)"}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(59,130,246,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontFamily:"'Bebas Neue',sans-serif",color:"#60a5fa",fontSize:16}}>
+                    {(m.name||"?")[0].toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name||"Usuario"}</div>
+                    <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10}}>{m.email||""}</div>
+                  </div>
+                  <span style={{padding:"2px 8px",borderRadius:6,background:roleColor[m.role]+"1a",border:"1px solid "+roleColor[m.role]+"33",color:roleColor[m.role],fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
+                    {roleLabel[m.role]||m.role}
+                  </span>
+                  {isOwner && m.role!=="owner" && (
+                    <button onClick={()=>handleRemove(m.uid)} disabled={removingUid===m.uid} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
+                      {removingUid===m.uid?"...":"Remover"}
+                    </button>
+                  )}
+                  {!isOwner && m.uid===user.uid && (
+                    <button onClick={()=>handleRemove(m.uid)} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>Sair</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          {isOwner&&(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Convidar alguem</div>
+              {code ? (<>
+                <div style={{display:"flex",justifyContent:"center"}}>
+                  <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:36,letterSpacing:6,color:"#3b82f6",background:"rgba(59,130,246,0.08)",border:"2px dashed rgba(59,130,246,0.35)",borderRadius:14,padding:"12px 24px",textAlign:"center"}}>{code}</div>
+                </div>
+                <button onClick={handleCopy} style={{padding:"13px 0",borderRadius:12,border:"1px solid rgba(59,130,246,0.35)",cursor:"pointer",background:copied?"rgba(59,130,246,0.2)":"rgba(59,130,246,0.08)",color:"#60a5fa",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1}}>
+                  {copied?"COPIADO!":"COMPARTILHAR CODIGO"}
+                </button>
+                <button onClick={handleGenerateCode} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Gerar novo codigo</button>
+              </>) : (
+                <button onClick={handleGenerateCode} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1.5}}>GERAR CODIGO DE CONVITE</button>
+              )}
+            </div>
+          )}
+        </>)}
+        {step==="error"&&(
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{color:"#f87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>ERRO AO CARREGAR</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function JoinCollabAgendaModal({ user, onClose, onJoined }) {
+  const [code, setCode] = useState("");
+  const [step, setStep] = useState("input");
+  const [invite, setInvite] = useState(null);
+  const [errMsg, setErrMsg] = useState("");
+
+  const handleLookup = async () => {
+    const q = code.trim().toUpperCase();
+    if (q.length < 7) return;
+    setStep("loading");
+    const data = await fetchCollabAgendaInvite(q);
+    if (!data) { setErrMsg("Codigo nao encontrado."); setStep("error"); return; }
+    setInvite(data);
+    setStep("preview");
+  };
+
+  const handleJoin = async () => {
+    setStep("joining");
+    const result = await acceptCollabAgendaInvite(invite, user.uid, user);
+    if (result === "already_member") { setStep("already"); return; }
+    if (result) setStep("done");
+    else { setErrMsg("Erro ao entrar."); setStep("error"); }
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#050e1f",border:"1px solid rgba(59,130,246,0.25)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"22px 20px 40px",display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>ENTRAR EM AGENDA</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>X</button>
+        </div>
+        {step==="input"&&(<>
+          <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>Insira o codigo do organizador para cogerenciar a agenda em tempo real.</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <input value={code} onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,7))}
+              placeholder="AABC123" maxLength={7}
+              style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:12,padding:"12px 14px",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:26,letterSpacing:6,textAlign:"center",colorScheme:"dark",outline:"none"}}
+              onFocus={e=>e.target.style.borderColor="#3b82f6"} onBlur={e=>e.target.style.borderColor="rgba(59,130,246,0.25)"} autoCapitalize="characters"/>
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,textAlign:"center"}}>Codigos de agenda comecam com A</div>
+          </div>
+          <button onClick={handleLookup} disabled={code.length<7} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<7?"default":"pointer",background:code.length<7?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:code.length<7?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>BUSCAR AGENDA</button>
+        </>)}
+        {(step==="loading"||step==="joining")&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
+            <div style={{width:40,height:40,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>{step==="loading"?"Buscando...":"Entrando..."}</span>
+          </div>
+        )}
+        {step==="preview"&&invite&&(<>
+          <div style={{padding:"14px",background:"rgba(59,130,246,0.06)",borderRadius:13,border:"1px solid rgba(59,130,246,0.2)"}}>
+            <div style={{color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>AGENDA COLABORATIVA</div>
+            <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:0.5,marginBottom:4}}>{invite.agendaName}</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Organizador: {invite.ownerName}</div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setStep("input")} style={{flex:1,padding:"12px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Voltar</button>
+            <button onClick={handleJoin} style={{flex:2,padding:"12px 0",borderRadius:11,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>ENTRAR NA AGENDA</button>
+          </div>
+        </>)}
+        {step==="done"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:52,marginBottom:12}}>🤝</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:6}}>VOCE ENTROU NA AGENDA!</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>"{invite?.agendaName}" esta na sua lista.</div>
+          </div>
+          <button onClick={()=>{ onJoined&&onJoined(invite?.agendaId); onClose(); }} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>VER AGENDAS</button>
+        </>)}
+        {(step==="already"||step==="error")&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{color:step==="already"?"#60a5fa":"#f87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1,marginBottom:6}}>
+              {step==="already"?"JA PARTICIPA DESTA AGENDA":"OPS!"}
+            </div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>{step==="error"?errMsg:"Voce ja e membro desta agenda."}</div>
+          </div>
+          <button onClick={()=>step==="error"?setStep("input"):onClose()} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>
+            {step==="error"?"Tentar novamente":"Fechar"}
+          </button>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
+
+function MensalistasScreen({ onBack, uid, user }) {
   const [agendas, setAgendas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeAgendaId, setActiveAgendaId] = useState(null);
@@ -2722,6 +3121,9 @@ function MensalistasScreen({ onBack, uid }) {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [enableCollabAgenda, setEnableCollabAgenda] = useState(null);
+  const [manageCollabAgenda, setManageCollabAgenda] = useState(null);
+  const [showJoinCollabAgenda, setShowJoinCollabAgenda] = useState(false);
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -2735,9 +3137,16 @@ function MensalistasScreen({ onBack, uid }) {
     const { db, collection, query, orderBy, onSnapshot } = fb;
     const q = query(collection(db, `users/${uid}/mensalistas`), orderBy("createdAt", "asc"));
     const unsub = onSnapshot(q, snap => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setAgendas(data);
-      setLoading(false);
+      const pessoais = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Carregar agendas colaborativas
+      loadCollabAgendaRefs(uid).then(refs => {
+        if (refs.length === 0) { setAgendas(pessoais); setLoading(false); return; }
+        Promise.all(refs.map(r => loadCollabAgenda(r.agendaId))).then(collabList => {
+          const collab = collabList.filter(Boolean);
+          setAgendas([...pessoais, ...collab]);
+          setLoading(false);
+        });
+      }).catch(() => { setAgendas(pessoais); setLoading(false); });
     }, () => setLoading(false));
     return () => unsub();
   }, [uid]);
@@ -2766,14 +3175,22 @@ function MensalistasScreen({ onBack, uid }) {
   };
 
   const deleteAgenda = async (id) => {
-    const fb = getFirebase();
-    if (fb && uid) {
-      const { db, doc, deleteDoc } = fb;
-      await deleteDoc(doc(db, `users/${uid}/mensalistas`, id));
+    const ag = agendas.find(a => a.id === id);
+    if (ag?.isCollab) {
+      const isOwner = ag.ownerUid === uid;
+      if (isOwner) { await deleteCollabAgenda(id); showToast("Agenda colaborativa encerrada"); }
+      else { await removeCollabAgendaMember(id, uid); showToast("Você saiu da agenda"); }
+    } else {
+      const fb = getFirebase();
+      if (fb && uid) {
+        const { db, doc, deleteDoc } = fb;
+        await deleteDoc(doc(db, `users/${uid}/mensalistas`, id));
+      }
+      showToast("Agenda excluída");
     }
     setDeleteConfirm(null);
     if (activeAgendaId === id) setActiveAgendaId(null);
-    showToast("Agenda excluída");
+    setAgendas(prev => prev.filter(a => a.id !== id));
   };
 
   if (activeAgendaId) {
@@ -2782,6 +3199,7 @@ function MensalistasScreen({ onBack, uid }) {
       <AgendaDetailScreen
         agenda={agenda}
         uid={uid}
+        user={user}
         onBack={() => setActiveAgendaId(null)}
       />
     );
@@ -2838,14 +3256,20 @@ function MensalistasScreen({ onBack, uid }) {
                 <div style={{ display:"flex",alignItems:"center",gap:14 }}>
                   <div style={{ width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}><Icon id="soccer-ball" size={22} style={{color:"#fff"}}/></div>
                   <div style={{ flex:1,minWidth:0 }}>
-                    <div style={{ color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1,lineHeight:1.2 }}>{ag.name}</div>
-                    <div style={{ display:"flex",gap:10,marginTop:4,flexWrap:"wrap" }}>
+                    <div style={{ display:"flex",alignItems:"center",gap:6,lineHeight:1.2,marginBottom:4 }}>
+                      <div style={{ color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1 }}>{ag.name}</div>
+                      {ag.isCollab&&<span style={{ padding:"1px 6px",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:5,color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700 }}>COLAB</span>}
+                    </div>
+                    <div style={{ display:"flex",gap:10,flexWrap:"wrap" }}>
                       {ag.horario && <span style={{ color:"#60a5fa",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:3 }}><Icon id="clock" size={11}/> {ag.horario}</span>}
                       {ag.local && <span style={{ color:"#9CA3AF",fontSize:11,display:"flex",alignItems:"center",gap:3 }}><Icon id="map-pin" size={11}/> {ag.local}</span>}
                       <span style={{ color:"#9CA3AF",fontSize:11,display:"flex",alignItems:"center",gap:3 }}><Icon id="users" size={11}/> {(ag.players||[]).length} jogador{(ag.players||[]).length!==1?"es":""}</span>
                     </div>
                   </div>
-                  <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+                    <button onClick={e => { e.stopPropagation(); if(ag.isCollab){ setManageCollabAgenda(ag); } else { setEnableCollabAgenda(ag); } }} title={ag.isCollab?"Gerenciar colaboração":"Ativar colaboração"} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(59,130,246,0.25)",background:"rgba(59,130,246,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#60a5fa",flexShrink:0 }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                    </button>
                     <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ag.id); }} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#F87171",flexShrink:0 }}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
                     </button>
@@ -2857,6 +3281,12 @@ function MensalistasScreen({ onBack, uid }) {
           </div>
         )}
       </div>
+
+      {/* Botao entrar em agenda collab */}
+      <button onClick={() => setShowJoinCollabAgenda(true)} style={{ position:"fixed",bottom:96,right:24,zIndex:50,padding:"8px 14px",borderRadius:14,border:"1px solid rgba(59,130,246,0.35)",background:"rgba(59,130,246,0.1)",color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6 }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+        Entrar em agenda
+      </button>
 
       {/* FAB */}
       <button onClick={() => setShowNewAgenda(true)} style={{ position:"fixed",bottom:28,right:24,width:56,height:56,borderRadius:18,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",border:"none",boxShadow:"0 8px 24px rgba(59,130,246,0.45)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:50 }}>
@@ -2901,13 +3331,45 @@ function MensalistasScreen({ onBack, uid }) {
         </div>
       )}
 
+      {enableCollabAgenda&&user&&(
+        <EnableCollabAgendaModal
+          agenda={enableCollabAgenda}
+          user={user}
+          onClose={()=>setEnableCollabAgenda(null)}
+          onEnabled={()=>{
+            setAgendas(prev=>prev.map(a=>a.id===enableCollabAgenda.id?{...a,isCollab:true,ownerUid:uid}:a));
+            showToast("Colaboracao ativada!");
+          }}
+        />
+      )}
+      {manageCollabAgenda&&user&&(
+        <CollabAgendaInviteModal
+          agenda={manageCollabAgenda}
+          user={user}
+          onClose={()=>setManageCollabAgenda(null)}
+        />
+      )}
+      {showJoinCollabAgenda&&user&&(
+        <JoinCollabAgendaModal
+          user={user}
+          onClose={()=>setShowJoinCollabAgenda(false)}
+          onJoined={async(agendaId)=>{
+            if(agendaId){
+              const ag=await loadCollabAgenda(agendaId);
+              if(ag) setAgendas(prev=>[...prev.filter(a=>a.id!==agendaId),ag]);
+            }
+            showToast("Voce entrou na agenda!");
+          }}
+        />
+      )}
+
       {toast && <div className="ms-toast">{toast}</div>}
     </div>
   );
 }
 
 // ─── Agenda Detail Screen ─────────────────────────────────────────────────────
-function AgendaDetailScreen({ agenda, uid, onBack }) {
+function AgendaDetailScreen({ agenda, uid, user, onBack }) {
 // ─── Mensalidade Tab ─────────────────────────────────────────────────────────
 const MESES = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
@@ -2931,7 +3393,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   const saveTimer = useRef(null);
 
   const mesAnoKey = `${String(mes+1).padStart(2,"0")}_${ano}`;
-  const docPath = uid ? `users/${uid}/mensalistas/${agenda.id}/mensalidades/${mesAnoKey}` : null;
+  const docPath = uid ? mensalidadePath(uid, agenda.id, mesAnoKey, !!agenda.isCollab) : null;
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null),2200); };
 
   useEffect(() => {
@@ -3402,7 +3864,10 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
     const fb = getFirebase();
     if (!fb || !uid) return;
     const { db, doc, setDoc } = fb;
-    await setDoc(doc(db, `users/${uid}/mensalistas`, agenda.id), {
+    const path = agenda.isCollab
+      ? "collab_agendas/" + agenda.id
+      : "users/" + uid + "/mensalistas/" + agenda.id;
+    await setDoc(doc(db, path), {
       ...agenda,
       ...updatedInfo,
       players: updatedPlayers,
@@ -10205,7 +10670,7 @@ function App() {
 
       {/* ── Mensalistas mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "mensalistas" && (
-        <MensalistasScreen onBack={()=>setProfileMode("monthly")} uid={uid}/>
+        <MensalistasScreen onBack={()=>setProfileMode("monthly")} uid={uid} user={user}/>
       )}
 
       {/* ── Sorteio Lista mode ── */}
