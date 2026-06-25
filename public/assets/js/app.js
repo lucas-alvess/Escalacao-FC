@@ -3497,6 +3497,338 @@ function SorteioListaScreen({ onBack, uid }) {
 }
 
 // ─── Pelada Mensal Screen ─────────────────────────────────────────────────────
+
+// ─── Sorteio Tampinhas Screen ─────────────────────────────────────────────────
+function SorteioTampinhasScreen({ onBack }) {
+  const TEAM_COLORS = [
+    { label:"Verde",    value:"#22c55e" },
+    { label:"Vermelho", value:"#ef4444" },
+    { label:"Azul",     value:"#3b82f6" },
+    { label:"Amarelo",  value:"#f59e0b" },
+    { label:"Roxo",     value:"#a855f7" },
+    { label:"Laranja",  value:"#f97316" },
+    { label:"Rosa",     value:"#ec4899" },
+    { label:"Ciano",    value:"#06b6d4" },
+    { label:"Branco",   value:"#e5e7eb" },
+    { label:"Preto",    value:"#374151" },
+  ];
+
+  // ── Steps: "setup" | "draw"
+  const [step, setStep] = useState("setup");
+
+  // ── Setup
+  const [numTeams, setNumTeams] = useState(2);
+  const [playersPerTeam, setPlayersPerTeam] = useState(5);
+  const [teamColors, setTeamColors] = useState([
+    TEAM_COLORS[0].value, TEAM_COLORS[1].value, TEAM_COLORS[2].value,
+    TEAM_COLORS[3].value, TEAM_COLORS[4].value, TEAM_COLORS[5].value,
+  ]);
+  const [teamNames, setTeamNames] = useState(["Time A","Time B","Time C","Time D","Time E","Time F"]);
+
+  // ── Draw state
+  // bag: shuffled array of team indices yet to be drawn, one slot per player
+  const [bag, setBag] = useState([]);
+  const [drawn, setDrawn] = useState([]); // [{teamIdx, color, name}]
+  const [revealing, setRevealing] = useState(false);
+  const [revealed, setRevealed] = useState(null); // current result shown
+  const [done, setDone] = useState(false);
+  const animRef = useRef(null);
+
+  const totalSlots = numTeams * playersPerTeam;
+
+  // ── Color picker
+  const ColorPicker = ({ value, onChange }) => (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+      {TEAM_COLORS.map(c => (
+        <button key={c.value} onClick={() => onChange(c.value)} title={c.label} style={{
+          width:26, height:26, borderRadius:"50%", background:c.value,
+          border:`2px solid ${value===c.value?"#fff":"transparent"}`,
+          cursor:"pointer", outline:"none",
+          boxShadow:value===c.value?"0 0 0 2px rgba(255,255,255,0.4)":"none"
+        }}/>
+      ))}
+    </div>
+  );
+
+  // ── Build shuffled bag: each team appears playersPerTeam times
+  const buildBag = () => {
+    const slots = [];
+    for (let t = 0; t < numTeams; t++) {
+      for (let p = 0; p < playersPerTeam; p++) slots.push(t);
+    }
+    // Fisher-Yates shuffle
+    for (let i = slots.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [slots[i], slots[j]] = [slots[j], slots[i]];
+    }
+    return slots;
+  };
+
+  const startDraw = () => {
+    setBag(buildBag());
+    setDrawn([]);
+    setRevealed(null);
+    setDone(false);
+    setStep("draw");
+  };
+
+  // ── Player presses the button
+  const handlePress = () => {
+    if (revealing || done || bag.length === 0) return;
+    setRevealing(true);
+    setRevealed(null);
+
+    // Slot machine animation: rapid color flicker then settle
+    let ticks = 0;
+    const totalTicks = 18;
+    const teamIdx = bag[0];
+
+    const tick = () => {
+      const fakeIdx = Math.floor(Math.random() * numTeams);
+      setRevealed({ teamIdx: fakeIdx, color: teamColors[fakeIdx], name: teamNames[fakeIdx] || `Time ${fakeIdx+1}`, fake: true });
+      ticks++;
+      const delay = ticks < 10 ? 60 : ticks < 15 ? 100 : 180;
+      if (ticks < totalTicks) {
+        animRef.current = setTimeout(tick, delay);
+      } else {
+        // Final result
+        const result = { teamIdx, color: teamColors[teamIdx], name: teamNames[teamIdx] || `Time ${teamIdx+1}`, fake: false };
+        setRevealed(result);
+        const nextBag = bag.slice(1);
+        const nextDrawn = [...drawn, result];
+        setBag(nextBag);
+        setDrawn(nextDrawn);
+        if (nextBag.length === 0) setDone(true);
+        setRevealing(false);
+      }
+    };
+    animRef.current = setTimeout(tick, 60);
+  };
+
+  useEffect(() => () => clearTimeout(animRef.current), []);
+
+  const reset = () => {
+    clearTimeout(animRef.current);
+    setBag([]); setDrawn([]); setRevealed(null); setDone(false); setRevealing(false);
+    setStep("setup");
+  };
+
+  const restartDraw = () => {
+    clearTimeout(animRef.current);
+    setBag(buildBag()); setDrawn([]); setRevealed(null); setDone(false); setRevealing(false);
+  };
+
+  // ── Tally: how many of each team have been drawn
+  const tally = Array.from({ length: numTeams }, (_, i) => ({
+    idx: i, name: teamNames[i]||`Time ${i+1}`, color: teamColors[i],
+    count: drawn.filter(d => d.teamIdx === i).length,
+  }));
+
+  const ST_STYLES = `
+    .st-input{width:100%;background:rgba(255,255,255,0.05);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:10px 12px;color:#fff;font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
+    .st-input:focus{border-color:rgba(52,211,153,0.5);}
+    .st-stepper{display:flex;align-items:center;gap:12px;}
+    .st-step-btn{width:36px;height:36px;border-radius:10px;border:1px solid rgba(52,211,153,0.3);background:rgba(52,211,153,0.08);color:#34d399;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;}
+    .st-step-val{font-size:24px;font-family:'Bebas Neue',sans-serif;color:#fff;min-width:32px;text-align:center;letter-spacing:1px;}
+    @keyframes st-pop{0%{transform:scale(0.7);opacity:0;}60%{transform:scale(1.12);}100%{transform:scale(1);opacity:1;}}
+    @keyframes st-flicker{0%,100%{opacity:1;}50%{opacity:0.6;}}
+    @keyframes st-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0.15);}50%{box-shadow:0 0 0 20px rgba(255,255,255,0);}}
+    @keyframes st-done-glow{0%,100%{box-shadow:0 0 32px rgba(52,211,153,0.3);}50%{box-shadow:0 0 64px rgba(52,211,153,0.6);}}
+  `;
+
+  const BackBtn = ({ onClick }) => (
+    <button onClick={onClick} style={{ position:"absolute",top:16,left:16,width:36,height:36,borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#34d399",zIndex:2 }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+  );
+
+  // ─────────────── STEP: SETUP ───────────────
+  if (step === "setup") return (
+    <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
+      <style>{ST_STYLES}</style>
+      <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
+        <BackBtn onClick={onBack}/>
+        <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
+          <div style={{ fontSize:36 }}>🍺</div>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO TAMPINHAS</div>
+          <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure os times</div>
+        </div>
+      </div>
+
+      <div style={{ flex:1, padding:"24px 20px 40px", display:"flex", flexDirection:"column", gap:20, overflowY:"auto" }}>
+
+        {/* Número de times */}
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
+          <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Número de Times</div>
+          <div className="st-stepper">
+            <button className="st-step-btn" onClick={() => setNumTeams(n => Math.max(2, n-1))}>−</button>
+            <span className="st-step-val">{numTeams}</span>
+            <button className="st-step-btn" onClick={() => setNumTeams(n => Math.min(6, n+1))}>+</button>
+            <span style={{ color:"#6B7280", fontSize:12, marginLeft:4 }}>times (máx. 6)</span>
+          </div>
+        </div>
+
+        {/* Jogadores por time */}
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
+          <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Jogadores por Time</div>
+          <div className="st-stepper">
+            <button className="st-step-btn" onClick={() => setPlayersPerTeam(n => Math.max(1, n-1))}>−</button>
+            <span className="st-step-val">{playersPerTeam}</span>
+            <button className="st-step-btn" onClick={() => setPlayersPerTeam(n => Math.min(20, n+1))}>+</button>
+            <span style={{ color:"#6B7280", fontSize:12, marginLeft:4 }}>por time</span>
+          </div>
+          <div style={{ marginTop:10, color:"#4B5563", fontSize:11 }}>Total: <span style={{ color:"#34d399", fontWeight:700 }}>{totalSlots}</span> jogadores</div>
+        </div>
+
+        {/* Times */}
+        <div style={{ background:"rgba(255,255,255,0.03)", border:"1px solid rgba(52,211,153,0.1)", borderRadius:16, padding:16 }}>
+          <div style={{ color:"#9CA3AF", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:12 }}>Times e Cores</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+            {Array.from({ length: numTeams }, (_, i) => (
+              <div key={i} style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ width:14, height:14, borderRadius:4, background:teamColors[i]||TEAM_COLORS[i%TEAM_COLORS.length].value, flexShrink:0 }}/>
+                  <input className="st-input" style={{ flex:1, padding:"8px 10px", fontSize:13 }}
+                    value={teamNames[i] || `Time ${String.fromCharCode(65+i)}`}
+                    onChange={e => setTeamNames(prev => { const n=[...prev]; n[i]=e.target.value; return n; })}
+                    placeholder={`Nome do Time ${i+1}`}/>
+                </div>
+                <ColorPicker value={teamColors[i]||TEAM_COLORS[i%TEAM_COLORS.length].value}
+                  onChange={c => setTeamColors(prev => { const n=[...prev]; n[i]=c; return n; })}/>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <button onClick={startDraw} style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:10, width:"100%", padding:16, borderRadius:14, border:"none", background:"linear-gradient(135deg,#d97706,#f59e0b)", color:"#000", fontFamily:"'Bebas Neue',sans-serif", fontSize:20, letterSpacing:1.5, cursor:"pointer", fontWeight:700 }}>
+          🍺 INICIAR SORTEIO
+        </button>
+      </div>
+    </div>
+  );
+
+  // ─────────────── STEP: DRAW ───────────────
+  const remaining = bag.length;
+  const drawnCount = drawn.length;
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#050c0a", fontFamily:"'DM Sans',sans-serif", display:"flex", flexDirection:"column" }}>
+      <style>{ST_STYLES}</style>
+
+      {/* Header */}
+      <div style={{ padding:"52px 20px 16px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
+        <BackBtn onClick={reset}/>
+        <div style={{ textAlign:"center" }}>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color:"#fff", letterSpacing:2 }}>SORTEIO TAMPINHAS 🍺</div>
+          <div style={{ color:"#6B7280", fontSize:11, fontWeight:700, marginTop:2 }}>
+            {done
+              ? <span style={{ color:"#34d399" }}>Todos os times formados! ✅</span>
+              : <span><span style={{ color:"#f59e0b" }}>{drawnCount}</span> / {totalSlots} jogadores sorteados</span>}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"space-between", padding:"24px 20px 32px", overflowY:"auto" }}>
+
+        {/* Placar dos times */}
+        <div style={{ width:"100%", display:"flex", flexWrap:"wrap", gap:8, justifyContent:"center", marginBottom:8 }}>
+          {tally.map(t => (
+            <div key={t.idx} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 12px", borderRadius:20, background:`${t.color}18`, border:`1.5px solid ${t.color}50` }}>
+              <div style={{ width:10, height:10, borderRadius:"50%", background:t.color }}/>
+              <span style={{ color:"#E5E7EB", fontSize:12, fontWeight:700 }}>{t.name}</span>
+              <span style={{ color:t.color, fontSize:13, fontWeight:700, fontFamily:"'Bebas Neue',sans-serif", letterSpacing:1 }}>{t.count}/{playersPerTeam}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Resultado atual */}
+        <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:20, width:"100%" }}>
+
+          {/* Área de revelação */}
+          {revealed ? (
+            <div style={{
+              display:"flex", flexDirection:"column", alignItems:"center", gap:10,
+              animation: revealed.fake ? "st-flicker 0.12s linear infinite" : "st-pop 0.35s cubic-bezier(.34,1.56,.64,1) forwards"
+            }}>
+              <div style={{
+                width:100, height:100, borderRadius:"50%",
+                background: revealed.color,
+                boxShadow: revealed.fake ? "none" : `0 0 40px ${revealed.color}80`,
+                transition: "background 0.05s"
+              }}/>
+              {!revealed.fake && (
+                <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:28, color: revealed.color, letterSpacing:2, textShadow:`0 0 20px ${revealed.color}80` }}>
+                  {revealed.name}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ width:100, height:100, borderRadius:"50%", background:"rgba(255,255,255,0.06)", border:"2px dashed rgba(255,255,255,0.12)" }}/>
+          )}
+
+          {/* BOTÃO CENTRAL GRANDE */}
+          {!done ? (
+            <button
+              onClick={handlePress}
+              disabled={revealing}
+              style={{
+                width:200, height:200, borderRadius:"50%",
+                background: revealing
+                  ? "radial-gradient(circle,#374151,#1f2937)"
+                  : "radial-gradient(circle at 35% 35%,#f59e0b,#d97706 50%,#92400e)",
+                border:"none", cursor: revealing ? "not-allowed" : "pointer",
+                display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:8,
+                boxShadow: revealing
+                  ? "0 4px 24px rgba(0,0,0,0.5)"
+                  : "0 8px 40px rgba(245,158,11,0.5), inset 0 2px 0 rgba(255,255,255,0.2)",
+                transition:"all 0.2s",
+                animation: !revealing && !revealed ? "st-pulse 2s ease-in-out infinite" : "none",
+                transform: revealing ? "scale(0.96)" : "scale(1)",
+              }}
+            >
+              <span style={{ fontSize:44 }}>🍺</span>
+              <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color: revealing ? "#6B7280" : "#000", letterSpacing:2, fontWeight:700 }}>
+                {revealing ? "SORTEANDO..." : "TOCA AQUI!"}
+              </span>
+            </button>
+          ) : (
+            <div style={{ textAlign:"center", display:"flex", flexDirection:"column", alignItems:"center", gap:16 }}>
+              <div style={{ fontSize:60 }}>🎉</div>
+              <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, color:"#34d399", letterSpacing:2 }}>TIMES FORMADOS!</div>
+            </div>
+          )}
+        </div>
+
+        {/* Histórico recente */}
+        {drawn.length > 0 && (
+          <div style={{ width:"100%", marginTop:8 }}>
+            <div style={{ color:"#4B5563", fontSize:10, fontWeight:700, letterSpacing:1, textTransform:"uppercase", marginBottom:8, textAlign:"center" }}>
+              Últimos sorteados
+            </div>
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap", justifyContent:"center" }}>
+              {[...drawn].reverse().slice(0, 12).map((d, i) => (
+                <div key={i} style={{ width:28, height:28, borderRadius:"50%", background:d.color, border:"2px solid rgba(255,255,255,0.15)", boxShadow:`0 2px 8px ${d.color}60`, flexShrink:0, transition:"all 0.2s" }}/>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Botões de controle */}
+        <div style={{ width:"100%", display:"flex", gap:8, marginTop:16 }}>
+          {done && (
+            <button onClick={restartDraw} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(245,158,11,0.3)", background:"rgba(245,158,11,0.08)", color:"#f59e0b", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+              🔁 Ressortear
+            </button>
+          )}
+          <button onClick={reset} style={{ flex:1, padding:"12px", borderRadius:12, border:"1px solid rgba(255,255,255,0.08)", background:"rgba(255,255,255,0.03)", color:"#6B7280", fontFamily:"'DM Sans',sans-serif", fontWeight:700, fontSize:13, cursor:"pointer" }}>
+            ⚙️ Reconfigurar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PeladaMensalScreen({onBack, onSelect, uid}) {
   function ripple(e, cb) {
     const b=e.currentTarget;
@@ -3544,7 +3876,7 @@ function PeladaMensalScreen({onBack, onSelect, uid}) {
       bg: "linear-gradient(135deg,#0f2460 0%,#1e3a8a 55%,#2563eb 100%)",
       overlayTop: "linear-gradient(135deg,rgba(30,58,138,0.5) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.42) 40%,rgba(5,10,30,0.94) 100%)",
-      badge: {bg:"rgba(96,165,250,0.22)",color:"#bfdbfe",border:"1px solid rgba(147,197,253,0.35)",dot:"#60a5fa",label:"EM BREVE"},
+      badge: {bg:"rgba(245,158,11,0.18)",color:"#fde68a",border:"1px solid rgba(245,158,11,0.3)",dot:"#f59e0b",label:"NOVO"},
       tagStyle: {background:"rgba(30,58,138,0.28)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
     },
   ];
@@ -8792,7 +9124,7 @@ function App() {
 
       {/* ── Monthly mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "monthly" && (
-        <PeladaMensalScreen onBack={()=>setProfileMode(null)} uid={uid} onSelect={(key)=>{ if(key==="mensalistas") setProfileMode("mensalistas"); if(key==="sorteio-lista") setProfileMode("sorteio-lista"); }}/>
+        <PeladaMensalScreen onBack={()=>setProfileMode(null)} uid={uid} onSelect={(key)=>{ if(key==="mensalistas") setProfileMode("mensalistas"); if(key==="sorteio-lista") setProfileMode("sorteio-lista"); if(key==="sorteio-tampinhas") setProfileMode("sorteio-tampinhas"); }}/>
       )}
 
       {/* ── Mensalistas mode ── */}
@@ -8803,6 +9135,11 @@ function App() {
       {/* ── Sorteio Lista mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "sorteio-lista" && (
         <SorteioListaScreen onBack={()=>setProfileMode("monthly")} uid={uid}/>
+      )}
+
+      {/* ── Sorteio Tampinhas mode ── */}
+      {authState === "loggedIn" && loaded && profileMode === "sorteio-tampinhas" && (
+        <SorteioTampinhasScreen onBack={()=>setProfileMode("monthly")}/>
       )}
 
       {/* ── Field mode: full app ── */}
