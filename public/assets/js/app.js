@@ -8881,7 +8881,8 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 function App() {
-  const [authState, setAuthState] = useState("loading"); // "loading" | "loggedOut" | "loggedIn"  const [user, setUser] = useState(null);
+  const [authState, setAuthState] = useState("loading"); // "loading" | "loggedOut" | "loggedIn"
+  const [user, setUser] = useState(null);
   const [isPremium, setIsPremium] = useState(false);
   const [navSection, setNavSection] = useState("home"); // "home" | "tactic" | "office"
   const [profileMode, setProfileMode] = useState(null); // null = main menu | "field" | "monthly"
