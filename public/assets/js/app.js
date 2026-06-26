@@ -1727,15 +1727,23 @@ async function acceptCollabAgendaInvite(inviteData, uid, user) {
   try {
     const agendaId = inviteData.agendaId;
     const now = fb.serverTimestamp();
-    const refSnapA = await fb.getDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId));
-    if (refSnapA.exists()) return "already_member";
-    await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid), {
-      uid, name: user.displayName || user.email || "Editor",
-      email: user.email || "", role: "editor", joinedAt: now,
-    });
-    await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId), {
-      agendaId, role: "editor", joinedAt: now,
-    });
+    // Verificar os dois docs para detectar estado parcialmente gravado
+    const [refSnap, memberSnap] = await Promise.all([
+      fb.getDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId)),
+      fb.getDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid)),
+    ]);
+    const hasRef = refSnap.exists();
+    const hasMember = memberSnap.exists();
+    // Se ambos existem: já é membro completo
+    if (hasRef && hasMember) return "already_member";
+    // Se apenas um existe: estado parcial — reparar escrevendo o que falta
+    const memberData = { uid, name: user.displayName || user.email || "Editor", email: user.email || "", role: "editor", joinedAt: now };
+    const refData = { agendaId, role: "editor", joinedAt: now };
+    if (!hasMember) await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid), memberData);
+    if (!hasRef) await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId), refData);
+    // Se havia estado parcial (um dos dois existia), retornar already_member para que
+    // o modal mostre "Ver Agenda" e carregue a agenda corretamente
+    if (hasRef || hasMember) return "already_member";
     return true;
   } catch(e) { console.warn("acceptCollabAgendaInvite error:", e); return false; }
 }
@@ -3255,9 +3263,11 @@ function JoinCollabAgendaModal({ user, onClose, onJoined }) {
             </div>
             <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>{step==="error"?errMsg:"Voce ja e membro desta agenda."}</div>
           </div>
-          <button onClick={()=>step==="error"?setStep("input"):onClose()} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>
-            {step==="error"?"Tentar novamente":"Fechar"}
-          </button>
+          {step==="already"?(
+            <button onClick={()=>{ onJoined&&onJoined(invite?.agendaId); onClose(); }} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1.5}}>VER AGENDA</button>
+          ):(
+            <button onClick={()=>setStep("input")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
+          )}
         </>)}
       </div>
     </div>
