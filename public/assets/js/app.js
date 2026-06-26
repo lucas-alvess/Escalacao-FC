@@ -5787,10 +5787,20 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                 <div style={{display:"flex",flexDirection:"column",gap:5,flexShrink:0}}>
                   <button onClick={e=>{e.stopPropagation();onEditTeam(team);}} aria-label={`Editar ${team.name}`} className="tc-action-btn"
                     style={{background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.2)",color:"#60a5fa"}}><Ico.Edit/></button>
-                  <button onClick={e=>{e.stopPropagation();setShareTeam(team);}} aria-label={`Compartilhar ${team.name}`} className="tc-action-btn"
-                    style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",color:"#34d399"}}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                  </button>
+                  {/* Botao COPIA — sempre visível para o dono; oculto para editores collab */}
+                  {(!team.isCollab || team.ownerUid===user?.uid)&&(
+                    <button onClick={e=>{e.stopPropagation();setShareTeam(team);}} aria-label={`Compartilhar copia de ${team.name}`} title="Compartilhar copia" className="tc-action-btn"
+                      style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",color:"#34d399"}}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </button>
+                  )}
+                  {/* Botao COLABORAR — somente para o dono (ativar ou gerenciar) */}
+                  {(!team.isCollab || team.ownerUid===user?.uid)&&(
+                    <button onClick={e=>{e.stopPropagation(); team.isCollab ? onManageCollab&&onManageCollab(team) : onEnableCollab&&onEnableCollab(team);}} aria-label={team.isCollab?"Gerenciar colaboração":"Ativar colaboração"} title={team.isCollab?"Gerenciar colaboração":"Ativar colaboração"} className="tc-action-btn"
+                      style={{background:team.isCollab?"rgba(59,130,246,0.18)":"rgba(59,130,246,0.08)",border:team.isCollab?"1px solid rgba(59,130,246,0.45)":"1px solid rgba(59,130,246,0.2)",color:"#60a5fa"}}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </button>
+                  )}
                   <button onClick={e=>{e.stopPropagation();setConfirmDel(team.id);}} aria-label={team.isCollab&&team.ownerUid!==user?.uid?`Sair de ${team.name}`:`Excluir ${team.name}`} className="tc-action-btn"
                     title={team.isCollab?(team.ownerUid===user?.uid?"Encerrar colaboração":"Sair do time"):undefined}
                     style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171"}}>
@@ -11132,14 +11142,14 @@ function App() {
           };
 
           if (hasLocalData) {
-            // Show the app immediately using cached local data — schema
-            // migrations and cloud sync happen silently in the background,
-            // so the user never sees a blocking "MIGRANDO DADOS..." screen
-            // on routine opens.
-            setTeams(local.teams);
+            // Nunca exibir times collab do cache local — eles são sempre carregados
+            // do Firestore via loadCollabRefs. Isso evita exibir um time collab
+            // do qual o usuário já saiu (cache pode estar desatualizado).
+            const localPersonalTeams = (local.teams || []).filter(t => !t.isCollab);
+            setTeams(localPersonalTeams);
             setMigrating(false);
             setLoaded(true);
-            const teamsAtLoad = local.teams;
+            const teamsAtLoad = localPersonalTeams;
             syncWithCloud({
               // Avoid clobbering edits the user makes during the background
               // sync window: only apply the cloud snapshot if `teams` hasn't
@@ -11283,15 +11293,15 @@ function App() {
   useEffect(() => {
     const handleUnload = (e) => {
       if (!loaded || !user) return;
-      saveDataLocal({ teams });
+      // Nunca persistir times collab no cache local — eles são sempre carregados
+      // do Firestore no próximo boot via loadCollabRefs. Persistir collab no
+      // localStorage causaria o bug de "voltar após sair" porque o cache é
+      // exibido antes do cloud sync completar no próximo reload.
+      saveDataLocal({ teams: teams.filter(t => !t.isCollab) });
       teams.forEach(t => {
         if (t.isCollab) saveCollabTeamMeta(t);
         else saveTeamCloud(user.uid, t);
       });
-      // saveTeamCloud above is fire-and-forget — beforeunload can't reliably
-      // await promises, so on a slow connection it may not finish before the
-      // tab closes. Warn the user if a sync is still pending/in-flight or
-      // last failed, so they get a chance to stay and let it complete.
       if (syncStatus === "pending" || syncStatus === "syncing" || syncStatus === "error") {
         e.preventDefault();
         e.returnValue = "";
