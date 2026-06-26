@@ -1702,6 +1702,14 @@ async function createCollabAgenda(ownerUid, ownerUser, agenda) {
 async function createCollabAgendaInvite(agendaId, agendaName, ownerUid, ownerName) {
   const fb = getFirebase(); if (!fb) return null;
   try {
+    // Reutilizar código existente se houver
+    const agendaSnap = await fb.getDoc(fb.doc(fb.db, "collab_agendas", String(agendaId)));
+    if (agendaSnap.exists() && agendaSnap.data().inviteCode) {
+      const existingCode = agendaSnap.data().inviteCode;
+      const inviteSnap = await fb.getDoc(fb.doc(fb.db, "collab_agenda_invites", existingCode));
+      if (inviteSnap.exists()) return existingCode;
+    }
+    // Gerar novo código
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code = "A";
     for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
@@ -1709,6 +1717,8 @@ async function createCollabAgendaInvite(agendaId, agendaName, ownerUid, ownerNam
       agendaId: String(agendaId), agendaName: agendaName || "Agenda",
       ownerUid, ownerName: ownerName || "Usuario", createdAt: fb.serverTimestamp(),
     });
+    // Salvar o código no doc raiz para reutilização futura
+    await fb.setDoc(fb.doc(fb.db, "collab_agendas", String(agendaId)), { inviteCode: code }, { merge: true });
     return code;
   } catch(e) { console.warn("createCollabAgendaInvite error:", e); return null; }
 }
@@ -1727,23 +1737,15 @@ async function acceptCollabAgendaInvite(inviteData, uid, user) {
   try {
     const agendaId = inviteData.agendaId;
     const now = fb.serverTimestamp();
-    // Verificar os dois docs para detectar estado parcialmente gravado
-    const [refSnap, memberSnap] = await Promise.all([
-      fb.getDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId)),
-      fb.getDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid)),
-    ]);
-    const hasRef = refSnap.exists();
-    const hasMember = memberSnap.exists();
-    // Se ambos existem: já é membro completo
-    if (hasRef && hasMember) return "already_member";
-    // Se apenas um existe: estado parcial — reparar escrevendo o que falta
-    const memberData = { uid, name: user.displayName || user.email || "Editor", email: user.email || "", role: "editor", joinedAt: now };
-    const refData = { agendaId, role: "editor", joinedAt: now };
-    if (!hasMember) await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid), memberData);
-    if (!hasRef) await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId), refData);
-    // Se havia estado parcial (um dos dois existia), retornar already_member para que
-    // o modal mostre "Ver Agenda" e carregue a agenda corretamente
-    if (hasRef || hasMember) return "already_member";
+    const refSnapA = await fb.getDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId));
+    if (refSnapA.exists()) return "already_member";
+    await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid), {
+      uid, name: user.displayName || user.email || "Editor",
+      email: user.email || "", role: "editor", joinedAt: now,
+    });
+    await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId), {
+      agendaId, role: "editor", joinedAt: now,
+    });
     return true;
   } catch(e) { console.warn("acceptCollabAgendaInvite error:", e); return false; }
 }
@@ -3081,6 +3083,13 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
 
   useEffect(() => {
     const fb = getFirebase(); if (!fb) { setStep("error"); return; }
+    // Carregar código existente e membros em paralelo
+    if (isOwner && agenda.inviteCode) {
+      // Código já salvo no doc da agenda — verificar se ainda existe
+      fb.getDoc(fb.doc(fb.db, "collab_agenda_invites", agenda.inviteCode))
+        .then(snap => { if (snap.exists()) setCode(agenda.inviteCode); })
+        .catch(() => {});
+    }
     // onSnapshot garante que novos membros aparecem em tempo real
     const unsub = fb.onSnapshot(
       fb.collection(fb.db, "collab_agendas", String(agenda.id), "members"),
@@ -3171,7 +3180,7 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
                 </button>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={handleGenerateCode} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Novo</button>
-                  <button onClick={async()=>{ if(!code) return; const fb=getFirebase(); if(!fb) return; try{await fb.deleteDoc(fb.doc(fb.db,"collab_agenda_invites",code));}catch{} setCode(""); }} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.06)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Revogar</button>
+                  <button onClick={async()=>{ if(!code) return; const fb=getFirebase(); if(!fb) return; try{ await fb.deleteDoc(fb.doc(fb.db,"collab_agenda_invites",code)); await fb.setDoc(fb.doc(fb.db,"collab_agendas",String(agenda.id)),{inviteCode:null},{merge:true}); }catch{} setCode(""); }} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.06)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Revogar</button>
                 </div>
               </>) : (
                 <button onClick={handleGenerateCode} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1.5}}>GERAR CODIGO DE CONVITE</button>
@@ -3263,11 +3272,9 @@ function JoinCollabAgendaModal({ user, onClose, onJoined }) {
             </div>
             <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>{step==="error"?errMsg:"Voce ja e membro desta agenda."}</div>
           </div>
-          {step==="already"?(
-            <button onClick={()=>{ onJoined&&onJoined(invite?.agendaId); onClose(); }} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1.5}}>VER AGENDA</button>
-          ):(
-            <button onClick={()=>setStep("input")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
-          )}
+          <button onClick={()=>step==="error"?setStep("input"):onClose()} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>
+            {step==="error"?"Tentar novamente":"Fechar"}
+          </button>
         </>)}
       </div>
     </div>
