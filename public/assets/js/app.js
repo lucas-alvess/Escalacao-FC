@@ -3560,6 +3560,8 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   const [showDeleteGasto, setShowDeleteGasto] = useState(null);
   const [valorCampo, setValorCampo] = useState("");
   const [saldoCaixaAnterior, setSaldoCaixaAnterior] = useState("");
+  const [saldoCaixaAnteriorNome, setSaldoCaixaAnteriorNome] = useState("Saldo em Caixa Anterior (adicionar ao total)");
+  const [editingSaldoNome, setEditingSaldoNome] = useState(false);
   const [outrosCaixas, setOutrosCaixas] = useState([]); // [{id, nome, valor}]
   const [showAddCaixa, setShowAddCaixa] = useState(false);
   const [novoCaixaNome, setNovoCaixaNome] = useState("");
@@ -3585,14 +3587,16 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
         setData(d);
         setValorCampo(d.valorCampo || "");
         setSaldoCaixaAnterior(d.saldoCaixaAnterior || "");
+        setSaldoCaixaAnteriorNome(d.saldoCaixaAnteriorNome || "Saldo em Caixa Anterior (adicionar ao total)");
         setOutrosCaixas(d.outrosCaixas || []);
       } else {
         const initialPagamentos = mensalistasPlayers.map(p => ({
           id: p.id, name: p.name, tipo: "mensalista", pago: false, dataPagamento: "", obs: ""
         }));
-        setData({ pagamentos: initialPagamentos, avulsos: [], gastos: [], valorCampo: "", saldoCaixaAnterior: "", outrosCaixas: [] });
+        setData({ pagamentos: initialPagamentos, avulsos: [], gastos: [], valorCampo: "", saldoCaixaAnterior: "", saldoCaixaAnteriorNome: "Saldo em Caixa Anterior (adicionar ao total)", outrosCaixas: [] });
         setValorCampo("");
         setSaldoCaixaAnterior("");
+        setSaldoCaixaAnteriorNome("Saldo em Caixa Anterior (adicionar ao total)");
         setOutrosCaixas([]);
       }
       setLoading(false);
@@ -3738,7 +3742,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   const handleSaldoCaixaAnterior = (v) => {
     setSaldoCaixaAnterior(v);
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => save({ ...data, saldoCaixaAnterior: v }), 800);
+    saveTimer.current = setTimeout(() => save({ ...data, saldoCaixaAnterior: v, saldoCaixaAnteriorNome }), 800);
   };
 
   const PlayerRow = ({ item, tipo }) => {
@@ -3841,7 +3845,23 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
         </div>
         <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
           <div>
-            <label className="men-label"><Icon id="banknote" size={12}/> Saldo em Caixa Anterior (adicionar ao total)</label>
+            <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:5}}>
+              {editingSaldoNome ? (
+                <input
+                  autoFocus
+                  value={saldoCaixaAnteriorNome}
+                  onChange={e=>setSaldoCaixaAnteriorNome(e.target.value)}
+                  onBlur={()=>{ setEditingSaldoNome(false); save({ ...data, saldoCaixaAnteriorNome }); }}
+                  onKeyDown={e=>{ if(e.key==="Enter"||e.key==="Escape"){ setEditingSaldoNome(false); save({ ...data, saldoCaixaAnteriorNome }); } }}
+                  style={{flex:1,background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.4)",borderRadius:7,padding:"4px 8px",color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,outline:"none",letterSpacing:0.5,textTransform:"uppercase"}}
+                />
+              ) : (
+                <label className="men-label" style={{flex:1,marginBottom:0,display:"flex",alignItems:"center",gap:4,cursor:"pointer"}} onClick={()=>setEditingSaldoNome(true)}>
+                  <Icon id="banknote" size={12}/> {saldoCaixaAnteriorNome}
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2.2" strokeLinecap="round" style={{marginLeft:2}}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </label>
+              )}
+            </div>
             <input className="men-input" placeholder="Ex: 50,00" value={saldoCaixaAnterior} onChange={e=>handleSaldoCaixaAnterior(e.target.value)}/>
           </div>
           <div>
