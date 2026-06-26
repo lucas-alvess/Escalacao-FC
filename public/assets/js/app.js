@@ -5677,18 +5677,32 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:44,color:"#fff",lineHeight:1,letterSpacing:1}}>{teams.length}</div>
             <div style={{color:"#4B5563",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>{teams.length===1?"Time cadastrado":"Times cadastrados"}</div>
           </div>
-          <button onClick={()=>setShowImport(true)} title="Importar time via código" className="home-import-btn" style={{
-            display:"flex",alignItems:"center",gap:6,padding:"10px 14px",
-            background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.22)",
-            borderRadius:12,color:"#34d399",cursor:"pointer",
-            fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,letterSpacing:0.5,
-            transition:"background 0.15s,border-color 0.15s"
-          }}
-            onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.14)";e.currentTarget.style.borderColor="rgba(52,211,153,0.4)";}}
-            onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.07)";e.currentTarget.style.borderColor="rgba(52,211,153,0.22)";}}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Importar
-          </button>
+          <div style={{display:"flex",gap:7,flexShrink:0}}>
+            <button onClick={()=>setShowImport(true)} title="Importar copia de time via codigo" className="home-import-btn" style={{
+              display:"flex",alignItems:"center",gap:5,padding:"10px 12px",
+              background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.22)",
+              borderRadius:12,color:"#34d399",cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,letterSpacing:0.3,
+              transition:"background 0.15s,border-color 0.15s"
+            }}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(52,211,153,0.14)";e.currentTarget.style.borderColor="rgba(52,211,153,0.4)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="rgba(52,211,153,0.07)";e.currentTarget.style.borderColor="rgba(52,211,153,0.22)";}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Copia
+            </button>
+            <button onClick={()=>onJoinCollab&&onJoinCollab("")} title="Entrar em time colaborativo" style={{
+              display:"flex",alignItems:"center",gap:5,padding:"10px 12px",
+              background:"rgba(59,130,246,0.07)",border:"1px solid rgba(59,130,246,0.22)",
+              borderRadius:12,color:"#60a5fa",cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,letterSpacing:0.3,
+              transition:"background 0.15s,border-color 0.15s"
+            }}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(59,130,246,0.14)";e.currentTarget.style.borderColor="rgba(59,130,246,0.4)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="rgba(59,130,246,0.07)";e.currentTarget.style.borderColor="rgba(59,130,246,0.22)";}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              Colaborar
+            </button>
+          </div>
         </div>
       </div>
 
@@ -5840,11 +5854,6 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           team={shareTeam}
           user={user}
           onClose={()=>setShareTeam(null)}
-          onEnableCollab={(action)=>{
-            setShareTeam(null);
-            if(action==="enable") onEnableCollab&&onEnableCollab(shareTeam);
-            else if(action==="manage") onManageCollab&&onManageCollab(shareTeam);
-          }}
         />
       )}
 
@@ -5854,7 +5863,6 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           user={user}
           onClose={()=>setShowImport(false)}
           onImported={(newTeamId)=>{setShowImport(false);onImportDone&&onImportDone(newTeamId);}}
-          onJoinCollab={(code)=>{setShowImport(false);onJoinCollab&&onJoinCollab(code);}}
         />
       )}
     </div>
@@ -5863,17 +5871,13 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
 
 
 // ─── Share Team Modal ─────────────────────────────────────────────────────────
-// Agora oferece duas modalidades:
-//  "copy"  → código de snapshot 24h (comportamento original)
-//  "collab"→ ativa colaboração em tempo real (novo)
-function ShareTeamModal({team, user, onClose, onEnableCollab}) {
-  const [mode, setMode] = useState("choose"); // choose | copy | collab_redirect
+// Somente copia (snapshot 24h). Colaboracao e gerenciada via botao separado no card.
+function ShareTeamModal({team, user, onClose}) {
   const [options, setOptions] = useState({includeStats:true, includeMatches:true, includeLineups:true});
   const [step, setStep] = useState("options"); // "options" | "loading" | "done" | "error"
   const [code, setCode] = useState("");
   const [copied, setCopied] = useState(false);
   const toggle = k => setOptions(o => ({...o, [k]:!o[k]}));
-  const isCollab = !!team.isCollab;
 
   const handleGenerate = async () => {
     setStep("loading");
@@ -5883,9 +5887,9 @@ function ShareTeamModal({team, user, onClose, onEnableCollab}) {
   };
 
   const handleCopy = async () => {
-    const msg = `Oi! Te convido para ver meu time no Escalação FC 🏆\nTime: ${team.name}\nCódigo: ${code}\nVálido por 24h — abra o app e clique em IMPORTAR!`;
+    const msg = `Oi! Te envio uma copia do meu time no Escalacao FC\nTime: ${team.name}\nCodigo: ${code}\nValido por 24h — abra o app, clique em "Copia" e insira o codigo!`;
     try {
-      if (navigator.share) { await navigator.share({title:"Escalação FC",text:msg}); }
+      if (navigator.share) { await navigator.share({title:"Escalacao FC",text:msg}); }
       else { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(()=>setCopied(false),2500); }
     } catch {
       try { await navigator.clipboard.writeText(msg); setCopied(true); setTimeout(()=>setCopied(false),2500); } catch {}
@@ -5914,7 +5918,7 @@ function ShareTeamModal({team, user, onClose, onEnableCollab}) {
     <div style={{position:"fixed",inset:0,zIndex:1100,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"20px 18px 36px",display:"flex",flexDirection:"column",gap:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>COMPARTILHAR TIME</span>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>COMPARTILHAR COPIA</span>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
         </div>
 
@@ -5922,109 +5926,63 @@ function ShareTeamModal({team, user, onClose, onEnableCollab}) {
           <TeamShield team={team} size={40}/>
           <div>
             <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:0.5}}>{team.name}</div>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
-              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{(team.players||[]).length} jogadores · {team.formation}</div>
-              {isCollab && <span style={{padding:"1px 6px",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:5,color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700}}>🤝 COLABORATIVO</span>}
-            </div>
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{(team.players||[]).length} jogadores · {team.formation}</div>
           </div>
         </div>
 
-        {/* Tela de escolha de modo */}
-        {mode==="choose"&&(<>
-          <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Como deseja compartilhar?</div>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {/* Opção colaboração em tempo real */}
-            <button onClick={()=>{ if(isCollab){ onEnableCollab&&onEnableCollab("manage"); onClose(); } else { onEnableCollab&&onEnableCollab("enable"); onClose(); } }}
-              style={{display:"flex",alignItems:"flex-start",gap:13,padding:"14px",borderRadius:14,border:"2px solid rgba(59,130,246,0.35)",background:"rgba(59,130,246,0.07)",cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(59,130,246,0.12)"}
-              onMouseLeave={e=>e.currentTarget.style.background="rgba(59,130,246,0.07)"}>
-              <span style={{fontSize:26,lineHeight:1.2}}>🤝</span>
-              <div style={{flex:1}}>
-                <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:800,marginBottom:3}}>
-                  {isCollab ? "Gerenciar colaboração" : "Colaboração em tempo real"}{" "}
-                  <span style={{background:"rgba(59,130,246,0.2)",border:"1px solid rgba(59,130,246,0.4)",borderRadius:5,padding:"1px 6px",color:"#60a5fa",fontSize:9,fontWeight:700,verticalAlign:"middle"}}>NOVO</span>
+        {step==="options"&&(<>
+          <div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>O que incluir na copia?</div>
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              <div style={{padding:"9px 12px",borderRadius:11,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
+                <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                  <Icon id="jersey" size={16}/> Elenco (sempre incluido)
                 </div>
-                <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.5}}>
-                  {isCollab ? "Ver membros, gerar convite ou remover alguém." : "Outros usuários editam o mesmo time junto com você — qualquer mudança aparece para todos na hora."}
-                </div>
+                <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Nome, posicao, pe, estrelas e status de todos os jogadores</div>
               </div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
-
-            {/* Opção cópia */}
-            <button onClick={()=>setMode("copy")}
-              style={{display:"flex",alignItems:"flex-start",gap:13,padding:"14px",borderRadius:14,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)",cursor:"pointer",textAlign:"left",transition:"all 0.15s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(52,211,153,0.08)"}
-              onMouseLeave={e=>e.currentTarget.style.background="rgba(52,211,153,0.04)"}>
-              <span style={{fontSize:26,lineHeight:1.2}}>📋</span>
-              <div style={{flex:1}}>
-                <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:800,marginBottom:3}}>Enviar cópia (snapshot)</div>
-                <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.5}}>O outro usuário recebe uma cópia independente do time. Edições dele não afetam o seu. Código válido por 24h.</div>
-              </div>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
-            </button>
+              <OptionRow k="includeLineups" icon="clipboard" label="Escalacoes salvas" desc="Todas as formacoes e posicoes definidas"/>
+              <OptionRow k="includeStats" icon="chart-bar" label="Estatisticas" desc="Gols, assistencias e presencas dos jogadores"/>
+              <OptionRow k="includeMatches" icon="calendar" label="Calendario de partidas" desc="Historico de jogos e resultados"/>
+            </div>
           </div>
+          <div style={{padding:"10px 12px",background:"rgba(250,204,21,0.06)",borderRadius:10,border:"1px solid rgba(250,204,21,0.15)"}}>
+            <div style={{color:"#fbbf24",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon id="stopwatch" size={11}/> Codigo valido por 24 horas</div>
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>O outro usuario recebera uma copia independente — alteracoes dele nao afetam seu time.</div>
+          </div>
+          <button onClick={handleGenerate} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,boxShadow:"0 6px 20px rgba(52,211,153,0.35)"}}>GERAR CODIGO DE COPIA</button>
         </>)}
 
-        {/* Fluxo de cópia (original) */}
-        {mode==="copy"&&(<>
-          {step==="options"&&(<>
-            <button onClick={()=>setMode("choose")} style={{alignSelf:"flex-start",background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,display:"flex",alignItems:"center",gap:4,padding:0}}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg> Voltar
-            </button>
-            <div>
-              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>O que incluir na cópia?</div>
-              <div style={{display:"flex",flexDirection:"column",gap:7}}>
-                <div style={{padding:"9px 12px",borderRadius:11,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
-                  <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
-                    <Icon id="jersey" size={16}/> Elenco (sempre incluído)
-                  </div>
-                  <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Nome, posição, pé, estrelas e status de todos os jogadores</div>
-                </div>
-                <OptionRow k="includeLineups" icon="clipboard" label="Escalações salvas" desc="Todas as formações e posições definidas"/>
-                <OptionRow k="includeStats" icon="chart-bar" label="Estatísticas" desc="Gols, assistências e presenças dos jogadores"/>
-                <OptionRow k="includeMatches" icon="calendar" label="Calendário de partidas" desc="Histórico de jogos e resultados"/>
-              </div>
-            </div>
-            <div style={{padding:"10px 12px",background:"rgba(250,204,21,0.06)",borderRadius:10,border:"1px solid rgba(250,204,21,0.15)"}}>
-              <div style={{color:"#fbbf24",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon id="stopwatch" size={11}/> Código válido por 24 horas</div>
-              <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>O outro usuário receberá uma cópia independente — alterações dele não afetam seu time.</div>
-            </div>
-            <button onClick={handleGenerate} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,boxShadow:"0 6px 20px rgba(52,211,153,0.35)"}}>GERAR CÓDIGO DE CONVITE</button>
-          </>)}
+        {step==="loading"&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
+            <div style={{width:40,height:40,border:"3px solid rgba(52,211,153,0.2)",borderTopColor:"#34d399",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Publicando snapshot do time...</span>
+          </div>
+        )}
 
-          {step==="loading"&&(
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
-              <div style={{width:40,height:40,border:"3px solid rgba(52,211,153,0.2)",borderTopColor:"#34d399",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-              <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>Publicando snapshot do time...</span>
-            </div>
-          )}
+        {step==="done"&&(<>
+          <div style={{textAlign:"center",padding:"8px 0"}}>
+            <Icon id="link" size={48} style={{color:"#34d399",marginBottom:8}}/>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>CODIGO GERADO!</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Envie para o outro usuario do Escalacao FC</div>
+          </div>
+          <div style={{display:"flex",justifyContent:"center"}}>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:44,letterSpacing:8,color:"#34d399",background:"rgba(52,211,153,0.08)",border:"2px dashed rgba(52,211,153,0.35)",borderRadius:16,padding:"14px 28px",textAlign:"center"}}>{code}</div>
+          </div>
+          <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
+            <span style={{color:"#f87171",fontSize:12,display:"flex",alignItems:"center"}}><Icon id="stopwatch" size={12}/></span>
+            <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Expira em 24h · copia independente do seu time</span>
+          </div>
+          <button onClick={handleCopy} style={{padding:"14px 0",borderRadius:13,border:"1px solid rgba(52,211,153,0.35)",cursor:"pointer",background:copied?"rgba(52,211,153,0.15)":"rgba(52,211,153,0.08)",color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,transition:"all 0.15s"}}>{copied?"COPIADO!":<><Icon id="upload" size={16}/> COMPARTILHAR CONVITE</>}</button>
+          <button onClick={onClose} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#6B7280",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600}}>Fechar</button>
+        </>)}
 
-          {step==="done"&&(<>
-            <div style={{textAlign:"center",padding:"8px 0"}}>
-              <Icon id="link" size={48} style={{color:"#34d399",marginBottom:8}}/>
-              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>CÓDIGO GERADO!</div>
-              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Envie para o outro usuário do Escalação FC</div>
-            </div>
-            <div style={{display:"flex",justifyContent:"center"}}>
-              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:44,letterSpacing:8,color:"#34d399",background:"rgba(52,211,153,0.08)",border:"2px dashed rgba(52,211,153,0.35)",borderRadius:16,padding:"14px 28px",textAlign:"center"}}>{code}</div>
-            </div>
-            <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"center"}}>
-              <span style={{color:"#f87171",fontSize:12,display:"flex",alignItems:"center"}}><Icon id="stopwatch" size={12}/></span>
-              <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Expira em 24h · cópia independente do seu time</span>
-            </div>
-            <button onClick={handleCopy} style={{padding:"14px 0",borderRadius:13,border:"1px solid rgba(52,211,153,0.35)",cursor:"pointer",background:copied?"rgba(52,211,153,0.15)":"rgba(52,211,153,0.08)",color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,transition:"all 0.15s"}}>{copied?"✓ COPIADO!":<><Icon id="upload" size={16}/> COMPARTILHAR CONVITE</>}</button>
-            <button onClick={onClose} style={{padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#6B7280",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600}}>Fechar</button>
-          </>)}
-
-          {step==="error"&&(<>
-            <div style={{textAlign:"center",padding:"20px 0"}}>
-              <Icon id="warning" size={44} style={{color:"#f87171",marginBottom:8}}/>
-              <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>ERRO AO GERAR CÓDIGO</div>
-              <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Verifique sua conexão e tente novamente.</div>
-            </div>
-            <button onClick={()=>setStep("options")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
-          </>)}
+        {step==="error"&&(<>
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <Icon id="warning" size={44} style={{color:"#f87171",marginBottom:8}}/>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fff",letterSpacing:1,marginBottom:4}}>ERRO AO GERAR CODIGO</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>Verifique sua conexao e tente novamente.</div>
+          </div>
+          <button onClick={()=>setStep("options")} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Tentar novamente</button>
         </>)}
       </div>
     </div>
@@ -6032,25 +5990,22 @@ function ShareTeamModal({team, user, onClose, onEnableCollab}) {
 }
 
 // ─── Import Team Modal ────────────────────────────────────────────────────────
-function ImportTeamModal({user, onClose, onImported, onJoinCollab}) {
+// Somente para codigos de COPIA (6 chars, gerados por publishTeamShare).
+// Codigos colaborativos (7 chars, comecam com C) sao tratados em JoinCollabModal.
+function ImportTeamModal({user, onClose, onImported}) {
   const [code, setCode] = useState("");
-  const [step, setStep] = useState("input"); // "input"|"preview"|"options"|"loading"|"done"|"error"
+  const [step, setStep] = useState("input"); // "input"|"preview"|"loading"|"done"|"error"
   const [shareData, setShareData] = useState(null);
   const [options, setOptions] = useState({includeStats:true, includeMatches:true, includeLineups:true});
   const [errMsg, setErrMsg] = useState("");
   const toggle = k => setOptions(o => ({...o, [k]:!o[k]}));
 
   const handleLookup = async () => {
-    if (!code.trim()) return;
-    // Códigos colaborativos começam com "C" e têm 7 chars (C + 6)
-    if (code.length === 7 && code.startsWith("C")) {
-      onClose();
-      onJoinCollab && onJoinCollab(code);
-      return;
-    }
+    const q = code.trim().toUpperCase();
+    if (q.length !== 6) return;
     setStep("loading");
-    const data = await fetchTeamShare(code);
-    if (!data) { setErrMsg("Código não encontrado ou expirado. Verifique e tente novamente."); setStep("error"); return; }
+    const data = await fetchTeamShare(q);
+    if (!data) { setErrMsg("Codigo nao encontrado ou expirado. Verifique e tente novamente."); setStep("error"); return; }
     setShareData(data);
     const snap = data.teamSnapshot || {};
     setOptions({
@@ -6065,7 +6020,7 @@ function ImportTeamModal({user, onClose, onImported, onJoinCollab}) {
     setStep("loading");
     const newId = await importTeamShare(user.uid, shareData, options);
     if (newId) setStep("done");
-    else { setErrMsg("Erro ao importar. Verifique sua conexão."); setStep("error"); }
+    else { setErrMsg("Erro ao importar. Verifique sua conexao."); setStep("error"); }
   };
 
   const snap = shareData?.teamSnapshot || {};
@@ -6091,37 +6046,34 @@ function ImportTeamModal({user, onClose, onImported, onJoinCollab}) {
     <div style={{position:"fixed",inset:0,zIndex:1100,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(255,255,255,0.1)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"20px 18px 36px",display:"flex",flexDirection:"column",gap:16}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>IMPORTAR TIME</span>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>IMPORTAR COPIA DE TIME</span>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
         </div>
 
         {step==="input"&&(<>
           <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>
-            Peça o código de convite para o dono do time. Você receberá uma cópia independente para editar.
+            Insira o codigo de 6 letras gerado pelo dono do time. Voce recebera uma copia independente para editar.
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            <label style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Código de convite</label>
+            <label style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1}}>Codigo de copia (6 caracteres)</label>
             <input
               value={code}
-              onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,7))}
-              placeholder="Ex: ABC123"
-              maxLength={7}
+              onChange={e=>setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,6))}
+              placeholder="Ex: AB3C7D"
+              maxLength={6}
               style={{...{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:12,padding:"12px 14px",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:28,letterSpacing:8,textAlign:"center"},colorScheme:"dark"}}
               onFocus={e=>e.target.style.borderColor="#34d399"}
               onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.12)"}
               autoCapitalize="characters"
             />
-            {code.length===7&&code.startsWith("C")&&(
-              <div style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",background:"rgba(59,130,246,0.08)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:8}}>
-                <span style={{fontSize:12}}>🤝</span>
-                <span style={{color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>Código colaborativo detectado — você entrará como editor do time</span>
-              </div>
-            )}
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,textAlign:"center"}}>
+              Para entrar em um time colaborativo, use o botao "Colaborar" na tela principal
+            </div>
           </div>
-          <button onClick={handleLookup} disabled={code.length<6} style={{
-            padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<6?"default":"pointer",
-            background:code.length<6?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#166534,#34d399)",
-            color:code.length<6?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5
+          <button onClick={handleLookup} disabled={code.length!==6} style={{
+            padding:"14px 0",borderRadius:13,border:"none",cursor:code.length!==6?"default":"pointer",
+            background:code.length!==6?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#166534,#34d399)",
+            color:code.length!==6?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5
           }}>BUSCAR TIME</button>
         </>)}
 
@@ -6137,7 +6089,7 @@ function ImportTeamModal({user, onClose, onImported, onJoinCollab}) {
             <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,marginBottom:6}}>TIME ENCONTRADO</div>
             <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:0.5}}>{shareData?.teamName || "Time"}</div>
             <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>
-              Compartilhado por {shareData?.ownerName || "Usuário"} · {(snap.players||[]).length} jogadores
+              Compartilhado por {shareData?.ownerName || "Usuario"} · {(snap.players||[]).length} jogadores
             </div>
           </div>
 
@@ -6145,17 +6097,17 @@ function ImportTeamModal({user, onClose, onImported, onJoinCollab}) {
             <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>O que importar?</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               <div style={{padding:"9px 12px",borderRadius:10,border:"1px solid rgba(52,211,153,0.2)",background:"rgba(52,211,153,0.04)"}}>
-                <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon id="jersey" size={14}/> Elenco — {(snap.players||[]).length} jogadores (sempre incluído)</div>
+                <div style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon id="jersey" size={14}/> Elenco — {(snap.players||[]).length} jogadores (sempre incluido)</div>
               </div>
-              {(snap.lineups||[]).length>0&&<OptionCheck k="includeLineups" icon="clipboard" label="Escalações" count={`${(snap.lineups||[]).length} formação(ões) salva(s)`}/>}
-              {Object.keys(snap.stats||{}).length>0&&<OptionCheck k="includeStats" icon="chart-bar" label="Estatísticas" count="Gols, assistências e presenças"/>}
-              {(snap.matches||[]).length>0&&<OptionCheck k="includeMatches" icon="calendar" label="Partidas" count={`${(snap.matches||[]).length} partida(s) no calendário`}/>}
+              {(snap.lineups||[]).length>0&&<OptionCheck k="includeLineups" icon="clipboard" label="Escalacoes" count={`${(snap.lineups||[]).length} formacao(oes) salva(s)`}/>}
+              {Object.keys(snap.stats||{}).length>0&&<OptionCheck k="includeStats" icon="chart-bar" label="Estatisticas" count="Gols, assistencias e presencas"/>}
+              {(snap.matches||[]).length>0&&<OptionCheck k="includeMatches" icon="calendar" label="Partidas" count={`${(snap.matches||[]).length} partida(s) no calendario`}/>}
             </div>
           </div>
 
           <div style={{padding:"10px 12px",background:"rgba(59,130,246,0.06)",borderRadius:10,border:"1px solid rgba(59,130,246,0.15)"}}>
-            <div style={{color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>ℹ️ Cópia independente</div>
-            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Você receberá o time como "{shareData?.teamName} (cópia)". Suas edições não afetam o time original.</div>
+            <div style={{color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>Copia independente</div>
+            <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11,marginTop:2}}>Voce recebera o time como "{shareData?.teamName} (copia)". Suas edicoes nao afetam o time original.</div>
           </div>
 
           <div style={{display:"flex",gap:8}}>
@@ -6169,7 +6121,7 @@ function ImportTeamModal({user, onClose, onImported, onJoinCollab}) {
             <Icon id="party" size={52} style={{color:"#34d399",marginBottom:8}}/>
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:6}}>TIME IMPORTADO!</div>
             <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>
-              "{shareData?.teamName} (cópia)" foi adicionado à sua lista de times. É totalmente seu para editar!
+              "{shareData?.teamName} (copia)" foi adicionado a sua lista de times. E totalmente seu para editar!
             </div>
           </div>
           <button onClick={()=>onImported()} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#166534,#34d399)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,boxShadow:"0 6px 20px rgba(52,211,153,0.35)"}}>VER MEUS TIMES</button>
@@ -11155,7 +11107,12 @@ function App() {
               const loaded = await Promise.all(collabRefs.map(r => loadCollabTeamFull(r.teamId)));
               collabTeams = loaded.filter(Boolean);
             }
-            const allTeams = [...(cloudTeams || []), ...collabTeams];
+            // Deduplicar por id: cloudTeams pode já incluir o time collab (marcado _collabMigrated)
+            // do dono; collabTeams carrega de collab_teams/. Priorizar a versão collab (mais atual).
+            const teamMap = new Map();
+            (cloudTeams || []).forEach(t => teamMap.set(String(t.id), t));
+            collabTeams.forEach(t => teamMap.set(String(t.id), t)); // sobrescreve se duplicado
+            const allTeams = Array.from(teamMap.values());
 
             if (allTeams.length > 0) {
               apply(allTeams);
