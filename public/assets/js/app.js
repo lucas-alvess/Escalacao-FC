@@ -1084,18 +1084,35 @@ async function acceptCollabInvite(inviteData, uid, user) {
 /** Remove um membro do time colaborativo (dono pode remover qualquer editor; editor pode sair). */
 async function removeCollabMember(teamId, memberUid, byOwner = false) {
   const fb = getFirebase(); if (!fb) return false;
+  const tid = String(teamId);
+  const muid = String(memberUid);
   try {
-    // Remove o índice reverso do próprio usuário (sempre tem permissão)
-    await fb.deleteDoc(fb.doc(fb.db, "users", memberUid, "collab_refs", teamId));
-    // Remove o doc de membro no time colaborativo (pode falhar se regras bloquearem)
+    const refPath = fb.doc(fb.db, "users", muid, "collab_refs", tid);
+
+    // Deletar o índice reverso do próprio usuário.
+    await fb.deleteDoc(refPath);
+
+    // Verificar que o delete chegou ao servidor — o Firestore com cache offline
+    // pode aceitar o delete localmente e falhar silenciosamente no servidor.
+    // getDocFromServer ignora o cache e vai direto ao Firestore.
+    const check = await fb.getDocFromServer(refPath);
+    if (check.exists()) {
+      // O doc ainda existe no servidor — o delete não foi aceito.
+      console.error("removeCollabMember: collab_ref ainda existe no servidor após delete");
+      return false;
+    }
+
+    // Remover do doc de membro no time colaborativo (falha silenciosa — regras podem bloquear editores)
     try {
-      await fb.deleteDoc(fb.doc(fb.db, "collab_teams", teamId, "members", memberUid));
+      await fb.deleteDoc(fb.doc(fb.db, "collab_teams", tid, "members", muid));
     } catch(inner) {
-      // Logar mas não falhar — o importante é o collab_ref ter sido removido
-      console.warn("removeCollabMember: não foi possível remover members doc:", inner);
+      console.warn("removeCollabMember: members doc delete blocked:", inner?.code, inner?.message);
     }
     return true;
-  } catch(e) { console.warn("removeCollabMember error:", e); return false; }
+  } catch(e) {
+    console.error("removeCollabMember failed:", e?.code, e?.message);
+    return false;
+  }
 }
 
 /** Carrega a lista de membros de um time colaborativo. */
@@ -11453,14 +11470,26 @@ function App() {
           if (restored) setTeams(prev => [...prev.filter(t => t.id !== id), { ...restored, isCollab: false }]);
         }
       } else {
-        // Editor: sair do time colaborativo — primeiro remove do Firestore, depois confirma na UI
-        const ok = await removeCollabMember(id, uid);
+        // Editor: sair do time colaborativo
+        // Usar fb.auth.currentUser.uid diretamente para garantir que o uid
+        // está disponível independente do estado React no momento da chamada.
+        const fb = getFirebase();
+        const currentUid = fb?.auth?.currentUser?.uid || uid;
+        if (!currentUid) {
+          setTeams(prev => {
+            if (prev.find(t => t.id === id)) return prev;
+            return [...prev, team];
+          });
+          setToast("Erro ao sair: usuário não identificado. Tente novamente.");
+          return;
+        }
+        const ok = await removeCollabMember(String(id), currentUid);
         if (ok) {
           setToast("Você saiu do time colaborativo");
         } else {
           // Falhou — reverter remoção da UI e avisar o usuário
           setTeams(prev => {
-            if (prev.find(t => t.id === id)) return prev; // já está, não duplicar
+            if (prev.find(t => t.id === id)) return prev;
             return [...prev, team];
           });
           setToast("Erro ao sair do time. Verifique sua conexão.");

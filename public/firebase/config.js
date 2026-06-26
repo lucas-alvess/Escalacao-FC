@@ -3,7 +3,7 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRe
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  doc, setDoc, getDoc, deleteDoc,
+  doc, setDoc, getDoc, getDocFromServer, deleteDoc,
   collection, getDocs, writeBatch,
   onSnapshot, query, orderBy, serverTimestamp, limit
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -42,7 +42,7 @@ const provider = new GoogleAuthProvider();
 window.__firebase = {
   auth, db, storage, provider,
   signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
-  doc, setDoc, getDoc, deleteDoc,
+  doc, setDoc, getDoc, getDocFromServer, deleteDoc,
   collection, getDocs, writeBatch,
   onSnapshot, query, orderBy, serverTimestamp, limit,
   storageRef, uploadBytes, getDownloadURL, deleteObject
