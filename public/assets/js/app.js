@@ -1412,13 +1412,14 @@ function CollabInviteModal({ team, user, onClose }) {
   const isOwner = team.ownerUid === user.uid;
 
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      const [mbrs] = await Promise.all([loadCollabMembers(team.id)]);
-      if (!cancelled) { setMembers(mbrs); setStep("ready"); }
-    };
-    load().catch(() => setStep("error"));
-    return () => { cancelled = true; };
+    const fb = getFirebase(); if (!fb) { setStep("error"); return; }
+    // onSnapshot garante que novos membros aparecem em tempo real
+    const unsub = fb.onSnapshot(
+      fb.collection(fb.db, "collab_teams", String(team.id), "members"),
+      snap => { setMembers(snap.docs.map(d => d.data())); setStep("ready"); },
+      () => setStep("error")
+    );
+    return () => unsub();
   }, [team.id]);
 
   const handleGenerateCode = async () => {
@@ -3071,11 +3072,14 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
   const isOwner = agenda.ownerUid === user.uid;
 
   useEffect(() => {
-    let cancelled = false;
-    loadCollabAgendaMembers(agenda.id).then(mbrs => {
-      if (!cancelled) { setMembers(mbrs); setStep("ready"); }
-    }).catch(() => setStep("error"));
-    return () => { cancelled = true; };
+    const fb = getFirebase(); if (!fb) { setStep("error"); return; }
+    // onSnapshot garante que novos membros aparecem em tempo real
+    const unsub = fb.onSnapshot(
+      fb.collection(fb.db, "collab_agendas", String(agenda.id), "members"),
+      snap => { setMembers(snap.docs.map(d => d.data())); setStep("ready"); },
+      () => setStep("error")
+    );
+    return () => unsub();
   }, [agenda.id]);
 
   const handleGenerateCode = async () => {
