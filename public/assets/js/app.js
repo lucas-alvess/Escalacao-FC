@@ -2947,9 +2947,9 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
             <div className="pm-card-overlay" style={{background:"linear-gradient(135deg,rgba(29,78,216,0.28) 0%,transparent 60%)"}}/>
           </div>
           <div className="pm-card-body">
-            <div className="pm-card-badge" style={{background:"rgba(96,165,250,0.18)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.3)"}}>
-              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.8" fill="#93c5fd"/></svg>
-              EM BREVE
+            <div className="pm-card-badge" style={{background:"rgba(52,211,153,0.22)",color:"#4ade80",border:"1px solid rgba(52,211,153,0.3)"}}>
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="#4ade80"><circle cx="12" cy="12" r="10"/></svg>
+              DISPONÍVEL
             </div>
             <div className="pm-card-title">Pelada Mensal</div>
             <div className="pm-card-desc">Society, Futsal ou pelada recorrente. Organize jogos, presenças e mensalidades.</div>
@@ -5358,7 +5358,6 @@ function PeladaMensalScreen({onBack, onSelect, uid}) {
       bg: "linear-gradient(135deg,#1e3a8a 0%,#1d4ed8 60%,#3b82f6 100%)",
       overlayTop: "linear-gradient(135deg,rgba(29,78,216,0.45) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.38) 40%,rgba(5,10,30,0.92) 100%)",
-      badge: {bg:"rgba(52,211,153,0.18)",color:"#6ee7b7",border:"1px solid rgba(52,211,153,0.3)",dot:"#34d399",label:"NOVO"},
       tagStyle: {background:"rgba(59,130,246,0.22)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
     },
     {
@@ -5370,7 +5369,6 @@ function PeladaMensalScreen({onBack, onSelect, uid}) {
       bg: "linear-gradient(135deg,#0c1d4d 0%,#1e40af 60%,#2563eb 100%)",
       overlayTop: "linear-gradient(135deg,rgba(37,99,235,0.4) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.4) 40%,rgba(5,10,30,0.93) 100%)",
-      badge: {bg:"rgba(52,211,153,0.18)",color:"#6ee7b7",border:"1px solid rgba(52,211,153,0.3)",dot:"#34d399",label:"NOVO"},
       tagStyle: {background:"rgba(37,99,235,0.22)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
     },
     {
@@ -5382,7 +5380,6 @@ function PeladaMensalScreen({onBack, onSelect, uid}) {
       bg: "linear-gradient(135deg,#0f2460 0%,#1e3a8a 55%,#2563eb 100%)",
       overlayTop: "linear-gradient(135deg,rgba(30,58,138,0.5) 0%,transparent 65%)",
       overlayBot: "linear-gradient(180deg,rgba(5,10,30,0.12) 0%,rgba(5,10,30,0.42) 40%,rgba(5,10,30,0.94) 100%)",
-      badge: {bg:"rgba(245,158,11,0.18)",color:"#fde68a",border:"1px solid rgba(245,158,11,0.3)",dot:"#f59e0b",label:"NOVO"},
       tagStyle: {background:"rgba(30,58,138,0.28)",color:"#93c5fd",border:"1px solid rgba(96,165,250,0.28)"},
     },
   ];
@@ -5455,10 +5452,6 @@ function PeladaMensalScreen({onBack, onSelect, uid}) {
               <div className="pm-card-overlay" style={{background:card.overlayTop}}/>
             </div>
             <div className="pm-card-body">
-              <div className="pm-card-badge" style={{background:card.badge.bg,color:card.badge.color,border:card.badge.border}}>
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={card.badge.dot} strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="16" r="0.8" fill={card.badge.dot}/></svg>
-                {card.badge.label}
-              </div>
               <div className="pm-card-title">{card.title}</div>
               <div className="pm-card-desc">{card.desc}</div>
               <div className="pm-tags">
