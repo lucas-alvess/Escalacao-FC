@@ -3600,9 +3600,9 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
         setOutrosCaixas([]);
       }
       setLoading(false);
-    }, () => setLoading(false));
+    }, (err) => { console.warn("MensalidadeTab onSnapshot error:", err); setLoading(false); });
     return () => unsub();
-  }, [mesAnoKey, uid, docPath]);;
+  }, [mesAnoKey, uid, docPath, agenda.id]);
 
   const save = async (next) => {
     const fb = getFirebase();
@@ -4123,6 +4123,17 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
   const [tab, setTab] = useState("info"); // "info" | "players" | "mensalidade" | "export"
   const [info, setInfo] = useState({ local: agenda.local||"", horario: agenda.horario||"", mensalidade: agenda.mensalidade||"" });
   const [players, setPlayers] = useState(agenda.players || []);
+
+  // Para agendas colaborativas: sincronizar players e info quando o
+  // onSnapshot do doc raiz atualizar `agenda` (edição de outro membro).
+  useEffect(() => {
+    if (!agenda.isCollab) return;
+    setPlayers(agenda.players || []);
+    setInfo({ local: agenda.local||"", horario: agenda.horario||"", mensalidade: agenda.mensalidade||"" });
+  }, [
+    JSON.stringify(agenda.players),
+    agenda.local, agenda.horario, agenda.mensalidade, agenda.isCollab
+  ]);
   const [toast, setToast] = useState(null);
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [newPlayer, setNewPlayer] = useState({ name: "", stars: 3 });
