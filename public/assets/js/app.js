@@ -7925,6 +7925,8 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [showLineupMgr,setShowLineupMgr]=useState(false);
   const [freeMode,setFreeMode]=useState(false);
   const [saveStatus,setSaveStatus]=useState("idle"); // "idle" | "saving" | "saved" | "error"
+  const [showTutorialPrompt,setShowTutorialPrompt]=useState(false);
+  const [showTutorial,setShowTutorial]=useState(false);
   // Appearances per player (computed from match presentPlayerIds, loaded lazily)
   const [teamAppearances,setTeamAppearances]=useState({});
   useEffect(()=>{
@@ -8101,12 +8103,16 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
 
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif",color:"#fff",maxWidth:480,margin:"0 auto",position:"relative"}}>
+      {/* Botao de tutorial */}
+      <TutorialButton style={{position:"fixed",top:14,right:14,zIndex:800}} onClick={()=>setShowTutorialPrompt(true)}/>
+      {showTutorialPrompt&&<TutorialPrompt screenName="Escalacao" onConfirm={()=>{setShowTutorialPrompt(false);setShowTutorial(true);}} onCancel={()=>setShowTutorialPrompt(false)}/>}
+      {showTutorial&&<TutorialOverlay steps={tab==="field"?TUTORIAL_TACTIC_FIELD:TUTORIAL_TACTIC_PLAYERS} onClose={()=>setShowTutorial(false)}/>}
       {toast&&<Toast msg={toast} onDone={()=>setToast(null)}/>}
 
       {/* Header */}
       <div style={{background:`linear-gradient(180deg,#0a1f12 0%,#050c0a 100%)`,borderBottom:`1px solid ${c1}30`,padding:"12px 14px 10px",position:"sticky",top:0,zIndex:50}}>
         {/* Top row */}
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <div className="teamview-header" style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
           <button onClick={onBack} aria-label="Voltar para a lista de times" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:10,padding:"7px 9px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center",flexShrink:0,transition:"all 0.15s"}}
             onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.12)";e.currentTarget.style.color="#fff";}}
             onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.06)";e.currentTarget.style.color="#9CA3AF";}}>
@@ -8130,7 +8136,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           </div>
 
           {tab==="field"&&(
-            <button onClick={()=>setShowExport(true)} style={{
+            <button className="teamview-export-btn" onClick={()=>setShowExport(true)} style={{
               display:"flex",alignItems:"center",gap:6,padding:"8px 12px",
               background:`${c1}25`,border:`1px solid ${c1}60`,
               borderRadius:10,color:c2,cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:800,
@@ -8141,7 +8147,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           )}
 
           {/* Botão de salvar forçado — sempre visível */}
-          <button onClick={handleForceSave} disabled={saveStatus==="saving"} title="Salvar dados agora" style={{
+          <button className="teamview-save-btn" onClick={handleForceSave} disabled={saveStatus==="saving"} title="Salvar dados agora" style={{
             display:"flex",alignItems:"center",justifyContent:"center",gap:5,
             padding:"8px 11px",borderRadius:10,border:"1px solid",
             cursor:saveStatus==="saving"?"wait":"pointer",flexShrink:0,
@@ -8172,7 +8178,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}><Icon id="soccer-ball" size={12} style={{color:c2}}/></div>
             <div style={{fontSize:8,fontWeight:700,color:c2}}>Campo</div>
           </div>
-          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+          <div className="teamview-formation-row" style={{display:"flex",gap:5,alignItems:"center"}}>
             <FormationPicker current={team.formation} onChange={handleFormationChange}/>
             <button onClick={()=>setShowFList(true)} aria-label="Ver lista de formações" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:9,padding:"7px 9px",color:"#9CA3AF",cursor:"pointer",display:"flex",alignItems:"center"}}>
               <Ico.List/>
@@ -8182,7 +8188,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
             </button>
             {/* Formação Livre — premium only */}
             {isPremium?(
-              <button onClick={()=>setFreeMode(f=>!f)} title={freeMode?"Voltar à formação fixa":"Ativar formação livre"} style={{
+              <button className="teamview-freemode-btn" onClick={()=>setFreeMode(f=>!f)} title={freeMode?"Voltar à formação fixa":"Ativar formação livre"} style={{
                 background:freeMode?"rgba(250,204,21,0.2)":"rgba(255,255,255,0.06)",
                 border:freeMode?"1px solid rgba(250,204,21,0.6)":"1px solid rgba(255,255,255,0.12)",
                 borderRadius:9,padding:"7px 9px",color:freeMode?"#facc15":"#9CA3AF",
@@ -8193,7 +8199,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                 {freeMode?"FIXO":"LIVRE"}
               </button>
             ):(
-              <button onClick={()=>setToast("⭐ Formação Livre é exclusiva para usuários Premium!")} title="Formação Livre — Premium" style={{
+              <button className="teamview-freemode-btn" onClick={()=>setToast("⭐ Formação Livre é exclusiva para usuários Premium!")} title="Formação Livre — Premium" style={{
                 background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",
                 borderRadius:9,padding:"7px 9px",color:"#4B5563",
                 cursor:"pointer",display:"flex",alignItems:"center",gap:4,
@@ -8208,7 +8214,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       </div>
 
       {/* Tabs */}
-      <div style={{display:"flex",background:"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
+      <div className="teamview-tabs" style={{display:"flex",background:"rgba(255,255,255,0.02)",borderBottom:"1px solid rgba(255,255,255,0.07)"}}>
         {[{key:"field",label:"Escalação",I:Ico.Tactic},{key:"players",label:`Elenco (${(team.players||[]).filter(p=>!p.isGuest).length})`,I:Ico.Users}].map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)} style={{
             flex:1,padding:"12px 0",background:"none",border:"none",
@@ -8259,10 +8265,10 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
                 </button>
               </div>
             </div>
-            <FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={freeMode?()=>{}:handleSlotTap} team={team} freeMode={freeMode} onFreeMoveEnd={handleFreeMoveEnd}/>
+            <div className="football-field-wrap"><FootballField slots={slots} lineup={team.lineup} players={team.players} onLineupChange={l=>upd({lineup:typeof l==="function"?l(team.lineup):l})} onSlotTap={freeMode?()=>{}:handleSlotTap} team={team} freeMode={freeMode} onFreeMoveEnd={handleFreeMoveEnd}/></div>
 
             {/* Banco de reservas */}
-            <div style={{marginTop:14,display:"flex",flexDirection:"column",gap:7}}>
+            <div className="teamview-bench" style={{marginTop:14,display:"flex",flexDirection:"column",gap:7}}>
               <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>
                 Banco de Reservas {(activeLineup?.benchPlayerIds||[]).length>0&&`(${(activeLineup?.benchPlayerIds||[]).length})`}
               </span>
@@ -8322,7 +8328,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
       {/* FAB */}
       {tab==="players"&&(
         <>
-        <button onClick={()=>{
+        <button className="players-fab" onClick={()=>{
           if(!isPremium&&(team.players||[]).filter(p=>!p.isGuest).length>=FREE_PLAYER_LIMIT){setShowPlayerLimitUpsell(true);return;}
           setEditingPlayer(null);setShowGuestForm(false);setShowForm(true);
         }} style={{
@@ -8337,7 +8343,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
           <Ico.Plus/>
         </button>
         {/* Add Guest FAB — secondary button above the main FAB */}
-        <button onClick={()=>{
+        <button className="players-guest-fab" onClick={()=>{
           const guests=(team.players||[]).filter(p=>p.isGuest);
           if(!isPremium&&guests.length>=FREE_GUEST_LIMIT){setShowGuestLimitUpsell(true);return;}
           setEditingPlayer(null);setShowGuestForm(true);setShowForm(true);
@@ -10697,6 +10703,83 @@ const TUTORIAL_HOME = [
     highlight: ".home-fab",
   },
 ];
+
+const TUTORIAL_TACTIC_FIELD = [
+  {
+    title: "Prancheta Tatica",
+    body: "Esta e a aba de Escalacao. Aqui voce posiciona os jogadores no campo de acordo com a formacao do time. Vamos conhecer cada parte.",
+    highlight: null,
+  },
+  {
+    title: "Cabecalho do time",
+    body: "Toque no escudo ou nome do time para editar cores, nome e foto. O indicador mostra quantos jogadores estao escalados e o status de sincronizacao com a nuvem.",
+    highlight: ".teamview-header",
+  },
+  {
+    title: "Exportar escalacao",
+    body: "O botao EXPORTAR gera uma imagem da sua prancheta tatica pronta para compartilhar no WhatsApp, Instagram ou onde quiser.",
+    highlight: ".teamview-export-btn",
+  },
+  {
+    title: "Salvar dados",
+    body: "O botao SALVAR envia todos os dados para a nuvem imediatamente. Os dados tambem sao salvos automaticamente a cada alteracao.",
+    highlight: ".teamview-save-btn",
+  },
+  {
+    title: "Formacao tatica",
+    body: "Toque nas setas para trocar a formacao (ex: 4-4-2, 4-3-3). O botao de lista mostra todas as formacoes disponiveis. O botao ao lado gerencia multiplas escalacoes salvas.",
+    highlight: ".teamview-formation-row",
+  },
+  {
+    title: "Modo Livre (PRO)",
+    body: "O botao LIVRE (exclusivo PRO) permite arrastar qualquer jogador para qualquer posicao no campo, sem restricao de slots.",
+    highlight: ".teamview-freemode-btn",
+  },
+  {
+    title: "Campo interativo",
+    body: "Toque em qualquer posicao vazia no campo para escolher o jogador que vai ocupa-la. Para reposicionar, toque e segure o jogador e arraste.",
+    highlight: ".football-field-wrap",
+  },
+  {
+    title: "Nome do tecnico",
+    body: "Digite o nome do tecnico e confirme com OK. Ele aparecera na imagem exportada da escalacao.",
+    highlight: "#coach-name",
+  },
+  {
+    title: "Banco de reservas",
+    body: "Jogadores nao escalados aparecem aqui. Toque em um nome para marca-lo como reserva oficial. Reservas aparecem na imagem exportada.",
+    highlight: ".teamview-bench",
+  },
+  {
+    title: "Abas Escalacao e Elenco",
+    body: "Use as abas no topo para alternar entre a prancheta tatica (Escalacao) e a lista completa de jogadores (Elenco).",
+    highlight: ".teamview-tabs",
+  },
+];
+
+const TUTORIAL_TACTIC_PLAYERS = [
+  {
+    title: "Aba Elenco",
+    body: "Aqui voce ve e gerencia todos os jogadores cadastrados no time. Cada card mostra numero, nome, posicao e foto do jogador.",
+    highlight: null,
+  },
+  {
+    title: "Card do jogador",
+    body: "Toque no card do jogador para ver opcoes de edicao e exclusao. O icone de coroa marca o capitao do time.",
+    highlight: ".player-card",
+  },
+  {
+    title: "Adicionar jogador",
+    body: "O botao + (verde) abre o formulario para cadastrar um novo jogador: nome, numero, posicao, foto e numero de camisa.",
+    highlight: ".players-fab",
+  },
+  {
+    title: "Adicionar convidado",
+    body: "O botao + Convidado adiciona um jogador temporario (pelada, reforco). Convidados aparecem em laranja e nao contam no limite de jogadores do plano gratuito.",
+    highlight: ".players-guest-fab",
+  },
+];
+
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 function App() {
