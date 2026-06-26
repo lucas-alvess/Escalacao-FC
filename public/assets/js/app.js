@@ -4766,7 +4766,7 @@ function SorteioListaScreen({ onBack, uid }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-        <div style={{ marginBottom: 8 }}><img src="/assets/images/dado-colete.png" alt="Dado com colete" style={{ width: 66, height: 66, objectFit: "contain" }} /></div>
+        <div style={{ marginBottom: 8 }}><img src="/assets/images/dado-colete.png" alt="Dado com colete" style={{ width: 56, height: 56, objectFit: "contain" }} /></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure o sorteio</div>
         </div>
@@ -7537,7 +7537,7 @@ function PlayerCard({player,onEdit,onDelete,isCaptain,onToggleCaptain,team,guest
   const isGuest=!!player.isGuest;
   const displayNum=isGuest?`C${guestIndex||1}`:player.number;
   return (
-    <div style={{background:isGuest?"rgba(251,146,60,0.05)":"rgba(255,255,255,0.04)",border:isCaptain?"1px solid rgba(245,158,11,0.4)":isGuest?"1px solid rgba(251,146,60,0.2)":"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"12px 13px",display:"flex",alignItems:"center",gap:12}}>
+    <div className="player-card" style={{background:isGuest?"rgba(251,146,60,0.05)":"rgba(255,255,255,0.04)",border:isCaptain?"1px solid rgba(245,158,11,0.4)":isGuest?"1px solid rgba(251,146,60,0.2)":"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"12px 13px",display:"flex",alignItems:"center",gap:12}}>
       <div style={{position:"relative",flexShrink:0}}>
         <PlayerAvatar player={player} size={52} style={{border:isGuest?"2px solid rgba(251,146,60,0.4)":"2px solid rgba(255,255,255,0.14)"}} team={team}/>
         {isCaptain&&(
@@ -10516,20 +10516,66 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
 // steps: Array<{ title, body, highlight?: string (CSS selector) }>
 function TutorialOverlay({ steps, onClose }) {
   const [idx, setIdx] = useState(0);
-  const [spotRect, setSpotRect] = useState(null);
+  const [spotRect, setSpotRect] = useState(null); // viewport-relative rect after scroll settles
+  const cardRef = useRef(null);
   const step = steps[idx];
   const isLast = idx === steps.length - 1;
+  const PAD = 10;
+  const CARD_MARGIN = 14; // gap between spotlight and card
+  const VH = typeof window !== "undefined" ? window.innerHeight : 700;
 
+  // After each step change: scroll element into view then wait for scroll to
+  // settle before measuring its viewport position.
   useEffect(() => {
-    if (!step.highlight) { setSpotRect(null); return; }
+    setSpotRect(null); // clear while repositioning
+    if (!step.highlight) return;
     const el = document.querySelector(step.highlight);
-    if (!el) { setSpotRect(null); return; }
-    const r = el.getBoundingClientRect();
-    setSpotRect({ top: r.top, left: r.left, width: r.width, height: r.height });
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (!el) return;
+
+    // Scroll so the element is visible (not necessarily centered — we need
+    // space for the card too, so "nearest" is safer than "center").
+    // Fixed-position elements don't need scroll.
+    const elPosition = window.getComputedStyle(el).position;
+    if (elPosition !== "fixed") {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    // Wait for smooth scroll to finish (~450 ms is enough for most cases),
+    // then measure again so the rect matches the real painted position.
+    const tid = setTimeout(() => {
+      const r = el.getBoundingClientRect();
+      setSpotRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    }, 480);
+    return () => clearTimeout(tid);
   }, [idx, step.highlight]);
 
-  const PAD = 10;
+  // Decide whether card goes ABOVE or BELOW the spotlight.
+  // Prefer below if there's enough room; otherwise above; fallback bottom.
+  let cardStyle = {
+    position: "fixed",
+    left: 16, right: 16,
+    bottom: 16,
+  };
+  if (spotRect) {
+    const sr = spotRect;
+    const spotBottom = sr.top + sr.height + PAD;
+    const spotTop = sr.top - PAD;
+    const CARD_EST_H = 220; // estimated card height
+    const spaceBelow = VH - spotBottom - CARD_MARGIN;
+    const spaceAbove = spotTop - CARD_MARGIN;
+
+    if (spaceBelow >= CARD_EST_H) {
+      // Place below spotlight
+      cardStyle = { position: "fixed", left: 16, right: 16, top: spotBottom + CARD_MARGIN };
+    } else if (spaceAbove >= CARD_EST_H) {
+      // Place above spotlight
+      cardStyle = { position: "fixed", left: 16, right: 16, bottom: VH - spotTop + CARD_MARGIN };
+    } else {
+      // Not enough room on either side — push spotlight up via scroll and place card at bottom
+      cardStyle = { position: "fixed", left: 16, right: 16, bottom: 16 };
+    }
+  }
+
   const sr = spotRect;
 
   return (
@@ -10573,26 +10619,26 @@ function TutorialOverlay({ steps, onClose }) {
 
       <style>{`
         @keyframes tut-dash { to { stroke-dashoffset: -18; } }
-        @keyframes tut-card-in { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes tut-card-in { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
       `}</style>
 
-      {/* Card de instrução — posicionado no bottom */}
+      {/* Instruction card — dynamically above or below spotlight */}
       <div
+        ref={cardRef}
+        key={idx} // remount on step change to re-trigger animation
         style={{
-          position: "absolute",
-          bottom: "calc(env(safe-area-inset-bottom,0px) + 16px)",
-          left: 16, right: 16,
+          ...cardStyle,
           background: "linear-gradient(160deg,#0c1b14,#071209)",
           border: "1px solid rgba(52,211,153,0.28)",
           borderRadius: 20,
-          padding: "22px 20px 18px",
+          padding: "18px 18px 16px",
           boxShadow: "0 16px 48px rgba(0,0,0,0.9)",
-          animation: "tut-card-in 0.3s ease",
+          animation: "tut-card-in 0.25s ease",
           zIndex: 9001,
         }}
       >
         {/* Progress dots */}
-        <div style={{ display: "flex", gap: 5, marginBottom: 14, justifyContent: "center" }}>
+        <div style={{ display: "flex", gap: 5, marginBottom: 12, justifyContent: "center" }}>
           {steps.map((_, i) => (
             <div key={i} style={{
               width: i === idx ? 20 : 6, height: 6, borderRadius: 3,
@@ -10603,17 +10649,17 @@ function TutorialOverlay({ steps, onClose }) {
         </div>
 
         {/* Step counter */}
-        <div style={{ color: "#34d399", fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>
+        <div style={{ color: "#34d399", fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 5 }}>
           Passo {idx + 1} de {steps.length}
         </div>
 
         {/* Title */}
-        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 22, color: "#fff", letterSpacing: 1, marginBottom: 8, lineHeight: 1.1 }}>
+        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 21, color: "#fff", letterSpacing: 1, marginBottom: 6, lineHeight: 1.1 }}>
           {step.title}
         </div>
 
         {/* Body */}
-        <div style={{ color: "#9CA3AF", fontSize: 13, lineHeight: 1.65, marginBottom: 20 }}>
+        <div style={{ color: "#9CA3AF", fontSize: 12.5, lineHeight: 1.6, marginBottom: 16 }}>
           {step.body}
         </div>
 
@@ -10622,7 +10668,7 @@ function TutorialOverlay({ steps, onClose }) {
           <button
             onClick={onClose}
             style={{
-              flex: 1, padding: "12px 0", borderRadius: 12,
+              flex: 1, padding: "11px 0", borderRadius: 12,
               border: "1px solid rgba(255,255,255,0.1)",
               background: "rgba(255,255,255,0.04)",
               color: "#6B7280", cursor: "pointer",
@@ -10634,7 +10680,7 @@ function TutorialOverlay({ steps, onClose }) {
           <button
             onClick={() => { if (isLast) { onClose(); } else { setIdx(i => i + 1); } }}
             style={{
-              flex: 2, padding: "12px 0", borderRadius: 12,
+              flex: 2, padding: "11px 0", borderRadius: 12,
               border: "none",
               background: isLast ? "linear-gradient(135deg,#15803d,#34d399)" : "linear-gradient(135deg,#0f5a30,#1a7a42)",
               color: "#fff", cursor: "pointer",
@@ -10647,16 +10693,8 @@ function TutorialOverlay({ steps, onClose }) {
         </div>
       </div>
 
-      {/* Click anywhere no overlay para fechar */}
-      <div
-        style={{ position: "absolute", inset: 0, zIndex: 9000 }}
-        onClick={e => {
-          // só fecha se clicar fora do card e fora do spotlight
-          const card = e.currentTarget.nextSibling;
-          if (card && card.contains(e.target)) return;
-          onClose();
-        }}
-      />
+      {/* Tap outside to close (overlay layer below card) */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 9000 }} onClick={onClose} />
     </div>
   );
 }
