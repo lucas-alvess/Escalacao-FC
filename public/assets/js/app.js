@@ -1085,8 +1085,15 @@ async function acceptCollabInvite(inviteData, uid, user) {
 async function removeCollabMember(teamId, memberUid, byOwner = false) {
   const fb = getFirebase(); if (!fb) return false;
   try {
-    await fb.deleteDoc(fb.doc(fb.db, "collab_teams", teamId, "members", memberUid));
+    // Remove o índice reverso do próprio usuário (sempre tem permissão)
     await fb.deleteDoc(fb.doc(fb.db, "users", memberUid, "collab_refs", teamId));
+    // Remove o doc de membro no time colaborativo (pode falhar se regras bloquearem)
+    try {
+      await fb.deleteDoc(fb.doc(fb.db, "collab_teams", teamId, "members", memberUid));
+    } catch(inner) {
+      // Logar mas não falhar — o importante é o collab_ref ter sido removido
+      console.warn("removeCollabMember: não foi possível remover members doc:", inner);
+    }
     return true;
   } catch(e) { console.warn("removeCollabMember error:", e); return false; }
 }
@@ -11479,9 +11486,18 @@ function App() {
           if (restored) setTeams(prev => [...prev.filter(t => t.id !== id), { ...restored, isCollab: false }]);
         }
       } else {
-        // Editor: sair do time colaborativo (não remove nada do time em si)
-        setToast("Você saiu do time colaborativo");
-        await removeCollabMember(id, uid);
+        // Editor: sair do time colaborativo — primeiro remove do Firestore, depois confirma na UI
+        const ok = await removeCollabMember(id, uid);
+        if (ok) {
+          setToast("Você saiu do time colaborativo");
+        } else {
+          // Falhou — reverter remoção da UI e avisar o usuário
+          setTeams(prev => {
+            if (prev.find(t => t.id === id)) return prev; // já está, não duplicar
+            return [...prev, team];
+          });
+          setToast("Erro ao sair do time. Verifique sua conexão.");
+        }
       }
       return;
     }
