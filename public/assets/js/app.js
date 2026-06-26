@@ -1702,14 +1702,6 @@ async function createCollabAgenda(ownerUid, ownerUser, agenda) {
 async function createCollabAgendaInvite(agendaId, agendaName, ownerUid, ownerName) {
   const fb = getFirebase(); if (!fb) return null;
   try {
-    // Reutilizar código existente se houver
-    const agendaSnap = await fb.getDoc(fb.doc(fb.db, "collab_agendas", String(agendaId)));
-    if (agendaSnap.exists() && agendaSnap.data().inviteCode) {
-      const existingCode = agendaSnap.data().inviteCode;
-      const inviteSnap = await fb.getDoc(fb.doc(fb.db, "collab_agenda_invites", existingCode));
-      if (inviteSnap.exists()) return existingCode;
-    }
-    // Gerar novo código
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     let code = "A";
     for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
@@ -1717,8 +1709,6 @@ async function createCollabAgendaInvite(agendaId, agendaName, ownerUid, ownerNam
       agendaId: String(agendaId), agendaName: agendaName || "Agenda",
       ownerUid, ownerName: ownerName || "Usuario", createdAt: fb.serverTimestamp(),
     });
-    // Salvar o código no doc raiz para reutilização futura
-    await fb.setDoc(fb.doc(fb.db, "collab_agendas", String(agendaId)), { inviteCode: code }, { merge: true });
     return code;
   } catch(e) { console.warn("createCollabAgendaInvite error:", e); return null; }
 }
@@ -3083,13 +3073,6 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
 
   useEffect(() => {
     const fb = getFirebase(); if (!fb) { setStep("error"); return; }
-    // Carregar código existente e membros em paralelo
-    if (isOwner && agenda.inviteCode) {
-      // Código já salvo no doc da agenda — verificar se ainda existe
-      fb.getDoc(fb.doc(fb.db, "collab_agenda_invites", agenda.inviteCode))
-        .then(snap => { if (snap.exists()) setCode(agenda.inviteCode); })
-        .catch(() => {});
-    }
     // onSnapshot garante que novos membros aparecem em tempo real
     const unsub = fb.onSnapshot(
       fb.collection(fb.db, "collab_agendas", String(agenda.id), "members"),
@@ -3180,7 +3163,7 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
                 </button>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={handleGenerateCode} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(255,255,255,0.08)",background:"transparent",color:"#4B5563",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Novo</button>
-                  <button onClick={async()=>{ if(!code) return; const fb=getFirebase(); if(!fb) return; try{ await fb.deleteDoc(fb.doc(fb.db,"collab_agenda_invites",code)); await fb.setDoc(fb.doc(fb.db,"collab_agendas",String(agenda.id)),{inviteCode:null},{merge:true}); }catch{} setCode(""); }} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.06)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Revogar</button>
+                  <button onClick={async()=>{ if(!code) return; const fb=getFirebase(); if(!fb) return; try{await fb.deleteDoc(fb.doc(fb.db,"collab_agenda_invites",code));}catch{} setCode(""); }} style={{flex:1,padding:"10px 0",borderRadius:11,border:"1px solid rgba(239,68,68,0.2)",background:"rgba(239,68,68,0.06)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Revogar</button>
                 </div>
               </>) : (
                 <button onClick={handleGenerateCode} style={{padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1.5}}>GERAR CODIGO DE CONVITE</button>
@@ -4691,7 +4674,7 @@ function SorteioListaScreen({ onBack, uid }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-          <div style={{ marginBottom:8 }}><Icon id="dice" size={36} style={{color:"#a855f7"}}/></div>
+          <div style={{ marginBottom:8 }}><img src="/assets/images/dado-colete.png" alt="Dado" style={{ width:52, height:52, objectFit:"contain" }}/></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure o sorteio</div>
         </div>
