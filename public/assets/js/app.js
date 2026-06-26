@@ -319,24 +319,20 @@ async function loadTeamsCloud(uid, { force = false } = {}) {
     if (snap.empty) { _memCache.set(_memCache.teams, uid, []); return []; }
 
     const allDocs = snap.docs.map(d => d.data());
-    // Times marcados como migrados para collab
+    // Times marcados como migrados para collab: verificar se collab ainda existe.
+    // Se nao existir (estado orfao por falha/teste), limpar o flag automaticamente.
     const migratedTeams = allDocs.filter(t => t._collabMigrated);
-    // Verificar quais ainda existem em collab_teams/ (têm collab_ref ativo)
-    // Para os que não existem mais (estado órfão por falha/teste), limpar o flag.
     if (migratedTeams.length > 0) {
       await Promise.all(migratedTeams.map(async t => {
         try {
           const collabDoc = await fb.getDoc(fb.doc(fb.db, "collab_teams", String(t.id)));
           if (!collabDoc.exists()) {
-            // Collab doc foi removido mas flag não foi limpo — corrigir silenciosamente
             await fb.setDoc(
               fb.doc(fb.db, "users", uid, "teams", String(t.id)),
               { _collabMigrated: false, isCollab: false },
               { merge: true }
             );
-            // Limpar collab_ref órfão também
             try { await fb.deleteDoc(fb.doc(fb.db, "users", uid, "collab_refs", String(t.id))); } catch {}
-            // Marcar o doc local como corrigido para o filtro abaixo
             t._collabMigrated = false;
             t.isCollab = false;
           }
@@ -11812,24 +11808,40 @@ function App() {
                 setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
               }
             } else if (t.isCollab) {
-              // Garantir subscribe ativo ao abrir time colaborativo
-              if (!collabUnsubsRef.current[t.id]) {
-                collabUnsubsRef.current[t.id] = subscribeCollabTeam(t.id, ({ type, data }) => {
-                  setTeams(prev => prev.map(tm => {
-                    if (String(tm.id) !== String(t.id)) return tm;
-                    if (type === "meta") return { ...tm, ...data };
-                    if (type === "players") return { ...tm, players: data };
-                    if (type === "lineups") {
-                      const activeLineup = getActiveLineup(tm, data);
-                      return { ...tm, lineups: data, formation: activeLineup?.formation || tm.formation, lineup: activeLineup?.entries || tm.lineup };
-                    }
-                    return tm;
-                  }));
-                });
-              }
-              // Recarregar dados completos ao abrir
+              // Tentar carregar como collab; se nao existir mais, tratar como time pessoal
               const full = await loadCollabTeamFull(t.id);
-              if (full) setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
+              if (full) {
+                if (!collabUnsubsRef.current[t.id]) {
+                  collabUnsubsRef.current[t.id] = subscribeCollabTeam(t.id, ({ type, data }) => {
+                    setTeams(prev => prev.map(tm => {
+                      if (String(tm.id) !== String(t.id)) return tm;
+                      if (type === "meta") return { ...tm, ...data };
+                      if (type === "players") return { ...tm, players: data };
+                      if (type === "lineups") {
+                        const activeLineup = getActiveLineup(tm, data);
+                        return { ...tm, lineups: data, formation: activeLineup?.formation || tm.formation, lineup: activeLineup?.entries || tm.lineup };
+                      }
+                      return tm;
+                    }));
+                  });
+                }
+                setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
+              } else {
+                // Doc collab nao existe mais — estado orfao, corrigir e carregar como pessoal
+                if (collabUnsubsRef.current[t.id]) {
+                  try { collabUnsubsRef.current[t.id](); } catch {}
+                  delete collabUnsubsRef.current[t.id];
+                }
+                if (u) {
+                  try {
+                    await fb.setDoc(fb.doc(fb.db, "users", u, "teams", String(t.id)), { _collabMigrated: false, isCollab: false }, { merge: true });
+                    await fb.deleteDoc(fb.doc(fb.db, "users", u, "collab_refs", String(t.id)));
+                  } catch {}
+                  _memCache.invalidateTeam(u, t.id);
+                  const fixed = await loadTeamFull(u, { ...t, isCollab: false, _collabMigrated: false });
+                  setTeams(prev => prev.map(tm => tm.id === t.id ? { ...(fixed || tm), isCollab: false } : tm));
+                }
+              }
             }
             setActiveTeamId(t.id);
             setNavSection("tactic");
