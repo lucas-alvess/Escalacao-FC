@@ -3017,7 +3017,7 @@ function EnableCollabAgendaModal({ agenda, user, onClose, onEnabled }) {
         </div>
         {step==="confirm"&&(<>
           <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(59,130,246,0.06)",borderRadius:13,border:"1px solid rgba(59,130,246,0.2)"}}>
-            <div style={{width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Icon id="soccer-ball" size={22} style={{color:"#fff"}}/></div>
+            <div style={{width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><img src="/assets/images/ball.png" alt="bola" style={{width:26,height:26,objectFit:"contain"}}/></div>
             <div>
               <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:0.5}}>{agenda.name}</div>
               <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>{(agenda.players||[]).length} mensalistas</div>
@@ -3392,7 +3392,7 @@ function MensalistasScreen({ onBack, uid, user }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:8,position:"relative",zIndex:1 }}>
-          <div style={{ fontSize:32 }}><Icon id="soccer-ball" size={32} style={{color:"#374ea8"}}/></div>
+          <div style={{ fontSize:32 }}><img src="/assets/images/ball.png" alt="bola" style={{width:40,height:40,objectFit:"contain"}}/></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:26,color:"#fff",letterSpacing:2 }}>MENSALISTAS</div>
           <div style={{ color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase" }}>Suas Agendas de Futebol</div>
         </div>
@@ -3415,7 +3415,7 @@ function MensalistasScreen({ onBack, uid, user }) {
             {agendas.map((ag, i) => (
               <div key={ag.id} className="ms-card" style={{ animationDelay:`${i*0.06}s` }} onClick={() => setActiveAgendaId(ag.id)}>
                 <div style={{ display:"flex",alignItems:"center",gap:14 }}>
-                  <div style={{ width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}><Icon id="soccer-ball" size={22} style={{color:"#fff"}}/></div>
+                  <div style={{ width:44,height:44,borderRadius:12,background:"linear-gradient(135deg,#1d4ed8,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}><img src="/assets/images/ball.png" alt="bola" style={{width:26,height:26,objectFit:"contain"}}/></div>
                   <div style={{ flex:1,minWidth:0 }}>
                     <div style={{ display:"flex",alignItems:"center",gap:6,lineHeight:1.2,marginBottom:4 }}>
                       <div style={{ color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1 }}>{ag.name}</div>
@@ -4260,7 +4260,7 @@ function MensalidadeTab({ agenda, uid, mensalistasPlayers, valorMensalidade, age
 
         <div style={{ textAlign:"center",paddingBottom:16 }}>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:24,color:"#fff",letterSpacing:2,lineHeight:1 }}>{agenda.name}</div>
-          <div style={{ color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:4 }}><Icon id="soccer-ball" size={11} style={{color:"#374ea8"}}/> AGENDA DE FUTEBOL</div>
+          <div style={{ color:"#374ea8",fontSize:11,fontWeight:700,letterSpacing:1,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:4 }}><img src="/assets/images/ball.png" alt="bola" style={{width:12,height:12,objectFit:"contain"}}/> AGENDA DE FUTEBOL</div>
         </div>
 
         {/* Tabs */}
@@ -4674,7 +4674,7 @@ function SorteioListaScreen({ onBack, uid }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-          <div style={{ marginBottom:8 }}><img src="/assets/images/dado-colete.png" alt="Dado" style={{ width:52, height:52, objectFit:"contain" }}/></div>
+          <div style={{ marginBottom:8 }}><Icon id="dice" size={36} style={{color:"#a855f7"}}/></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure o sorteio</div>
         </div>
