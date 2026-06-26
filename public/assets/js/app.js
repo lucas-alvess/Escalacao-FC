@@ -2487,20 +2487,112 @@ function PlayerAvatar({player,size=44,style:ex={},team=null}) {
   );
 }
 
+// ─── Image Cropper Modal ──────────────────────────────────────────────────────
+function ImageCropperModal({src,onConfirm,onCancel}) {
+  const imgRef=useRef(null);
+  const [drag,setDrag]=useState(null);
+  const [pos,setPos]=useState({x:0,y:0,scale:1});
+  const [imgSize,setImgSize]=useState({w:0,h:0});
+  const BOX=260;
+  const lastPinch=useRef(null);
+
+  useEffect(()=>{
+    const img=new Image();
+    img.onload=()=>{
+      const w=img.naturalWidth,h=img.naturalHeight;
+      setImgSize({w,h});
+      const s=Math.max(BOX/w,BOX/h);
+      setPos({x:(BOX-w*s)/2,y:(BOX-h*s)/2,scale:s});
+    };
+    img.src=src;
+    imgRef.current=img;
+  },[src]);
+
+  const onTouchStart=e=>{
+    if(e.touches.length===2){
+      const dx=e.touches[0].clientX-e.touches[1].clientX;
+      const dy=e.touches[0].clientY-e.touches[1].clientY;
+      lastPinch.current=Math.hypot(dx,dy);
+    } else {
+      setDrag({sx:e.touches[0].clientX,sy:e.touches[0].clientY,ox:pos.x,oy:pos.y});
+    }
+  };
+  const onTouchMove=e=>{
+    if(e.touches.length===2&&lastPinch.current){
+      e.preventDefault();
+      const dx=e.touches[0].clientX-e.touches[1].clientX;
+      const dy=e.touches[0].clientY-e.touches[1].clientY;
+      const d=Math.hypot(dx,dy);
+      const r=d/lastPinch.current;
+      lastPinch.current=d;
+      setPos(p=>({...p,scale:Math.max(0.3,Math.min(6,p.scale*r))}));
+    } else if(e.touches.length===1&&drag){
+      setPos(p=>({...p,x:drag.ox+e.touches[0].clientX-drag.sx,y:drag.oy+e.touches[0].clientY-drag.sy}));
+    }
+  };
+  const onTouchEnd=()=>{lastPinch.current=null;setDrag(null);};
+  const onMD=e=>setDrag({sx:e.clientX,sy:e.clientY,ox:pos.x,oy:pos.y});
+  const onMM=e=>{if(drag)setPos(p=>({...p,x:drag.ox+e.clientX-drag.sx,y:drag.oy+e.clientY-drag.sy}));};
+  const onMU=()=>setDrag(null);
+  const onWheel=e=>{e.preventDefault();setPos(p=>({...p,scale:Math.max(0.3,Math.min(6,p.scale*(e.deltaY<0?1.1:0.9)))}));};
+
+  const confirm=()=>{
+    const canvas=document.createElement("canvas");
+    canvas.width=300;canvas.height=300;
+    const ctx=canvas.getContext("2d");
+    ctx.drawImage(imgRef.current,-pos.x/pos.scale,-pos.y/pos.scale,BOX/pos.scale,BOX/pos.scale,0,0,300,300);
+    onConfirm(canvas.toDataURL("image/jpeg",0.82));
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:9500,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.93)",fontFamily:"'DM Sans',sans-serif",padding:20}}>
+      <div style={{color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:20,letterSpacing:1,marginBottom:6}}>RECORTAR IMAGEM</div>
+      <div style={{color:"#6B7280",fontSize:11,marginBottom:14,textAlign:"center"}}>Arraste para mover · Scroll ou pinça para zoom</div>
+      <div
+        style={{position:"relative",width:BOX,height:BOX,borderRadius:16,overflow:"hidden",border:"2px solid rgba(52,211,153,0.5)",cursor:drag?"grabbing":"grab",userSelect:"none",touchAction:"none",background:"#111",flexShrink:0}}
+        onMouseDown={onMD} onMouseMove={onMM} onMouseUp={onMU} onMouseLeave={onMU}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        onWheel={onWheel}
+      >
+        {imgSize.w>0&&<img src={src} alt="" draggable={false} style={{position:"absolute",left:pos.x,top:pos.y,width:imgSize.w*pos.scale,height:imgSize.h*pos.scale,pointerEvents:"none"}}/>}
+        <svg style={{position:"absolute",inset:0,pointerEvents:"none"}} width={BOX} height={BOX}>
+          <line x1={BOX/3} y1="0" x2={BOX/3} y2={BOX} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+          <line x1={BOX*2/3} y1="0" x2={BOX*2/3} y2={BOX} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+          <line x1="0" y1={BOX/3} x2={BOX} y2={BOX/3} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+          <line x1="0" y1={BOX*2/3} x2={BOX} y2={BOX*2/3} stroke="rgba(255,255,255,0.15)" strokeWidth="1"/>
+        </svg>
+      </div>
+      <div style={{marginTop:12,display:"flex",alignItems:"center",gap:8,width:BOX}}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+        <input type="range" min="0.3" max="6" step="0.05" value={pos.scale} onChange={e=>setPos(p=>({...p,scale:parseFloat(e.target.value)}))} style={{flex:1,accentColor:"#34d399"}}/>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6B7280" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:16,width:BOX}}>
+        <button onClick={onCancel} style={{flex:1,padding:"13px 0",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Cancelar</button>
+        <button onClick={confirm} style={{flex:1,padding:"13px 0",borderRadius:12,border:"none",background:"linear-gradient(135deg,#15803d,#34d399)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:800,boxShadow:"0 4px 16px rgba(52,211,153,0.35)"}}>Confirmar</button>
+      </div>
+    </div>
+  );
+}
+
 function PhotoPicker({photo,onChange}) {
-  const gRef=useRef(), cRef=useRef();
+  const gRef=useRef(),cRef=useRef();
+  const [cropSrc,setCropSrc]=useState(null);
   const handle=e=>{
     const f=e.target.files[0];if(!f)return;
+    e.target.value="";
     const r=new FileReader();
-    r.onload=async ev=>{
-      // Compress immediately on pick so previews and local storage are lean
-      const compressed=await compressImage(ev.target.result,300,0.75);
-      onChange(compressed);
-    };
+    r.onload=ev=>setCropSrc(ev.target.result);
     r.readAsDataURL(f);
+  };
+  const handleCropConfirm=async(cropped)=>{
+    setCropSrc(null);
+    const compressed=await compressImage(cropped,300,0.82);
+    onChange(compressed);
   };
   return (
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+      {cropSrc&&<ImageCropperModal src={cropSrc} onConfirm={handleCropConfirm} onCancel={()=>setCropSrc(null)}/>}
       <div style={{width:84,height:84,borderRadius:16,overflow:"hidden",border:"2px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {photo?<img src={photo} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
           :<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="1.5" strokeLinecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>}
@@ -4674,7 +4766,7 @@ function SorteioListaScreen({ onBack, uid }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-        <div style={{ marginBottom: 8 }}><img src="/assets/images/dado-colete.png" alt="Dado com colete" style={{ width: 56, height: 56, objectFit: "contain" }} /></div>
+        <div style={{ marginBottom: 8 }}><img src="/assets/images/dado-colete.png" alt="Dado com colete" style={{ width: 66, height: 66, objectFit: "contain" }} /></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure o sorteio</div>
         </div>
