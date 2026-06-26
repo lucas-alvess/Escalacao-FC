@@ -4674,7 +4674,7 @@ function SorteioListaScreen({ onBack, uid }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-        <div style={{ marginBottom: 8 }}><img src="/assets/images/dado-colete.png" alt="Dado com colete" style={{ width: 46, height: 46, objectFit: "contain" }} /></div>
+        <div style={{ marginBottom: 8 }}><img src="/assets/images/dado-colete.png" alt="Dado com colete" style={{ width: 56, height: 56, objectFit: "contain" }} /></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure o sorteio</div>
         </div>
