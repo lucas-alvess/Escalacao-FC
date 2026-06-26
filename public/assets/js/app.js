@@ -317,36 +317,8 @@ async function loadTeamsCloud(uid, { force = false } = {}) {
     const col = fb.collection(fb.db, "users", uid, "teams");
     const snap = await fb.getDocs(col);
     if (snap.empty) { _memCache.set(_memCache.teams, uid, []); return []; }
-
-    const allDocs = [];
-    const cleanupPromises = [];
-    for (const docSnap of snap.docs) {
-      // Ignorar documentos com ID inválido (ex: "undefined") criados por bug
-      if (!docSnap.id || docSnap.id === "undefined") {
-        cleanupPromises.push(fb.deleteDoc(docSnap.ref).catch(() => {}));
-        continue;
-      }
-      allDocs.push(docSnap.data());
-    }
-    if (cleanupPromises.length > 0) Promise.all(cleanupPromises);
-
-    // Times com _collabMigrated: verificar se collab ainda existe; se não, corrigir.
-    const migratedTeams = allDocs.filter(t => t._collabMigrated);
-    if (migratedTeams.length > 0) {
-      await Promise.all(migratedTeams.map(async t => {
-        try {
-          const collabDoc = await fb.getDoc(fb.doc(fb.db, "collab_teams", String(t.id)));
-          if (!collabDoc.exists()) {
-            await fb.setDoc(fb.doc(fb.db, "users", uid, "teams", String(t.id)), { _collabMigrated: false, isCollab: false }, { merge: true });
-            try { await fb.deleteDoc(fb.doc(fb.db, "users", uid, "collab_refs", String(t.id))); } catch {}
-            t._collabMigrated = false;
-            t.isCollab = false;
-          }
-        } catch {}
-      }));
-    }
-
-    const teams = allDocs.filter(t => !t._collabMigrated);
+    // Filtrar times que já foram migrados para collab (ficam apenas como backup no Firestore)
+    const teams = snap.docs.map(d => d.data()).filter(t => !t._collabMigrated);
     teams.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
     _memCache.set(_memCache.teams, uid, teams);
     return teams;
@@ -1478,26 +1450,24 @@ function EnableCollabModal({ team, user, onClose, onEnabled }) {
 }
 
 // ── Modal: Gerenciar convite colaborativo ─────────────────────────────────────
-function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactivated, onEnabled }) {
-  const [step, setStep] = useState("loading"); // loading | ready | error | deactivating | activating
+function CollabInviteModal({ team, user, onClose }) {
+  const [step, setStep] = useState("loading"); // loading | ready | error
   const [code, setCode] = useState("");
   const [members, setMembers] = useState([]);
   const [copied, setCopied] = useState(false);
   const [removingUid, setRemovingUid] = useState(null);
-  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
-  const [collabActive, setCollabActive] = useState(!!team.isCollab);
   const isOwner = team.ownerUid === user.uid;
 
   useEffect(() => {
-    if (!collabActive) return;
     const fb = getFirebase(); if (!fb) { setStep("error"); return; }
+    // onSnapshot garante que novos membros aparecem em tempo real
     const unsub = fb.onSnapshot(
       fb.collection(fb.db, "collab_teams", String(team.id), "members"),
       snap => { setMembers(snap.docs.map(d => d.data())); setStep("ready"); },
       () => setStep("error")
     );
     return () => unsub();
-  }, [team.id, collabActive]);
+  }, [team.id]);
 
   const handleGenerateCode = async () => {
     setStep("loading");
@@ -1528,66 +1498,8 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
     await removeCollabMember(team.id, mUid);
     setMembers(prev => prev.filter(m => m.uid !== mUid));
     setRemovingUid(null);
+    // Se o próprio usuário saiu, fechar o modal
     if (mUid === user.uid) onClose();
-  };
-
-  const handleDeactivate = async () => {
-    setConfirmDeactivate(false);
-    setStep("deactivating");
-    // CRÍTICO: parar o listener em tempo real ANTES de deletar o doc no Firestore.
-    // Sem isso, o onSnapshot dispara "deleted" → remove o time do array → tela preta.
-    if (onBeforeDeactivate) onBeforeDeactivate();
-    // Revogar código de convite ativo
-    if (code) {
-      const fb = getFirebase();
-      if (fb) { try { await fb.deleteDoc(fb.doc(fb.db, "collab_invites", code)); } catch {} }
-    }
-    const ok = await deactivateCollabTeam(team.id, user.uid);
-    if (ok) {
-      setCollabActive(false);
-      setCode("");
-      setMembers([]);
-      setStep("ready");
-      if (onDeactivated) onDeactivated();
-    } else {
-      setStep("error");
-    }
-  };
-
-  const handleActivate = async () => {
-    setStep("activating");
-    const fb = getFirebase(); if (!fb) { setStep("error"); return; }
-    if (!team.id || String(team.id) === "undefined") {
-      console.warn("handleActivate: team.id inválido", team.id);
-      setStep("error");
-      return;
-    }
-    try {
-      const now = fb.serverTimestamp();
-      const tid = String(team.id);
-      const { players: _p, lineups: _l, lineup: _li, ...teamMeta } = team;
-      await fb.setDoc(fb.doc(fb.db, "collab_teams", tid), {
-        ...teamMeta,
-        id: tid,
-        isCollab: true,
-        ownerUid: user.uid,
-        updatedAt: now,
-      }, { merge: true });
-      await fb.setDoc(fb.doc(fb.db, "collab_teams", tid, "members", user.uid), {
-        uid: user.uid,
-        name: user.displayName || user.email || "Dono",
-        email: user.email || "",
-        role: "owner",
-        joinedAt: now,
-      });
-      await fb.setDoc(fb.doc(fb.db, "users", user.uid, "teams", tid), { isCollab: true, _collabMigrated: true }, { merge: true });
-      await fb.setDoc(fb.doc(fb.db, "users", user.uid, "collab_refs", tid), { teamId: tid, role: "owner", joinedAt: now });
-      setCollabActive(true);
-      if (onEnabled) onEnabled();
-    } catch(e) {
-      console.warn("handleActivate error:", e);
-      setStep("error");
-    }
   };
 
   const roleLabel = { owner: "Dono", editor: "Editor" };
@@ -1596,8 +1508,6 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
   return (
     <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0a1628",border:"1px solid rgba(59,130,246,0.25)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"22px 20px 40px",display:"flex",flexDirection:"column",gap:16,maxHeight:"85vh",overflowY:"auto"}}>
-
-        {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div>
             <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>COLABORAÇÃO</span>
@@ -1606,65 +1516,13 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
         </div>
 
-        {/* Toggle ativar/desativar — apenas dono, quando não está em loading */}
-        {isOwner && step !== "loading" && step !== "deactivating" && step !== "activating" && (
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <div style={{
-              display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:8,flexShrink:0,
-              background: collabActive ? "rgba(52,211,153,0.1)" : "rgba(107,114,128,0.1)",
-              border: collabActive ? "1px solid rgba(52,211,153,0.3)" : "1px solid rgba(107,114,128,0.25)",
-              color: collabActive ? "#34d399" : "#6B7280",
-              fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,
-            }}>
-              <span style={{width:7,height:7,borderRadius:"50%",background: collabActive ? "#34d399" : "#6B7280",display:"inline-block"}}/>
-              {collabActive ? "Ativa" : "Inativa"}
-            </div>
-            {collabActive ? (
-              <button onClick={() => setConfirmDeactivate(true)}
-                style={{flex:1,padding:"8px 0",borderRadius:9,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
-                🔒 Desativar colaboração
-              </button>
-            ) : (
-              <button onClick={handleActivate}
-                style={{flex:1,padding:"8px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,boxShadow:"0 3px 12px rgba(59,130,246,0.3)"}}>
-                🤝 Ativar colaboração
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Confirmação de desativação */}
-        {confirmDeactivate && (
-          <div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{color:"#f87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:0.5}}>DESATIVAR COLABORAÇÃO?</div>
-            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,lineHeight:1.5}}>
-              Todos os colaboradores serão desvinculados. O time voltará a ser somente seu, com todos os dados preservados.
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setConfirmDeactivate(false)} style={{flex:1,padding:"10px 0",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600}}>Cancelar</button>
-              <button onClick={handleDeactivate} style={{flex:1,padding:"10px 0",borderRadius:10,border:"none",background:"linear-gradient(135deg,#dc2626,#ef4444)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Desativar</button>
-            </div>
-          </div>
-        )}
-
-        {/* Spinner */}
-        {(step==="loading"||step==="deactivating"||step==="activating")&&(
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"30px 0",gap:10}}>
+        {step==="loading"&&(
+          <div style={{display:"flex",justifyContent:"center",padding:"30px 0"}}>
             <div style={{width:36,height:36,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
-            <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>
-              {step==="deactivating"?"Desativando colaboração...":step==="activating"?"Ativando colaboração...":"Carregando..."}
-            </span>
           </div>
         )}
 
-        {/* Mensagem quando desativada */}
-        {step==="ready" && !collabActive && (
-          <div style={{textAlign:"center",padding:"16px 0",color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>
-            A colaboração está desativada. O time é somente seu.
-          </div>
-        )}
-
-        {step==="ready" && collabActive &&(<>
+        {step==="ready"&&(<>
           {/* Membros */}
           <div>
             <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>
@@ -2660,7 +2518,7 @@ function ShieldVisual({c1,c2,shape,photo,emoji,size=56,uid,name=""}) {
 }
 
 function TeamShield({team, size=56}) {
-  const [c1,c2] = SHIELD_COLORS[(team.colorIdx||0) % SHIELD_COLORS.length];
+  const [c1,c2] = SHIELD_COLORS[team.colorIdx % SHIELD_COLORS.length];
   const shape = SHIELD_SHAPES.find(s=>s.id===team.shieldShapeId);
   return <ShieldVisual c1={c1} c2={c2} shape={shape} photo={team.photo} emoji={team.shieldEmoji} size={size} uid={team.id} name={team.name}/>;
 }
@@ -5899,7 +5757,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
         )}
 
         {teams.map((team,i)=>{
-          const [c1,c2]=SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length];
+          const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
           const escalados=(team.lineup||[]).filter(l=>l.playerId).length;
           const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
           return (
@@ -5953,13 +5811,9 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     </button>
                   )}
-                  {/* Botao COLABORAR — somente para o dono (ativar, gerenciar ou reativar) */}
+                  {/* Botao COLABORAR — somente para o dono (ativar ou gerenciar) */}
                   {(!team.isCollab || team.ownerUid===user?.uid)&&(
-                    <button onClick={e=>{e.stopPropagation();
-                      // Se está ativo ou já foi dono antes → modal de gerenciar (inclui toggle reativar)
-                      if (team.isCollab || team.ownerUid===user?.uid) { onManageCollab&&onManageCollab(team); }
-                      else { onEnableCollab&&onEnableCollab(team); }
-                    }} aria-label={team.isCollab?"Gerenciar colaboração":"Colaboração"} title={team.isCollab?"Gerenciar colaboração":"Colaboração"} className="tc-action-btn"
+                    <button onClick={e=>{e.stopPropagation(); team.isCollab ? onManageCollab&&onManageCollab(team) : onEnableCollab&&onEnableCollab(team);}} aria-label={team.isCollab?"Gerenciar colaboração":"Ativar colaboração"} title={team.isCollab?"Gerenciar colaboração":"Ativar colaboração"} className="tc-action-btn"
                       style={{background:team.isCollab?"rgba(59,130,246,0.18)":"rgba(59,130,246,0.08)",border:team.isCollab?"1px solid rgba(59,130,246,0.45)":"1px solid rgba(59,130,246,0.2)",color:"#60a5fa"}}>
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     </button>
@@ -8181,7 +8035,7 @@ function TeamView({team,onUpdateTeam,onBack,onForceSave,onSavePlayer,onDeletePla
   const [showGuestForm,setShowGuestForm]=useState(false);
   // ID generation: crypto.randomUUID() (with fallback) avoids any chance of
   // collision, even across teams/components remounted in quick succession.
-  const [c1,c2]=SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length];
+  const [c1,c2]=SHIELD_COLORS[team.colorIdx%SHIELD_COLORS.length];
 
   const slots=FORMATIONS[team.formation]?.slots||FORMATIONS["4-4-2"].slots;
   const activeLineup=getActiveLineup(team,team.lineups||[]);
@@ -11821,38 +11675,24 @@ function App() {
                 setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
               }
             } else if (t.isCollab) {
-              // Tentar carregar como collab; se não existir, recuperar como time pessoal
-              const full = await loadCollabTeamFull(t.id);
-              if (full) {
-                if (!collabUnsubsRef.current[t.id]) {
-                  collabUnsubsRef.current[t.id] = subscribeCollabTeam(t.id, ({ type, data }) => {
-                    setTeams(prev => prev.map(tm => {
-                      if (String(tm.id) !== String(t.id)) return tm;
-                      if (type === "meta") return { ...tm, ...data };
-                      if (type === "players") return { ...tm, players: data };
-                      if (type === "lineups") {
-                        const activeLineup = getActiveLineup(tm, data);
-                        return { ...tm, lineups: data, formation: activeLineup?.formation || tm.formation, lineup: activeLineup?.entries || tm.lineup };
-                      }
-                      return tm;
-                    }));
-                  });
-                }
-                setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
-              } else if (u) {
-                // Doc collab não existe — estado órfão, corrigir e carregar como pessoal
-                if (collabUnsubsRef.current[t.id]) {
-                  try { collabUnsubsRef.current[t.id](); } catch {}
-                  delete collabUnsubsRef.current[t.id];
-                }
-                try {
-                  await fb.setDoc(fb.doc(fb.db, "users", u, "teams", String(t.id)), { _collabMigrated: false, isCollab: false }, { merge: true });
-                  await fb.deleteDoc(fb.doc(fb.db, "users", u, "collab_refs", String(t.id)));
-                } catch {}
-                _memCache.invalidateTeam(u, t.id);
-                const fixed = await loadTeamFull(u, { ...t, isCollab: false, _collabMigrated: false });
-                setTeams(prev => prev.map(tm => tm.id === t.id ? { ...(fixed || tm), isCollab: false } : tm));
+              // Garantir subscribe ativo ao abrir time colaborativo
+              if (!collabUnsubsRef.current[t.id]) {
+                collabUnsubsRef.current[t.id] = subscribeCollabTeam(t.id, ({ type, data }) => {
+                  setTeams(prev => prev.map(tm => {
+                    if (String(tm.id) !== String(t.id)) return tm;
+                    if (type === "meta") return { ...tm, ...data };
+                    if (type === "players") return { ...tm, players: data };
+                    if (type === "lineups") {
+                      const activeLineup = getActiveLineup(tm, data);
+                      return { ...tm, lineups: data, formation: activeLineup?.formation || tm.formation, lineup: activeLineup?.entries || tm.lineup };
+                    }
+                    return tm;
+                  }));
+                });
               }
+              // Recarregar dados completos ao abrir
+              const full = await loadCollabTeamFull(t.id);
+              if (full) setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
             }
             setActiveTeamId(t.id);
             setNavSection("tactic");
@@ -11978,53 +11818,6 @@ function App() {
           team={manageCollabTeam}
           user={user}
           onClose={()=>setManageCollabTeam(null)}
-          onBeforeDeactivate={() => {
-            // Para o listener ANTES de deletar o doc no Firestore,
-            // evitando que o onSnapshot "deleted" remova o time da lista (tela preta).
-            const teamId = manageCollabTeam.id;
-            if (collabUnsubsRef.current[teamId]) {
-              try { collabUnsubsRef.current[teamId](); } catch {}
-              delete collabUnsubsRef.current[teamId];
-            }
-          }}
-          onDeactivated={async () => {
-            const teamId = manageCollabTeam.id;
-            // Recarregar o time pessoal restaurado
-            _memCache.invalidateTeam(uid, teamId);
-            const restored = await loadTeamFull(uid, { id: teamId, isCollab: false, _collabMigrated: false, ...manageCollabTeam });
-            if (restored) {
-              setTeams(prev => prev.map(t => t.id === teamId ? { ...restored, isCollab: false } : t));
-            } else {
-              setTeams(prev => prev.map(t => t.id === teamId ? { ...t, isCollab: false } : t));
-            }
-            setManageCollabTeam(prev => prev ? { ...prev, isCollab: false } : null);
-            setToast("🔒 Colaboração desativada — time restaurado");
-          }}
-          onEnabled={async () => {
-            const teamId = manageCollabTeam.id;
-            const full = await loadCollabTeamFull(teamId);
-            if (full) {
-              setTeams(prev => prev.map(t => t.id === teamId ? { ...t, ...full, isCollab: true } : t));
-              if (!collabUnsubsRef.current[teamId]) {
-                collabUnsubsRef.current[teamId] = subscribeCollabTeam(teamId, ({ type, data }) => {
-                  setTeams(prev => prev.map(t => {
-                    if (String(t.id) !== String(teamId)) return t;
-                    if (type === "meta") return { ...t, ...data };
-                    if (type === "players") return { ...t, players: data };
-                    if (type === "lineups") {
-                      const activeLineup = getActiveLineup(t, data);
-                      return { ...t, lineups: data, formation: activeLineup?.formation || t.formation, lineup: activeLineup?.entries || t.lineup };
-                    }
-                    return t;
-                  }));
-                });
-              }
-            } else {
-              setTeams(prev => prev.map(t => t.id === teamId ? { ...t, isCollab: true } : t));
-            }
-            setManageCollabTeam(prev => prev ? { ...prev, isCollab: true } : null);
-            setToast("🤝 Colaboração ativada!");
-          }}
         />
       )}
       {showJoinCollab && (
