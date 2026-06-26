@@ -735,13 +735,35 @@ async function publishTeamShare(uid, userName, team, options = {}) {
   // options: { includeStats, includeMatches, includeLineups }
   const fb = getFirebase(); if (!fb) return null;
   try {
-    // Load full data
-    const [players, lineups, matches, stats] = await Promise.all([
-      loadPlayersCloud(uid, team.id, { force: true }),
-      options.includeLineups ? loadLineupsCloud(uid, team.id, { force: true }) : Promise.resolve([]),
-      options.includeMatches ? loadMatchesCloud(uid, team.id) : Promise.resolve([]),
-      options.includeStats   ? loadAllStatsCloud(uid, team.id) : Promise.resolve({}),
-    ]);
+    // For collab teams, players/lineups live in collab_teams/{id}/* not users/{uid}/teams/{id}/*
+    const isCollab = !!team.isCollab;
+
+    // Load full data — collab teams use their own loaders
+    let players, lineups, matches, stats;
+    if (isCollab) {
+      const [pSnap, lSnap, mSnap, sSnap] = await Promise.all([
+        fb.getDocs(fb.collection(fb.db, "collab_teams", String(team.id), "players")),
+        options.includeLineups ? fb.getDocs(fb.collection(fb.db, "collab_teams", String(team.id), "lineups")) : Promise.resolve(null),
+        options.includeMatches ? fb.getDocs(fb.collection(fb.db, "collab_teams", String(team.id), "matches")) : Promise.resolve(null),
+        options.includeStats   ? fb.getDocs(fb.collection(fb.db, "collab_teams", String(team.id), "stats"))   : Promise.resolve(null),
+      ]);
+      players = pSnap.docs.map(d => d.data());
+      lineups = lSnap ? lSnap.docs.map(d => d.data()) : [];
+      matches = mSnap ? mSnap.docs.map(d => d.data()) : [];
+      // stats subcollection → object keyed by playerId
+      stats = sSnap ? Object.fromEntries(sSnap.docs.map(d => [d.id, d.data()])) : {};
+    } else {
+      [players, lineups, matches, stats] = await Promise.all([
+        loadPlayersCloud(uid, team.id, { force: true }),
+        options.includeLineups ? loadLineupsCloud(uid, team.id, { force: true }) : Promise.resolve([]),
+        options.includeMatches ? loadMatchesCloud(uid, team.id) : Promise.resolve([]),
+        options.includeStats   ? loadAllStatsCloud(uid, team.id) : Promise.resolve({}),
+      ]);
+      // Fallback to in-memory players if cloud returned empty (e.g. not yet synced)
+      if (!players || players.length === 0) {
+        players = team.players || [];
+      }
+    }
 
     // Strip photo data URLs (too large) from players to keep doc lean
     const safePlayers = (players || []).map(p => ({ ...p, photo: p.photo && p.photo.startsWith("data:") ? "" : (p.photo || "") }));
@@ -749,8 +771,8 @@ async function publishTeamShare(uid, userName, team, options = {}) {
     const code = generateShareCode();
     const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24h
 
-    // Team meta (no subcollection refs)
-    const { players: _p, lineups: _l, lineup: _li, ...teamMeta } = team;
+    // Team meta — strip all collab/owner fields so the copy is standalone
+    const { players: _p, lineups: _l, lineup: _li, isCollab: _ic, ownerUid: _ou, _collabMigrated: _cm, ...teamMeta } = team;
 
     const snapshot = {
       meta: teamMeta,
@@ -802,14 +824,15 @@ async function importTeamShare(uid, shareData, options = {}) {
       return { ...p, id: newId };
     });
 
-    // Team meta with new id + name suffix
+    // Team meta with new id + name suffix — strip all collab fields so the copy is fully standalone
+    const { isCollab: _ic, ownerUid: _ou, _collabMigrated: _cm, activeLineupId: _al, ...cleanMeta } = snap.meta || {};
     const newMeta = {
-      ...snap.meta,
+      ...cleanMeta,
       id: newTeamId,
       name: (snap.meta?.name || "Time") + " (cópia)",
+      isCollab: false,
       updatedAt: now,
     };
-    delete newMeta.activeLineupId; // will be set after lineups saved
 
     // Save team doc
     await fb.setDoc(fb.doc(fb.db, "users", uid, "teams", newTeamId), newMeta);
@@ -4766,7 +4789,7 @@ function SorteioListaScreen({ onBack, uid }) {
       <div style={{ padding:"52px 20px 20px", background:"linear-gradient(175deg,#050e1f 0%,#050c0a 100%)", borderBottom:"1px solid rgba(52,211,153,0.1)", position:"relative" }}>
         <BackBtn onClick={onBack}/>
         <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:8 }}>
-        <div style={{ marginBottom: 8 }}><img src="/assets/images/dado-colete.png" alt="Dado com colete" style={{ width: 56, height: 56, objectFit: "contain" }} /></div>
+          <div style={{ marginBottom: 8 }}><img src="/assets/images/dado-colete.png" alt="Dado com colete" style={{ width: 56, height: 56, objectFit: "contain" }} /></div>
           <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:26, color:"#fff", letterSpacing:2 }}>SORTEIO DE TIMES</div>
           <div style={{ color:"#34d399", fontSize:11, fontWeight:700, letterSpacing:1.2, textTransform:"uppercase" }}>Configure o sorteio</div>
         </div>
