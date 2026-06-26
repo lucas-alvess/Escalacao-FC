@@ -1450,19 +1450,18 @@ function EnableCollabModal({ team, user, onClose, onEnabled }) {
 }
 
 // ── Modal: Gerenciar convite colaborativo ─────────────────────────────────────
-function CollabInviteModal({ team, user, onClose, onDeactivated, onEnabled }) {
+function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactivated, onEnabled }) {
   const [step, setStep] = useState("loading"); // loading | ready | error | deactivating | activating
   const [code, setCode] = useState("");
   const [members, setMembers] = useState([]);
   const [copied, setCopied] = useState(false);
   const [removingUid, setRemovingUid] = useState(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
-  // collabActive reflects the current collaboration state within the modal
   const [collabActive, setCollabActive] = useState(!!team.isCollab);
   const isOwner = team.ownerUid === user.uid;
 
   useEffect(() => {
-    if (!collabActive) return; // Não subscibe se colaboração está desativada
+    if (!collabActive) return;
     const fb = getFirebase(); if (!fb) { setStep("error"); return; }
     const unsub = fb.onSnapshot(
       fb.collection(fb.db, "collab_teams", String(team.id), "members"),
@@ -1507,7 +1506,10 @@ function CollabInviteModal({ team, user, onClose, onDeactivated, onEnabled }) {
   const handleDeactivate = async () => {
     setConfirmDeactivate(false);
     setStep("deactivating");
-    // Revogar código de convite ativo antes de desativar
+    // CRÍTICO: parar o listener em tempo real ANTES de deletar o doc no Firestore.
+    // Sem isso, o onSnapshot dispara "deleted" → remove o time do array → tela preta.
+    if (onBeforeDeactivate) onBeforeDeactivate();
+    // Revogar código de convite ativo
     if (code) {
       const fb = getFirebase();
       if (fb) { try { await fb.deleteDoc(fb.doc(fb.db, "collab_invites", code)); } catch {} }
@@ -1528,17 +1530,14 @@ function CollabInviteModal({ team, user, onClose, onDeactivated, onEnabled }) {
     setStep("activating");
     const fb = getFirebase(); if (!fb) { setStep("error"); return; }
     try {
-      // enableCollabTeam já existe como função global; usamos a versão inline segura
       const now = fb.serverTimestamp();
       const tid = String(team.id);
-      // Marca o time como colaborativo novamente
       await fb.setDoc(fb.doc(fb.db, "collab_teams", tid), {
         ...team,
         isCollab: true,
         ownerUid: user.uid,
         updatedAt: now,
       }, { merge: true });
-      // Garante membro dono
       await fb.setDoc(fb.doc(fb.db, "collab_teams", tid, "members", user.uid), {
         uid: user.uid,
         name: user.displayName || user.email || "Dono",
@@ -1546,13 +1545,9 @@ function CollabInviteModal({ team, user, onClose, onDeactivated, onEnabled }) {
         role: "owner",
         joinedAt: now,
       });
-      // Atualiza flag no doc pessoal
       await fb.setDoc(fb.doc(fb.db, "users", user.uid, "teams", tid), { isCollab: true, _collabMigrated: true }, { merge: true });
-      // Cria collab_ref para o dono
       await fb.setDoc(fb.doc(fb.db, "users", user.uid, "collab_refs", tid), { teamId: tid, role: "owner", joinedAt: now });
-
       setCollabActive(true);
-      // O useEffect vai re-subscribir e atualizar membros automaticamente
       if (onEnabled) onEnabled();
     } catch(e) {
       console.warn("handleActivate error:", e);
@@ -1576,39 +1571,34 @@ function CollabInviteModal({ team, user, onClose, onDeactivated, onEnabled }) {
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
         </div>
 
-        {/* Status badge + toggle buttons (owner only) */}
+        {/* Toggle ativar/desativar — apenas dono, quando não está em loading */}
         {isOwner && step !== "loading" && step !== "deactivating" && step !== "activating" && (
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <div style={{
-              display:"flex",alignItems:"center",gap:6,
-              padding:"5px 12px",borderRadius:8,
+              display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:8,flexShrink:0,
               background: collabActive ? "rgba(52,211,153,0.1)" : "rgba(107,114,128,0.1)",
               border: collabActive ? "1px solid rgba(52,211,153,0.3)" : "1px solid rgba(107,114,128,0.25)",
               color: collabActive ? "#34d399" : "#6B7280",
-              fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,flexShrink:0
+              fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,
             }}>
               <span style={{width:7,height:7,borderRadius:"50%",background: collabActive ? "#34d399" : "#6B7280",display:"inline-block"}}/>
               {collabActive ? "Ativa" : "Inativa"}
             </div>
             {collabActive ? (
-              <button
-                onClick={() => setConfirmDeactivate(true)}
-                style={{flex:1,padding:"8px 0",borderRadius:9,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}
-              >
+              <button onClick={() => setConfirmDeactivate(true)}
+                style={{flex:1,padding:"8px 0",borderRadius:9,border:"1px solid rgba(239,68,68,0.3)",background:"rgba(239,68,68,0.08)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
                 🔒 Desativar colaboração
               </button>
             ) : (
-              <button
-                onClick={handleActivate}
-                style={{flex:1,padding:"8px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,boxShadow:"0 3px 12px rgba(59,130,246,0.3)"}}
-              >
+              <button onClick={handleActivate}
+                style={{flex:1,padding:"8px 0",borderRadius:9,border:"none",background:"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:"#fff",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,boxShadow:"0 3px 12px rgba(59,130,246,0.3)"}}>
                 🤝 Ativar colaboração
               </button>
             )}
           </div>
         )}
 
-        {/* Confirm deactivate */}
+        {/* Confirmação de desativação */}
         {confirmDeactivate && (
           <div style={{background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:12,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
             <div style={{color:"#f87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:0.5}}>DESATIVAR COLABORAÇÃO?</div>
@@ -1622,7 +1612,7 @@ function CollabInviteModal({ team, user, onClose, onDeactivated, onEnabled }) {
           </div>
         )}
 
-        {/* Loading spinner */}
+        {/* Spinner */}
         {(step==="loading"||step==="deactivating"||step==="activating")&&(
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"30px 0",gap:10}}>
             <div style={{width:36,height:36,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
@@ -1632,7 +1622,7 @@ function CollabInviteModal({ team, user, onClose, onDeactivated, onEnabled }) {
           </div>
         )}
 
-        {/* Colaboração desativada */}
+        {/* Mensagem quando desativada */}
         {step==="ready" && !collabActive && (
           <div style={{textAlign:"center",padding:"16px 0",color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:13}}>
             A colaboração está desativada. O time é somente seu.
@@ -5931,7 +5921,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                   {/* Botao COLABORAR — somente para o dono (ativar, gerenciar ou reativar) */}
                   {(!team.isCollab || team.ownerUid===user?.uid)&&(
                     <button onClick={e=>{e.stopPropagation();
-                      // Se já foi collab antes (ownerUid definido) ou está ativo → abre modal gerenciar
+                      // Se está ativo ou já foi dono antes → modal de gerenciar (inclui toggle reativar)
                       if (team.isCollab || team.ownerUid===user?.uid) { onManageCollab&&onManageCollab(team); }
                       else { onEnableCollab&&onEnableCollab(team); }
                     }} aria-label={team.isCollab?"Gerenciar colaboração":"Colaboração"} title={team.isCollab?"Gerenciar colaboração":"Colaboração"} className="tc-action-btn"
@@ -11939,32 +11929,33 @@ function App() {
           team={manageCollabTeam}
           user={user}
           onClose={()=>setManageCollabTeam(null)}
-          onDeactivated={async () => {
+          onBeforeDeactivate={() => {
+            // Para o listener ANTES de deletar o doc no Firestore,
+            // evitando que o onSnapshot "deleted" remova o time da lista (tela preta).
             const teamId = manageCollabTeam.id;
-            // Unsubscribe real-time listener
             if (collabUnsubsRef.current[teamId]) {
               try { collabUnsubsRef.current[teamId](); } catch {}
               delete collabUnsubsRef.current[teamId];
             }
+          }}
+          onDeactivated={async () => {
+            const teamId = manageCollabTeam.id;
             // Recarregar o time pessoal restaurado
             _memCache.invalidateTeam(uid, teamId);
-            const restored = await loadTeamFull(uid, { id: teamId, ...manageCollabTeam, isCollab: false, _collabMigrated: false });
+            const restored = await loadTeamFull(uid, { id: teamId, isCollab: false, _collabMigrated: false, ...manageCollabTeam });
             if (restored) {
               setTeams(prev => prev.map(t => t.id === teamId ? { ...restored, isCollab: false } : t));
             } else {
               setTeams(prev => prev.map(t => t.id === teamId ? { ...t, isCollab: false } : t));
             }
-            // Atualizar o team no modal para refletir estado desativado
             setManageCollabTeam(prev => prev ? { ...prev, isCollab: false } : null);
             setToast("🔒 Colaboração desativada — time restaurado");
           }}
           onEnabled={async () => {
             const teamId = manageCollabTeam.id;
-            // Recarregar o time como colaborativo
             const full = await loadCollabTeamFull(teamId);
             if (full) {
               setTeams(prev => prev.map(t => t.id === teamId ? { ...t, ...full, isCollab: true } : t));
-              // Ativar subscribe
               if (!collabUnsubsRef.current[teamId]) {
                 collabUnsubsRef.current[teamId] = subscribeCollabTeam(teamId, ({ type, data }) => {
                   setTeams(prev => prev.map(t => {
