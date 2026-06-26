@@ -9981,6 +9981,8 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
   const [showExportStats,setShowExportStats]=useState(false);
   const [showImport,setShowImport]=useState(false);
   const [toast,setToast]=useState(null);
+  const [showTutorialPrompt,setShowTutorialPrompt]=useState(false);
+  const [showTutorial,setShowTutorial]=useState(false);
   const [c1,c2]=SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length];
 
   const handleImportPlayers=async(newPlayers,added,updated,statsToSave=[])=>{
@@ -10176,8 +10178,13 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
 
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",paddingBottom:80}}>
+      {/* Botao de tutorial */}
+      <TutorialButton style={{position:"fixed",top:14,right:14,zIndex:800}} onClick={()=>setShowTutorialPrompt(true)}/>
+      {showTutorialPrompt&&<TutorialPrompt screenName="Escritorio" onConfirm={()=>{setShowTutorialPrompt(false);setShowTutorial(true);}} onCancel={()=>setShowTutorialPrompt(false)}/>}
+      {showTutorial&&<TutorialOverlay steps={officeTab==="calendar"?TUTORIAL_OFFICE_CALENDAR:officeTab==="stats"?TUTORIAL_OFFICE_STATS:TUTORIAL_OFFICE_IMPORT} onClose={()=>setShowTutorial(false)}/>}
+
       {/* Header */}
-      <div style={{padding:"16px 16px 0",display:"flex",alignItems:"center",gap:12}}>
+      <div className="office-header" style={{padding:"16px 16px 0",display:"flex",alignItems:"center",gap:12}}>
         <TeamShield team={team} size={40}/>
         <div>
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,lineHeight:1}}>{team.name}</div>
@@ -10186,7 +10193,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
       </div>
 
       {/* Sub-tabs */}
-      <div style={{display:"flex",gap:0,margin:"14px 16px 0",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:3}}>
+      <div className="office-tabs" style={{display:"flex",gap:0,margin:"14px 16px 0",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:3}}>
         {[["calendar","Calendário","calendar"],["stats","Estatísticas","stats"],["import","Importar","import"]].map(([id,label,ico])=>(
           <button key={id} onClick={()=>setOfficeTab(id)} style={{
             flex:1,padding:"9px 4px",borderRadius:9,border:"none",cursor:"pointer",
@@ -10207,7 +10214,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
         {/* ── Calendar tab ── */}
         {officeTab==="calendar"&&(
           <>
-          <button onClick={()=>{setEditingMatch(null);setShowMatchModal(true);}} style={{
+          <button className="office-new-match-btn" onClick={()=>{setEditingMatch(null);setShowMatchModal(true);}} style={{
             width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
             padding:"11px 0",borderRadius:12,border:"none",cursor:"pointer",marginBottom:14,
             background:`linear-gradient(135deg,${c1},${c2})`,color:"#fff",
@@ -10225,7 +10232,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
               <span>Nenhuma partida cadastrada.<br/>Toque em "Nova Partida" para adicionar.</span>
             </div>
           ):(
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div className="office-match-list" style={{display:"flex",flexDirection:"column",gap:8}}>
               {sortedMatches.map(m=>{
                 const res=resultLabel(m);
                 const isPast=m.date<new Date().toISOString().slice(0,10);
@@ -10328,7 +10335,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
         {/* ── Stats tab ── */}
         {officeTab==="stats"&&(
           <>
-          <button onClick={()=>setShowExportStats(true)} style={{
+          <button className="office-export-stats-btn" onClick={()=>setShowExportStats(true)} style={{
             width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
             padding:"10px 0",borderRadius:12,border:"1px solid rgba(52,211,153,0.25)",cursor:"pointer",marginBottom:12,
             background:"rgba(52,211,153,0.07)",color:"#34d399",
@@ -10342,7 +10349,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
             const saldo=totalGF-totalGA;
             if(!withResult.length)return null;
             return (
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
+              <div className="office-goal-summary" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
                 {[
                   {label:"Gols marcados",value:totalGF,icon:"soccer-ball",color:"#34d399"},
                   {label:"Gols sofridos",value:totalGA,icon:"goalkeeper",color:"#f87171"},
@@ -10357,13 +10364,13 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
               </div>
             );
           })()}
-          <StatsView team={team} stats={stats} onUpdateStat={updateStat}/>
+          <div className="office-stats-view"><StatsView team={team} stats={stats} onUpdateStat={updateStat}/></div>
           </>
         )}
         {/* ── Import tab ── */}
         {officeTab==="import"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14}}>
+            <div className="office-import-card" style={{padding:"14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14}}>
               <div style={{color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,marginBottom:8}}>Importar jogadores de planilha</div>
               <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,lineHeight:1.6,marginBottom:12}}>
                 Importe um arquivo CSV exportado do Excel, Google Sheets ou similar para adicionar ou atualizar jogadores do seu elenco em massa.
@@ -10779,6 +10786,71 @@ const TUTORIAL_TACTIC_PLAYERS = [
     highlight: ".players-guest-fab",
   },
 ];
+
+const TUTORIAL_OFFICE_CALENDAR = [
+  {
+    title: "Aba Calendário",
+    body: "Aqui voce registra todas as partidas do seu time: amistosos, campeonatos, torneios e rachas. Partidas futuras aparecem no topo; passadas abaixo em ordem decrescente.",
+    highlight: null,
+  },
+  {
+    title: "Abas do Escritório",
+    body: "O Escritório tem tres abas: Calendario (partidas), Estatísticas (desempenho dos jogadores) e Importar (importacao de elenco via planilha CSV).",
+    highlight: ".office-tabs",
+  },
+  {
+    title: "Nova Partida",
+    body: "Toque em NOVA PARTIDA para cadastrar uma partida. Voce pode registrar adversario, data, horario, local, tipo (amistoso, copa, etc.), resultado, gols, assistencias e presenca dos jogadores.",
+    highlight: ".office-new-match-btn",
+  },
+  {
+    title: "Card de partida",
+    body: "Cada partida mostra o placar (V/E/D em cores), adversario, data e tipo. Se a partida ainda nao aconteceu, aparece 'EM BREVE' em verde.",
+    highlight: ".office-match-list",
+  },
+  {
+    title: "Convocar jogadores",
+    body: "Em partidas futuras com lista de presenca preenchida, o botao CONVOCAR gera uma mensagem de convocacao pronta para enviar pelo WhatsApp.",
+    highlight: ".office-match-list",
+  },
+];
+
+const TUTORIAL_OFFICE_STATS = [
+  {
+    title: "Aba Estatísticas",
+    body: "Aqui voce acompanha o desempenho de cada jogador ao longo da temporada: gols, assistencias, presencas e gols sofridos (para goleiros).",
+    highlight: null,
+  },
+  {
+    title: "Resumo de gols",
+    body: "Os tres cards no topo mostram o total de gols marcados, gols sofridos e saldo de gols do time, calculados automaticamente a partir das partidas registradas.",
+    highlight: ".office-goal-summary",
+  },
+  {
+    title: "Tabela de jogadores",
+    body: "Cada jogador aparece com seus numeros acumulados. Voce pode ajustar manualmente gols e assistencias usando os botoes + e - caso queira registrar estatísticas fora de partidas.",
+    highlight: ".office-stats-view",
+  },
+  {
+    title: "Exportar estatísticas",
+    body: "O botao EXPORTAR / FILTRAR abre opcoes para gerar uma imagem da tabela de estatísticas, filtrar por periodo ou tipo de partida. Funcao completa disponivel no plano PRO.",
+    highlight: ".office-export-stats-btn",
+  },
+];
+
+const TUTORIAL_OFFICE_IMPORT = [
+  {
+    title: "Aba Importar",
+    body: "Aqui voce pode importar um elenco inteiro de uma vez via arquivo CSV, sem precisar cadastrar jogador por jogador.",
+    highlight: null,
+  },
+  {
+    title: "Importar planilha CSV",
+    body: "Toque em INICIAR IMPORTACAO, selecione o arquivo CSV exportado do Excel ou Google Sheets e o app vai adicionar ou atualizar os jogadores automaticamente.",
+    highlight: ".office-import-card",
+  },
+];
+
 
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
