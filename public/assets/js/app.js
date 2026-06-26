@@ -317,8 +317,34 @@ async function loadTeamsCloud(uid, { force = false } = {}) {
     const col = fb.collection(fb.db, "users", uid, "teams");
     const snap = await fb.getDocs(col);
     if (snap.empty) { _memCache.set(_memCache.teams, uid, []); return []; }
-    // Filtrar times que já foram migrados para collab (ficam apenas como backup no Firestore)
-    const teams = snap.docs.map(d => d.data()).filter(t => !t._collabMigrated);
+
+    const allDocs = snap.docs.map(d => d.data());
+    // Times marcados como migrados para collab
+    const migratedTeams = allDocs.filter(t => t._collabMigrated);
+    // Verificar quais ainda existem em collab_teams/ (têm collab_ref ativo)
+    // Para os que não existem mais (estado órfão por falha/teste), limpar o flag.
+    if (migratedTeams.length > 0) {
+      await Promise.all(migratedTeams.map(async t => {
+        try {
+          const collabDoc = await fb.getDoc(fb.doc(fb.db, "collab_teams", String(t.id)));
+          if (!collabDoc.exists()) {
+            // Collab doc foi removido mas flag não foi limpo — corrigir silenciosamente
+            await fb.setDoc(
+              fb.doc(fb.db, "users", uid, "teams", String(t.id)),
+              { _collabMigrated: false, isCollab: false },
+              { merge: true }
+            );
+            // Limpar collab_ref órfão também
+            try { await fb.deleteDoc(fb.doc(fb.db, "users", uid, "collab_refs", String(t.id))); } catch {}
+            // Marcar o doc local como corrigido para o filtro abaixo
+            t._collabMigrated = false;
+            t.isCollab = false;
+          }
+        } catch {}
+      }));
+    }
+
+    const teams = allDocs.filter(t => !t._collabMigrated);
     teams.sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0));
     _memCache.set(_memCache.teams, uid, teams);
     return teams;
