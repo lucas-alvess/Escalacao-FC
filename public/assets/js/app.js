@@ -5481,8 +5481,14 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
   const [confirmDel,setConfirmDel]=useState(null);
   const [shareTeam,setShareTeam]=useState(null);
   const [showImport,setShowImport]=useState(false);
+  const [showTutorialPrompt,setShowTutorialPrompt]=useState(false);
+  const [showTutorial,setShowTutorial]=useState(false);
   return (
-    <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif",position:"relative"}}>
+      {/* Botao de tutorial */}
+      <TutorialButton style={{position:"fixed",top:14,right:14,zIndex:800}} onClick={()=>setShowTutorialPrompt(true)}/>
+      {showTutorialPrompt&&<TutorialPrompt screenName="Times" onConfirm={()=>{setShowTutorialPrompt(false);setShowTutorial(true);}} onCancel={()=>setShowTutorialPrompt(false)}/>}
+      {showTutorial&&<TutorialOverlay steps={TUTORIAL_HOME} onClose={()=>setShowTutorial(false)}/>}
       <style>{`
         @keyframes fadeUp{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
         @keyframes shimmer{0%{background-position:-200% 0;}100%{background-position:200% 0;}}
@@ -5552,11 +5558,11 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
         </div>
 
         <div style={{marginTop:20,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-          <div>
+          <div className="home-times-counter">
             <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:44,color:"#fff",lineHeight:1,letterSpacing:1}}>{teams.length}</div>
             <div style={{color:"#4B5563",fontSize:11,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>{teams.length===1?"Time cadastrado":"Times cadastrados"}</div>
           </div>
-          <button onClick={()=>setShowImport(true)} title="Importar time via código" style={{
+          <button onClick={()=>setShowImport(true)} title="Importar time via código" className="home-import-btn" style={{
             display:"flex",alignItems:"center",gap:6,padding:"10px 14px",
             background:"rgba(52,211,153,0.07)",border:"1px solid rgba(52,211,153,0.22)",
             borderRadius:12,color:"#34d399",cursor:"pointer",
@@ -10406,6 +10412,291 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
     </div>
   );
 }
+
+// ─── Tutorial System ──────────────────────────────────────────────────────────
+// Componente reutilizável de tutorial passo a passo com overlay escuro.
+// steps: Array<{ title, body, highlight?: string (CSS selector) }>
+function TutorialOverlay({ steps, onClose }) {
+  const [idx, setIdx] = useState(0);
+  const [spotRect, setSpotRect] = useState(null);
+  const step = steps[idx];
+  const isLast = idx === steps.length - 1;
+
+  useEffect(() => {
+    if (!step.highlight) { setSpotRect(null); return; }
+    const el = document.querySelector(step.highlight);
+    if (!el) { setSpotRect(null); return; }
+    const r = el.getBoundingClientRect();
+    setSpotRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [idx, step.highlight]);
+
+  const PAD = 10;
+  const sr = spotRect;
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9000, fontFamily: "'DM Sans',sans-serif" }}>
+      {/* Dark overlay with spotlight cutout */}
+      <svg
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <mask id="tut-mask">
+            <rect width="100%" height="100%" fill="white" />
+            {sr && (
+              <rect
+                x={sr.left - PAD}
+                y={sr.top - PAD}
+                width={sr.width + PAD * 2}
+                height={sr.height + PAD * 2}
+                rx="12"
+                fill="black"
+              />
+            )}
+          </mask>
+        </defs>
+        <rect width="100%" height="100%" fill="rgba(0,0,0,0.82)" mask="url(#tut-mask)" />
+        {sr && (
+          <rect
+            x={sr.left - PAD}
+            y={sr.top - PAD}
+            width={sr.width + PAD * 2}
+            height={sr.height + PAD * 2}
+            rx="12"
+            fill="none"
+            stroke="#34d399"
+            strokeWidth="2"
+            strokeDasharray="6 3"
+            style={{ animation: "tut-dash 1s linear infinite" }}
+          />
+        )}
+      </svg>
+
+      <style>{`
+        @keyframes tut-dash { to { stroke-dashoffset: -18; } }
+        @keyframes tut-card-in { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+      `}</style>
+
+      {/* Card de instrução — posicionado no bottom */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "calc(env(safe-area-inset-bottom,0px) + 16px)",
+          left: 16, right: 16,
+          background: "linear-gradient(160deg,#0c1b14,#071209)",
+          border: "1px solid rgba(52,211,153,0.28)",
+          borderRadius: 20,
+          padding: "22px 20px 18px",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.9)",
+          animation: "tut-card-in 0.3s ease",
+          zIndex: 9001,
+        }}
+      >
+        {/* Progress dots */}
+        <div style={{ display: "flex", gap: 5, marginBottom: 14, justifyContent: "center" }}>
+          {steps.map((_, i) => (
+            <div key={i} style={{
+              width: i === idx ? 20 : 6, height: 6, borderRadius: 3,
+              background: i === idx ? "#34d399" : i < idx ? "rgba(52,211,153,0.4)" : "rgba(255,255,255,0.12)",
+              transition: "width 0.25s,background 0.25s",
+            }} />
+          ))}
+        </div>
+
+        {/* Step counter */}
+        <div style={{ color: "#34d399", fontSize: 10, fontWeight: 800, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>
+          Passo {idx + 1} de {steps.length}
+        </div>
+
+        {/* Title */}
+        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 22, color: "#fff", letterSpacing: 1, marginBottom: 8, lineHeight: 1.1 }}>
+          {step.title}
+        </div>
+
+        {/* Body */}
+        <div style={{ color: "#9CA3AF", fontSize: 13, lineHeight: 1.65, marginBottom: 20 }}>
+          {step.body}
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={onClose}
+            style={{
+              flex: 1, padding: "12px 0", borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(255,255,255,0.04)",
+              color: "#6B7280", cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 700,
+            }}
+          >
+            Fechar
+          </button>
+          <button
+            onClick={() => { if (isLast) { onClose(); } else { setIdx(i => i + 1); } }}
+            style={{
+              flex: 2, padding: "12px 0", borderRadius: 12,
+              border: "none",
+              background: isLast ? "linear-gradient(135deg,#15803d,#34d399)" : "linear-gradient(135deg,#0f5a30,#1a7a42)",
+              color: "#fff", cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 800,
+              boxShadow: "0 4px 16px rgba(52,211,153,0.3)",
+            }}
+          >
+            {isLast ? "Concluir" : "Proximo"}
+          </button>
+        </div>
+      </div>
+
+      {/* Click anywhere no overlay para fechar */}
+      <div
+        style={{ position: "absolute", inset: 0, zIndex: 9000 }}
+        onClick={e => {
+          // só fecha se clicar fora do card e fora do spotlight
+          const card = e.currentTarget.nextSibling;
+          if (card && card.contains(e.target)) return;
+          onClose();
+        }}
+      />
+    </div>
+  );
+}
+
+// Botão de ajuda (?) fixo no canto superior direito
+function TutorialButton({ onClick, style }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Abrir tutorial"
+      title="Tutorial"
+      style={{
+        position: "absolute",
+        top: 12, right: 12,
+        width: 28, height: 28,
+        borderRadius: "50%",
+        border: "1.5px solid rgba(52,211,153,0.4)",
+        background: "rgba(52,211,153,0.1)",
+        color: "#34d399",
+        cursor: "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: "'DM Sans',sans-serif",
+        fontSize: 13, fontWeight: 800,
+        zIndex: 100,
+        backdropFilter: "blur(4px)",
+        transition: "background 0.15s,border-color 0.15s",
+        ...style,
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.22)"; e.currentTarget.style.borderColor = "rgba(52,211,153,0.7)"; }}
+      onMouseLeave={e => { e.currentTarget.style.background = "rgba(52,211,153,0.1)"; e.currentTarget.style.borderColor = "rgba(52,211,153,0.4)"; }}
+    >
+      ?
+    </button>
+  );
+}
+
+// Modal de confirmação antes de iniciar o tutorial
+function TutorialPrompt({ screenName, onConfirm, onCancel }) {
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 8900, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: "linear-gradient(160deg,#0c1b14,#071209)",
+          border: "1px solid rgba(52,211,153,0.25)",
+          borderRadius: 22, padding: "28px 22px", maxWidth: 320, width: "100%", textAlign: "center",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.9)",
+        }}
+      >
+        <div style={{
+          width: 56, height: 56, borderRadius: 16,
+          background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)",
+          display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px",
+        }}>
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.8" strokeLinecap="round">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+        </div>
+        <div style={{ fontFamily: "'Bebas Neue',sans-serif", fontSize: 22, color: "#fff", letterSpacing: 1, marginBottom: 8 }}>
+          Tutorial: {screenName}
+        </div>
+        <div style={{ color: "#6B7280", fontFamily: "'DM Sans',sans-serif", fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
+          Quer ver um tutorial das funcionalidades desta tela?
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1, padding: "13px 0", borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(255,255,255,0.04)",
+              color: "#9CA3AF", cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 700,
+            }}
+          >
+            Agora nao
+          </button>
+          <button
+            onClick={onConfirm}
+            style={{
+              flex: 1, padding: "13px 0", borderRadius: 12, border: "none",
+              background: "linear-gradient(135deg,#15803d,#34d399)",
+              color: "#fff", cursor: "pointer",
+              fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 800,
+              boxShadow: "0 4px 16px rgba(52,211,153,0.3)",
+            }}
+          >
+            Sim, ver
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dados de tutorial por tela ───────────────────────────────────────────────
+const TUTORIAL_HOME = [
+  {
+    title: "Tela de Times",
+    body: "Esta e a tela principal do Futebol de Campo. Aqui voce gerencia todos os seus times. Vamos ver cada elemento.",
+    highlight: null,
+  },
+  {
+    title: "Seu contador de times",
+    body: "Este numero mostra quantos times voce ja criou. No plano gratuito voce pode ter ate 1 time; no PRO, times ilimitados.",
+    highlight: ".home-times-counter",
+  },
+  {
+    title: "Importar time",
+    body: "Use o botao Importar para adicionar um time compartilhado por outro usuario via codigo. Ideal para copiar elencos prontos.",
+    highlight: ".home-import-btn",
+  },
+  {
+    title: "Card do time",
+    body: "Cada time aparece como um card. Ele mostra a formacao tatica, numero de jogadores e quantos estao escalados. Toque no card para abrir a prancheta.",
+    highlight: ".team-card",
+  },
+  {
+    title: "Editar, compartilhar e excluir",
+    body: "Nos botoes laterais do card voce pode: editar o nome e cores do time (azul), compartilhar via codigo (verde), ou excluir o time (vermelho).",
+    highlight: ".tc-action-btn",
+  },
+  {
+    title: "Abrir prancheta tatica",
+    body: "Toque em 'Abrir prancheta tatica' no rodape do card para entrar na tela de Escalacao, onde voce posiciona jogadores no campo.",
+    highlight: ".tc-footer",
+  },
+  {
+    title: "Criar novo time",
+    body: "O botao verde + no canto inferior direito cria um novo time. Voce define nome, cores do escudo e formacao inicial.",
+    highlight: ".home-fab",
+  },
+];
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 function App() {
