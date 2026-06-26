@@ -1,0 +1,20 @@
+{
+    "name": "Escalação FC",
+    "short_name": "EscalaçãoFC",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#050c0a",
+    "theme_color": "#050c0a",
+    "icons": [
+      {
+        "src": "https://i.ibb.co/jPJ8VM6k/Escala-o-FC-SF.png",
+        "sizes": "192x192",
+        "type": "image/png"
+      },
+      {
+        "src": "https://i.ibb.co/jPJ8VM6k/Escala-o-FC-SF.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ]
+  }
