@@ -318,9 +318,22 @@ async function loadTeamsCloud(uid, { force = false } = {}) {
     const snap = await fb.getDocs(col);
     if (snap.empty) { _memCache.set(_memCache.teams, uid, []); return []; }
 
-    const allDocs = snap.docs.map(d => d.data());
+    const allDocs = [];
+    const cleanupPromises = [];
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data();
+      // Ignorar documentos com ID inválido (ex: "undefined") criados por bug
+      if (!docSnap.id || docSnap.id === "undefined") {
+        cleanupPromises.push(fb.deleteDoc(docSnap.ref).catch(() => {}));
+        continue;
+      }
+      allDocs.push(data);
+    }
+    // Limpar docs inválidos em background (sem bloquear)
+    if (cleanupPromises.length > 0) Promise.all(cleanupPromises);
+
     // Times marcados como migrados para collab: verificar se collab ainda existe.
-    // Se nao existir (estado orfao por falha/teste), limpar o flag automaticamente.
+    // Se não existir (estado órfão), limpar o flag automaticamente.
     const migratedTeams = allDocs.filter(t => t._collabMigrated);
     if (migratedTeams.length > 0) {
       await Promise.all(migratedTeams.map(async t => {
@@ -1551,11 +1564,20 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
   const handleActivate = async () => {
     setStep("activating");
     const fb = getFirebase(); if (!fb) { setStep("error"); return; }
+    // Garantir que team.id é válido antes de qualquer escrita no Firestore
+    if (!team.id || String(team.id) === "undefined") {
+      console.warn("handleActivate: team.id inválido", team.id);
+      setStep("error");
+      return;
+    }
     try {
       const now = fb.serverTimestamp();
       const tid = String(team.id);
+      // Spread apenas campos seguros — excluir players/lineups/lineup (arrays grandes)
+      const { players: _p, lineups: _l, lineup: _li, ...teamMeta } = team;
       await fb.setDoc(fb.doc(fb.db, "collab_teams", tid), {
-        ...team,
+        ...teamMeta,
+        id: tid,
         isCollab: true,
         ownerUid: user.uid,
         updatedAt: now,
@@ -11808,7 +11830,7 @@ function App() {
                 setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
               }
             } else if (t.isCollab) {
-              // Tentar carregar como collab; se nao existir mais, tratar como time pessoal
+              // Tentar carregar como collab; se não existir, recuperar como time pessoal
               const full = await loadCollabTeamFull(t.id);
               if (full) {
                 if (!collabUnsubsRef.current[t.id]) {
@@ -11826,21 +11848,19 @@ function App() {
                   });
                 }
                 setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
-              } else {
-                // Doc collab nao existe mais — estado orfao, corrigir e carregar como pessoal
+              } else if (u) {
+                // Doc collab não existe — estado órfão, corrigir e carregar como pessoal
                 if (collabUnsubsRef.current[t.id]) {
                   try { collabUnsubsRef.current[t.id](); } catch {}
                   delete collabUnsubsRef.current[t.id];
                 }
-                if (u) {
-                  try {
-                    await fb.setDoc(fb.doc(fb.db, "users", u, "teams", String(t.id)), { _collabMigrated: false, isCollab: false }, { merge: true });
-                    await fb.deleteDoc(fb.doc(fb.db, "users", u, "collab_refs", String(t.id)));
-                  } catch {}
-                  _memCache.invalidateTeam(u, t.id);
-                  const fixed = await loadTeamFull(u, { ...t, isCollab: false, _collabMigrated: false });
-                  setTeams(prev => prev.map(tm => tm.id === t.id ? { ...(fixed || tm), isCollab: false } : tm));
-                }
+                try {
+                  await fb.setDoc(fb.doc(fb.db, "users", u, "teams", String(t.id)), { _collabMigrated: false, isCollab: false }, { merge: true });
+                  await fb.deleteDoc(fb.doc(fb.db, "users", u, "collab_refs", String(t.id)));
+                } catch {}
+                _memCache.invalidateTeam(u, t.id);
+                const fixed = await loadTeamFull(u, { ...t, isCollab: false, _collabMigrated: false });
+                setTeams(prev => prev.map(tm => tm.id === t.id ? { ...(fixed || tm), isCollab: false } : tm));
               }
             }
             setActiveTeamId(t.id);
