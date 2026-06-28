@@ -1873,9 +1873,22 @@ async function createCollabAgenda(ownerUid, ownerUser, agenda) {
   try {
     const agendaId = String(agenda.id);
     const now = fb.serverTimestamp();
+    const { players: _p, ...agendaMeta } = agenda;
     await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId), {
-      ...agenda, isCollab: true, ownerUid, updatedAt: now,
+      ...agendaMeta, isCollab: true, ownerUid, updatedAt: now,
     });
+
+    // Copiar mensalidades existentes do path pessoal para o collab.
+    // Necessário para que dados já registrados apareçam ao ativar a colaboração.
+    const personalMensSnap = await fb.getDocs(
+      fb.collection(fb.db, "users", ownerUid, "mensalistas", agendaId, "mensalidades")
+    );
+    if (!personalMensSnap.empty) {
+      await Promise.all(personalMensSnap.docs.map(d =>
+        fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "mensalidades", d.id), { ...d.data(), updatedAt: now })
+      ));
+    }
+
     await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", ownerUid), {
       uid: ownerUid, name: ownerUser.displayName || ownerUser.email || "Dono",
       email: ownerUser.email || "", role: "owner", joinedAt: now,
@@ -1885,6 +1898,58 @@ async function createCollabAgenda(ownerUid, ownerUser, agenda) {
     });
     return true;
   } catch(e) { console.warn("createCollabAgenda error:", e); return false; }
+}
+
+/** Desativa colaboração da agenda: copia mensalidades de volta para o path pessoal,
+ *  remove membros e deleta o doc collab. Espelho de deactivateCollabTeam. */
+async function deactivateCollabAgenda(agendaId, ownerUid) {
+  const fb = getFirebase(); if (!fb) return false;
+  try {
+    const aid = String(agendaId);
+    const now = fb.serverTimestamp();
+
+    // 1. Carregar dados do collab para migrar de volta
+    const [mensSnap, membersSnap] = await Promise.all([
+      fb.getDocs(fb.collection(fb.db, "collab_agendas", aid, "mensalidades")),
+      fb.getDocs(fb.collection(fb.db, "collab_agendas", aid, "members")),
+    ]);
+
+    // 2. Copiar mensalidades de volta para o path pessoal do dono
+    if (!mensSnap.empty) {
+      await Promise.all(mensSnap.docs.map(d =>
+        fb.setDoc(
+          fb.doc(fb.db, "users", ownerUid, "mensalistas", aid, "mensalidades", d.id),
+          { ...d.data(), updatedAt: now }
+        )
+      ));
+    }
+
+    // 3. Marcar agenda pessoal como não-collab
+    await fb.setDoc(
+      fb.doc(fb.db, "users", ownerUid, "mensalistas", aid),
+      { isCollab: false, _collabMigrated: false },
+      { merge: true }
+    );
+
+    // 4. Remover collab_agenda_refs de todos os membros
+    await Promise.all(membersSnap.docs.map(d =>
+      fb.deleteDoc(fb.doc(fb.db, "users", d.id, "collab_agenda_refs", aid))
+    ));
+
+    // 5. Deletar subcoleções do collab em batch
+    const allDocs = [...mensSnap.docs, ...membersSnap.docs];
+    const CHUNK = 400;
+    for (let i = 0; i < allDocs.length; i += CHUNK) {
+      const batch = fb.writeBatch(fb.db);
+      allDocs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+
+    // 6. Deletar doc raiz do collab
+    await fb.deleteDoc(fb.doc(fb.db, "collab_agendas", aid));
+
+    return true;
+  } catch(e) { console.warn("deactivateCollabAgenda error:", e); return false; }
 }
 
 async function createCollabAgendaInvite(agendaId, agendaName, ownerUid, ownerName) {
@@ -3343,24 +3408,52 @@ function EnableCollabAgendaModal({ agenda, user, onClose, onEnabled }) {
   );
 }
 
-function CollabAgendaInviteModal({ agenda, user, onClose }) {
+function CollabAgendaInviteModal({ agenda, user, onClose, onDeactivated, onEnabled }) {
   const [step, setStep] = useState("loading");
   const [code, setCode] = useState("");
   const [members, setMembers] = useState([]);
   const [copied, setCopied] = useState(false);
   const [removingUid, setRemovingUid] = useState(null);
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
+  const [collabActive, setCollabActive] = useState(!!agenda.isCollab);
   const isOwner = agenda.ownerUid === user.uid;
 
   useEffect(() => {
+    if (!collabActive) return;
     const fb = getFirebase(); if (!fb) { setStep("error"); return; }
-    // onSnapshot garante que novos membros aparecem em tempo real
     const unsub = fb.onSnapshot(
       fb.collection(fb.db, "collab_agendas", String(agenda.id), "members"),
       snap => { setMembers(snap.docs.map(d => d.data())); setStep("ready"); },
       () => setStep("error")
     );
     return () => unsub();
-  }, [agenda.id]);
+  }, [agenda.id, collabActive]);
+
+  const handleDeactivate = async () => {
+    setConfirmDeactivate(false);
+    setStep("deactivating");
+    const ok = await deactivateCollabAgenda(agenda.id, user.uid);
+    if (ok) {
+      setCollabActive(false);
+      setCode("");
+      setMembers([]);
+      setStep("ready");
+      if (onDeactivated) onDeactivated();
+    } else {
+      setStep("error");
+    }
+  };
+
+  const handleReactivate = async () => {
+    setStep("loading");
+    const ok = await createCollabAgenda(user.uid, user, agenda);
+    if (ok) {
+      setCollabActive(true);
+      if (onEnabled) onEnabled();
+    } else {
+      setStep("error");
+    }
+  };
 
   const handleGenerateCode = async () => {
     setStep("loading");
@@ -3398,12 +3491,52 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
           </div>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>X</button>
         </div>
-        {step==="loading"&&(
-          <div style={{display:"flex",justifyContent:"center",padding:"30px 0"}}>
-            <div style={{width:36,height:36,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        {/* Toggle ativar/desativar — apenas dono */}
+        {isOwner && step !== "loading" && step !== "deactivating" && (
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:8,flexShrink:0,
+              background:collabActive?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.04)",
+              border:"1px solid "+(collabActive?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.08)")}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:collabActive?"#34d399":"#4B5563",flexShrink:0}}/>
+              <span style={{color:collabActive?"#34d399":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>
+                {collabActive?"ATIVA":"INATIVA"}
+              </span>
+            </div>
+            {collabActive ? (
+              <button onClick={()=>setConfirmDeactivate(true)}
+                style={{padding:"5px 12px",borderRadius:8,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.06)",color:"#f87171",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                Desativar
+              </button>
+            ) : (
+              <button onClick={handleReactivate}
+                style={{padding:"5px 12px",borderRadius:8,border:"1px solid rgba(59,130,246,0.3)",background:"rgba(59,130,246,0.1)",color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                Reativar
+              </button>
+            )}
           </div>
         )}
-        {step==="ready"&&(<>
+
+        {/* Confirmação de desativação */}
+        {confirmDeactivate&&(
+          <div style={{padding:"14px",background:"rgba(239,68,68,0.06)",borderRadius:12,border:"1px solid rgba(239,68,68,0.2)"}}>
+            <div style={{color:"#f87171",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,marginBottom:6}}>Desativar colaboração?</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,lineHeight:1.5,marginBottom:10}}>
+              Os dados serão restaurados para sua agenda pessoal. Membros perderão o acesso.
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setConfirmDeactivate(false)} style={{flex:1,padding:"9px 0",borderRadius:9,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#9CA3AF",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Cancelar</button>
+              <button onClick={handleDeactivate} style={{flex:1,padding:"9px 0",borderRadius:9,border:"none",background:"rgba(239,68,68,0.15)",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Confirmar</button>
+            </div>
+          </div>
+        )}
+
+        {(step==="loading"||step==="deactivating")&&(
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:12,padding:"30px 0"}}>
+            <div style={{width:36,height:36,border:"3px solid rgba(59,130,246,0.2)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+            <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12}}>{step==="deactivating"?"Desativando...":"Carregando..."}</span>
+          </div>
+        )}
+        {step==="ready"&&collabActive&&(<>
           <div>
             <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:1,marginBottom:8}}>Membros ({members.length})</div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -3451,9 +3584,17 @@ function CollabAgendaInviteModal({ agenda, user, onClose }) {
             </div>
           )}
         </>)}
+        {step==="ready"&&!collabActive&&(
+          <div style={{padding:"14px",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(255,255,255,0.08)",textAlign:"center"}}>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12,lineHeight:1.6}}>
+              Colaboração desativada. Use o botão "Reativar" acima para ativar novamente.
+            </div>
+          </div>
+        )}
         {step==="error"&&(
           <div style={{textAlign:"center",padding:"20px 0"}}>
-            <div style={{color:"#f87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>ERRO AO CARREGAR</div>
+            <div style={{color:"#f87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1}}>ERRO</div>
+            <div style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:12,marginTop:4}}>Verifique sua conexão e tente novamente.</div>
           </div>
         )}
       </div>
@@ -3788,6 +3929,16 @@ function MensalistasScreen({ onBack, uid, user }) {
           agenda={manageCollabAgenda}
           user={user}
           onClose={()=>setManageCollabAgenda(null)}
+          onDeactivated={()=>{
+            setAgendas(prev=>prev.map(a=>a.id===manageCollabAgenda.id?{...a,isCollab:false,ownerUid:undefined}:a));
+            setManageCollabAgenda(prev=>prev?{...prev,isCollab:false}:null);
+            showToast("Colaboracao desativada — agenda restaurada");
+          }}
+          onEnabled={()=>{
+            setAgendas(prev=>prev.map(a=>a.id===manageCollabAgenda.id?{...a,isCollab:true,ownerUid:uid}:a));
+            setManageCollabAgenda(prev=>prev?{...prev,isCollab:true}:null);
+            showToast("Colaboracao reativada!");
+          }}
         />
       )}
       {showJoinCollabAgenda&&user&&(
