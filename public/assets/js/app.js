@@ -2476,7 +2476,8 @@ function KitIconPreview({kit,size=38,number,team=null}){
   const tki=kit?.teamKitIcon;
   if(tki?.file){
     const folder=tki.folder==="europa"?"icones_uniformes_europa":"icones_uniformes_brasil";
-    const shieldSize=Math.round(size*0.38);
+    const shieldScale=tki.shieldScale||1;
+    const shieldSize=Math.round(size*0.38*shieldScale);
     const shieldX=tki.shieldX??50; // percent from left
     const shieldY=tki.shieldY??30; // percent from top
     const [c1,c2]=team?SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length]:["#1a6b3a","#34d399"];
@@ -2487,7 +2488,7 @@ function KitIconPreview({kit,size=38,number,team=null}){
           style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>
         {tki.shield&&team&&(
           <div style={{position:"absolute",left:`${shieldX}%`,top:`${shieldY}%`,transform:"translate(-50%,-50%)",pointerEvents:"none"}}>
-            <ShieldVisual c1={c1} c2={c2} shape={shape} photo={team.photo} emoji={team.shieldEmoji} size={shieldSize} uid={team.id||"prev"} name={team.name||""}/>
+            <ShieldVisual c1={c1} c2={c2} shape={shape} photo={team.photo} emoji={team.shieldEmoji} size={shieldSize} uid={team.id||"prev"} name={team.name||""} transparent={!!team.shieldTransparent}/>
           </div>
         )}
       </div>
@@ -2757,7 +2758,15 @@ function SyncIndicator({status, onRetry}) {
  * rounded-square style. `uid` must be unique per rendered instance to avoid
  * SVG id collisions when several shields render on the same page.
  */
-function ShieldVisual({c1,c2,shape,photo,emoji,size=56,uid,name=""}) {
+function ShieldVisual({c1,c2,shape,photo,emoji,size=56,uid,name="",transparent=false}) {
+  // Transparent PNG mode: show image as-is, no background shape
+  if(transparent && photo){
+    return (
+      <div style={{width:size,height:size,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <img src={photo} alt={name} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+      </div>
+    );
+  }
   if (shape) {
     const gradId=`sg-${uid}`, clipId=`sc-${uid}`;
     return (
@@ -2796,7 +2805,7 @@ function ShieldVisual({c1,c2,shape,photo,emoji,size=56,uid,name=""}) {
 function TeamShield({team, size=56}) {
   const [c1,c2] = SHIELD_COLORS[(team.colorIdx||0) % SHIELD_COLORS.length];
   const shape = SHIELD_SHAPES.find(s=>s.id===team.shieldShapeId);
-  return <ShieldVisual c1={c1} c2={c2} shape={shape} photo={team.photo} emoji={team.shieldEmoji} size={size} uid={team.id} name={team.name}/>;
+  return <ShieldVisual c1={c1} c2={c2} shape={shape} photo={team.photo} emoji={team.shieldEmoji} size={size} uid={team.id} name={team.name} transparent={!!team.shieldTransparent}/>;
 }
 
 function PlayerAvatar({player,size=44,style:ex={},team=null}) {
@@ -3033,7 +3042,7 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
           {/* Preview escudo */}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
             <div style={{width:80,height:80,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <ShieldVisual c1={c1} c2={c2} shape={previewShape} photo={form.photo} emoji={form.shieldEmoji} size={80} uid={previewIdRef.current} name={form.name}/>
+              <ShieldVisual c1={c1} c2={c2} shape={previewShape} photo={form.photo} emoji={form.shieldEmoji} size={80} uid={previewIdRef.current} name={form.name} transparent={!!form.shieldTransparent}/>
             </div>
             <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11}}>Prévia do escudo</span>
           </div>
@@ -3112,6 +3121,21 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             <span style={LT}>Ou envie uma imagem do escudo (opcional)</span>
             <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
+            {form.photo&&(
+              <button onClick={()=>set("shieldTransparent",!form.shieldTransparent)} style={{
+                display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:9,border:"1px solid",cursor:"pointer",
+                borderColor:form.shieldTransparent?"rgba(52,211,153,0.4)":"rgba(255,255,255,0.1)",
+                background:form.shieldTransparent?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
+              }}>
+                <div style={{width:14,height:14,borderRadius:3,border:"2px solid",flexShrink:0,transition:"all 0.15s",
+                  borderColor:form.shieldTransparent?"#34d399":"#6B7280",
+                  background:form.shieldTransparent?"#34d399":"transparent",
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {form.shieldTransparent&&<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="4" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                </div>
+                <span style={{color:form.shieldTransparent?"#34d399":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>Imagem sem fundo (PNG transparente)</span>
+              </button>
+            )}
           </div>
           </>)}
 
@@ -3353,7 +3377,7 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
 
                         {/* Preview + posicionamento do escudo */}
                         {tki?.shield&&(
-                          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                          <div style={{display:"flex",flexDirection:"column",gap:8}}>
                             <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textAlign:"center"}}>Arraste o escudo para posicioná-lo</span>
                             <div ref={kitPreviewRef} style={{position:"relative",width:"100%",paddingBottom:"100%",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",overflow:"hidden",cursor:"grab",userSelect:"none",touchAction:"none"}}
                               onMouseDown={handleDragStart} onTouchStart={handleDragStart}>
@@ -3361,8 +3385,20 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                                 <img src={`/assets/images/icones_uniformes/${kitFolder}/${tki.file}`} alt={tki.name||""} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",pointerEvents:"none",userSelect:"none"}}/>
                               </div>
                               <div style={{position:"absolute",left:`${liveShieldX}%`,top:`${liveShieldY}%`,transform:"translate(-50%,-50%)",pointerEvents:"none"}}>
-                                <ShieldVisual c1={sc1} c2={sc2} shape={scShape} photo={form.photo} emoji={form.shieldEmoji} size={52} uid={"kit-prev"} name={form.name||""}/>
+                                <ShieldVisual c1={sc1} c2={sc2} shape={scShape} photo={form.photo} emoji={form.shieldEmoji}
+                                  size={Math.round(52*(tki.shieldScale||1))} uid={"kit-prev"} name={form.name||""} transparent={!!form.shieldTransparent}/>
                               </div>
+                            </div>
+                            {/* Slider de tamanho do escudo */}
+                            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700}}>TAMANHO DO ESCUDO</span>
+                                <span style={{color:"#34d399",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700}}>{Math.round((tki.shieldScale||1)*100)}%</span>
+                              </div>
+                              <input type="range" min="0.3" max="2.2" step="0.05"
+                                value={tki.shieldScale||1}
+                                onChange={e=>updateKit(kit.id,{teamKitIcon:{...tki,shieldScale:parseFloat(e.target.value)}})}
+                                style={{width:"100%",accentColor:"#34d399",cursor:"pointer"}}/>
                             </div>
                           </div>
                         )}
@@ -7309,6 +7345,13 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     }));
     // Also preload team shield photo if present
     if(team?.photo) await loadImg(team.photo);
+    // Preload kit uniform images if any kit has teamKitIcon set
+    for(const kit of (team?.kits||[])){
+      if(kit.teamKitIcon?.file){
+        const f=kit.teamKitIcon.folder==="europa"?"icones_uniformes_europa":"icones_uniformes_brasil";
+        await loadImg(`/assets/images/icones_uniformes/${f}/${kit.teamKitIcon.file}`);
+      }
+    }
     // Also preload the user's custom watermark/logo, if set
     if(logoRef.current) await loadImg(logoRef.current);
     return cache;
@@ -7350,6 +7393,19 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     const shape=SHIELD_SHAPES.find(s=>s.id===team?.shieldShapeId);
     const r=size*0.18;
     const cachedShield=team?.photo?imageCache[team.photo]:null;
+
+    // Transparent PNG mode: draw image as-is without shape/background
+    if(team?.shieldTransparent&&cachedShield){
+      ctx.save();
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+      const iw=cachedShield.naturalWidth||cachedShield.width||1;
+      const ih=cachedShield.naturalHeight||cachedShield.height||1;
+      const scale=Math.min(size/iw,size/ih);
+      const sw=iw*scale,sh=ih*scale;
+      ctx.drawImage(cachedShield,x+(size-sw)/2,y+(size-sh)/2,sw,sh);
+      ctx.restore();
+      return;
+    }
 
     if(shape){
       // Custom SVG shield shape — drawn in a 0..100 local space, scaled to `size`
@@ -7474,6 +7530,31 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       const sw=iw*scale,sh=ih*scale;
       ctx.drawImage(cachedImg,cx-(sw/2),cy-(sh/2),sw,sh);
     } else if(player){
+      const playerKit=getPlayerKit(team,player);
+      const tki=playerKit?.teamKitIcon;
+      if(tki?.file){
+        const f=tki.folder==="europa"?"icones_uniformes_europa":"icones_uniformes_brasil";
+        const kitImg=imageCache[`/assets/images/icones_uniformes/${f}/${tki.file}`];
+        if(kitImg){
+          ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+          const kw=kitImg.naturalWidth||kitImg.width||1;
+          const kh=kitImg.naturalHeight||kitImg.height||1;
+          const scale=Math.min((R*2)/kw,(R*2)/kh);
+          const sw=kw*scale,sh=kh*scale;
+          ctx.drawImage(kitImg,cx-(sw/2),cy-(sh/2),sw,sh);
+          ctx.restore();
+          // Shield overlay (outside circle clip)
+          if(tki.shield){
+            const sc=tki.shieldScale||1;
+            const sSize=Math.round(R*0.76*sc);
+            const sx=cx-R+(tki.shieldX??50)/100*(R*2)-sSize/2;
+            const sy=cy-R+(tki.shieldY??30)/100*(R*2)-sSize/2;
+            drawShieldInHeader(ctx,imageCache,sx,sy,sSize,isModern,accent);
+          }
+          // Skip ctx.restore() — already done above
+          return;
+        }
+      }
       const jersey=getPlayerJersey(team,player);
       drawJerseyFill(ctx,cx,cy,R,jersey);
       if(isModern){
