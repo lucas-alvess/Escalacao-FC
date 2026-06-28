@@ -2421,12 +2421,31 @@ function makeDefaultKits(colorIdx=0){
   ];
 }
 
-// Badges de times conhecidos — adicione objetos { file, name } conforme as imagens
-// forem colocadas em /assets/images/badges/
-const TEAM_BADGE_ICONS = [
-  // { file: "flamengo.png",     name: "Flamengo" },
-  // { file: "corinthians.png",  name: "Corinthians" },
-  // Adicione mais aqui conforme os arquivos chegarem
+const TEAM_KITS_BRASIL = [
+  { file:"fla.png",  name:"Flamengo" },
+  { file:"cor.png",  name:"Corinthians" },
+  { file:"pal.png",  name:"Palmeiras" },
+  { file:"san.png",  name:"Santos" },
+  { file:"sao.png",  name:"São Paulo" },
+  { file:"int.png",  name:"Internacional" },
+  { file:"gre.png",  name:"Grêmio" },
+  { file:"cru.png",  name:"Cruzeiro" },
+  { file:"atlmg.png",name:"Atlético MG" },
+  { file:"flu.png",  name:"Fluminense" },
+  { file:"vas.png",  name:"Vasco" },
+];
+const TEAM_KITS_EUROPA = [
+  { file:"real_madrid.png",   name:"Real Madrid" },
+  { file:"barcelona.png",     name:"Barcelona" },
+  { file:"man_united.png",    name:"Man. United" },
+  { file:"liverpool.png",     name:"Liverpool" },
+  { file:"man_city.png",      name:"Man. City" },
+  { file:"chelsea.png",       name:"Chelsea" },
+  { file:"bayern.png",        name:"Bayern" },
+  { file:"juventus.png",      name:"Juventus" },
+  { file:"milan.png",         name:"Milan" },
+  { file:"atletico_madrid.png",name:"Atlético Madrid" },
+  { file:"psg.png",           name:"PSG" },
 ];
 
 /** Resolves the jersey a player should wear, based on the team's kit library. */
@@ -2450,14 +2469,27 @@ function getPlayerKit(team,player){
   return kits.find(k=>k.id===team?.activeKitId)||kits.find(k=>k.type==="titular")||kits[0];
 }
 
-/** Renders the kit icon — either the colored round circle or a team badge image. */
-function KitIconPreview({kit,size=38,number}){
+/** Renders the kit icon: colored round circle, or team uniform image with optional shield overlay. */
+function KitIconPreview({kit,size=38,number,team=null}){
   const jersey=kit?.jersey||{pattern:"solid",primary:"#1a6b3a",secondary:"#fff"};
   const num=number||(kit?.type==="goleiro"?"1":"10");
-  if(kit?.badgeIcon){
+  const tki=kit?.teamKitIcon;
+  if(tki?.file){
+    const folder=tki.folder==="europa"?"icones_uniformes_europa":"icones_uniformes_brasil";
+    const shieldSize=Math.round(size*0.38);
+    const shieldX=tki.shieldX??50; // percent from left
+    const shieldY=tki.shieldY??30; // percent from top
+    const [c1,c2]=team?SHIELD_COLORS[(team.colorIdx||0)%SHIELD_COLORS.length]:["#1a6b3a","#34d399"];
+    const shape=team?SHIELD_SHAPES.find(s=>s.id===team.shieldShapeId):null;
     return (
-      <div style={{width:size,height:size,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <img src={`/assets/images/badges/${kit.badgeIcon}`} alt={kit.name||""} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+      <div style={{width:size,height:size,position:"relative",flexShrink:0}}>
+        <img src={`/assets/images/icones_uniformes/${folder}/${tki.file}`} alt={tki.name||""}
+          style={{width:"100%",height:"100%",objectFit:"contain",display:"block"}}/>
+        {tki.shield&&team&&(
+          <div style={{position:"absolute",left:`${shieldX}%`,top:`${shieldY}%`,transform:"translate(-50%,-50%)",pointerEvents:"none"}}>
+            <ShieldVisual c1={c1} c2={c2} shape={shape} photo={team.photo} emoji={team.shieldEmoji} size={shieldSize} uid={team.id||"prev"} name={team.name||""}/>
+          </div>
+        )}
       </div>
     );
   }
@@ -2772,8 +2804,8 @@ function PlayerAvatar({player,size=44,style:ex={},team=null}) {
   if (player?.photo) return <div style={base}><img src={player.photo} alt={player?.name||""} style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>;
   if(team){
     const kit=getPlayerKit(team,player);
-    if(kit?.badgeIcon){
-      return <div style={{...base,background:"rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"center"}}><img src={`/assets/images/badges/${kit.badgeIcon}`} alt={kit.name||""} style={{width:"100%",height:"100%",objectFit:"contain"}}/></div>;
+    if(kit?.teamKitIcon?.file){
+      return <div style={{...base,background:"transparent"}}><KitIconPreview kit={kit} size={size} team={team}/></div>;
     }
     const jersey=kit?.jersey||defaultJersey(player?.number);
     return (
@@ -2939,6 +2971,9 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
   const [tab,setTab]=useState("dados"); // "dados" | "uniformes"
   const [editingKitId,setEditingKitId]=useState(null);
   const [showKitUpsell,setShowKitUpsell]=useState(false);
+  const [kitRegion,setKitRegion]=useState("brasil"); // "brasil" | "europa"
+  const [shieldDrag,setShieldDrag]=useState(null); // {x,y} during drag, null otherwise
+  const kitPreviewRef=useRef(null);
   const set=(k,v)=>setForm(f=>({...f,[k]:v}));
   const valid=form.name.trim()!=="";
   const [c1,c2]=SHIELD_COLORS[form.colorIdx%SHIELD_COLORS.length];
@@ -3207,48 +3242,134 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                 </div>
 
                 {/* Ícone do Uniforme */}
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <span style={{...LT,fontSize:9}}>Ícone do Uniforme</span>
-                  <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>updateKit(kit.id,{badgeIcon:null})} style={{
-                      flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"8px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",
-                      borderColor:!kit.badgeIcon?"#34d399":"rgba(255,255,255,0.08)",
-                      background:!kit.badgeIcon?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
-                    }}>
-                      <div style={{width:28,height:28,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:11,color:"#fff"}}>10</span>
-                      </div>
-                      <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700}}>Redondo</span>
-                    </button>
-                    <button onClick={()=>{
-                      if(TEAM_BADGE_ICONS.length===0){return;}
-                      if(!kit.badgeIcon) updateKit(kit.id,{badgeIcon:TEAM_BADGE_ICONS[0].file});
-                    }} style={{
-                      flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"8px 4px",borderRadius:9,border:"2px solid",cursor:TEAM_BADGE_ICONS.length===0?"not-allowed":"pointer",
-                      borderColor:kit.badgeIcon?"#34d399":"rgba(255,255,255,0.08)",
-                      background:kit.badgeIcon?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",
-                      opacity:TEAM_BADGE_ICONS.length===0?0.4:1,transition:"all 0.15s"
-                    }}>
-                      <div style={{width:28,height:28,borderRadius:"50%",border:"1px dashed rgba(52,211,153,0.4)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-                      </div>
-                      <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700,textAlign:"center"}}>{TEAM_BADGE_ICONS.length===0?"Em breve":"Escudo Time"}</span>
-                    </button>
-                  </div>
-                  {kit.badgeIcon&&TEAM_BADGE_ICONS.length>0&&(
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:6}}>
-                      {TEAM_BADGE_ICONS.map(b=>(
-                        <button key={b.file} onClick={()=>updateKit(kit.id,{badgeIcon:b.file})} title={b.name} style={{
-                          aspectRatio:"1",borderRadius:9,border:"2px solid",cursor:"pointer",padding:4,
-                          borderColor:kit.badgeIcon===b.file?"#34d399":"rgba(255,255,255,0.08)",
-                          background:kit.badgeIcon===b.file?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
+                {(()=>{
+                  const tki=kit.teamKitIcon;
+                  const hasKit=!!tki?.file;
+                  const kitList=kitRegion==="brasil"?TEAM_KITS_BRASIL:TEAM_KITS_EUROPA;
+                  const kitFolder=kitRegion==="brasil"?"icones_uniformes_brasil":"icones_uniformes_europa";
+
+                  const handleDragStart=(e)=>{
+                    e.preventDefault();
+                    const box=kitPreviewRef.current?.getBoundingClientRect();
+                    if(!box)return;
+                    const move=(ev)=>{
+                      const cx=ev.touches?ev.touches[0].clientX:ev.clientX;
+                      const cy=ev.touches?ev.touches[0].clientY:ev.clientY;
+                      const x=Math.min(100,Math.max(0,((cx-box.left)/box.width)*100));
+                      const y=Math.min(100,Math.max(0,((cy-box.top)/box.height)*100));
+                      setShieldDrag({x,y});
+                    };
+                    const up=()=>{
+                      setShieldDrag(prev=>{
+                        if(prev) updateKit(kit.id,{teamKitIcon:{...tki,shieldX:prev.x,shieldY:prev.y}});
+                        return null;
+                      });
+                      window.removeEventListener("mousemove",move);
+                      window.removeEventListener("touchmove",move);
+                      window.removeEventListener("mouseup",up);
+                      window.removeEventListener("touchend",up);
+                    };
+                    window.addEventListener("mousemove",move);
+                    window.addEventListener("touchmove",move,{passive:false});
+                    window.addEventListener("mouseup",up);
+                    window.addEventListener("touchend",up);
+                  };
+
+                  const liveShieldX=shieldDrag?.x??(tki?.shieldX??50);
+                  const liveShieldY=shieldDrag?.y??(tki?.shieldY??30);
+                  const [sc1,sc2]=SHIELD_COLORS[(form.colorIdx||0)%SHIELD_COLORS.length];
+                  const scShape=SHIELD_SHAPES.find(s=>s.id===form.shieldShapeId);
+
+                  return (
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      <span style={{...LT,fontSize:9}}>Ícone do Uniforme</span>
+
+                      {/* Modo: Redondo ou Uniforme de Time */}
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>updateKit(kit.id,{teamKitIcon:null})} style={{
+                          flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"8px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",
+                          borderColor:!hasKit?"#34d399":"rgba(255,255,255,0.08)",
+                          background:!hasKit?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
                         }}>
-                          <img src={`/assets/images/badges/${b.file}`} alt={b.name} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+                          <div style={{width:28,height:28,borderRadius:"50%",background:getJerseyBackground(kit.jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            <span style={{fontFamily:getJerseyFontFamily(kit.jersey),fontSize:11,color:"#fff"}}>10</span>
+                          </div>
+                          <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700}}>Redondo</span>
                         </button>
-                      ))}
+                        <button onClick={()=>{
+                          if(!hasKit) updateKit(kit.id,{teamKitIcon:{file:kitList[0].file,name:kitList[0].name,folder:kitRegion,shield:false,shieldX:50,shieldY:30}});
+                        }} style={{
+                          flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"8px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",
+                          borderColor:hasKit?"#34d399":"rgba(255,255,255,0.08)",
+                          background:hasKit?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
+                        }}>
+                          <div style={{width:28,height:28,borderRadius:4,overflow:"hidden",background:"rgba(255,255,255,0.05)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                          </div>
+                          <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700,textAlign:"center"}}>Uniforme</span>
+                        </button>
+                      </div>
+
+                      {hasKit&&(<>
+                        {/* Tabs Brasil / Europa */}
+                        <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.04)",borderRadius:8,padding:3}}>
+                          {[["brasil","🇧🇷 Brasil"],["europa","🌍 Europeus"]].map(([r,label])=>(
+                            <button key={r} onClick={()=>setKitRegion(r)} style={{
+                              flex:1,padding:"5px 0",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,
+                              background:kitRegion===r?"rgba(52,211,153,0.2)":"transparent",
+                              color:kitRegion===r?"#34d399":"#6B7280",transition:"all 0.15s"
+                            }}>{label}</button>
+                          ))}
+                        </div>
+
+                        {/* Grid de uniformes */}
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+                          {kitList.map(b=>{
+                            const sel=tki?.file===b.file&&tki?.folder===kitRegion;
+                            return (
+                              <button key={b.file} onClick={()=>updateKit(kit.id,{teamKitIcon:{...tki,file:b.file,name:b.name,folder:kitRegion}})} title={b.name} style={{
+                                display:"flex",flexDirection:"column",alignItems:"center",gap:3,padding:"6px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",
+                                borderColor:sel?"#34d399":"rgba(255,255,255,0.08)",
+                                background:sel?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
+                              }}>
+                                <img src={`/assets/images/icones_uniformes/${kitFolder}/${b.file}`} alt={b.name} style={{width:36,height:36,objectFit:"contain"}}/>
+                                <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:7,fontWeight:700,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{b.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Toggle escudo */}
+                        <button onClick={()=>updateKit(kit.id,{teamKitIcon:{...tki,shield:!tki?.shield}})} style={{
+                          display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderRadius:9,border:"1px solid",cursor:"pointer",
+                          borderColor:tki?.shield?"rgba(52,211,153,0.4)":"rgba(255,255,255,0.1)",
+                          background:tki?.shield?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
+                        }}>
+                          <div style={{width:16,height:16,borderRadius:4,border:"2px solid",borderColor:tki?.shield?"#34d399":"#6B7280",background:tki?.shield?"#34d399":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+                            {tki?.shield&&<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                          </div>
+                          <span style={{color:tki?.shield?"#34d399":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>Mostrar escudo do time no uniforme</span>
+                        </button>
+
+                        {/* Preview + posicionamento do escudo */}
+                        {tki?.shield&&(
+                          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                            <span style={{color:"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:700,textAlign:"center"}}>Arraste o escudo para posicioná-lo</span>
+                            <div ref={kitPreviewRef} style={{position:"relative",width:"100%",paddingBottom:"100%",background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(52,211,153,0.2)",overflow:"hidden",cursor:"grab",userSelect:"none",touchAction:"none"}}
+                              onMouseDown={handleDragStart} onTouchStart={handleDragStart}>
+                              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:8}}>
+                                <img src={`/assets/images/icones_uniformes/${kitFolder}/${tki.file}`} alt={tki.name||""} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain",pointerEvents:"none",userSelect:"none"}}/>
+                              </div>
+                              <div style={{position:"absolute",left:`${liveShieldX}%`,top:`${liveShieldY}%`,transform:"translate(-50%,-50%)",pointerEvents:"none"}}>
+                                <ShieldVisual c1={sc1} c2={sc2} shape={scShape} photo={form.photo} emoji={form.shieldEmoji} size={52} uid={"kit-prev"} name={form.name||""}/>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>)}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
 
                 {/* Ações */}
                 <div style={{display:"flex",gap:8}}>
