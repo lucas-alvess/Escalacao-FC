@@ -1896,6 +1896,8 @@ async function createCollabAgenda(ownerUid, ownerUser, agenda) {
     await fb.setDoc(fb.doc(fb.db, "users", ownerUid, "collab_agenda_refs", agendaId), {
       agendaId, role: "owner", joinedAt: now,
     });
+    // Marcar agenda pessoal como migrada para não duplicar na lista
+    await fb.setDoc(fb.doc(fb.db, "users", ownerUid, "mensalistas", agendaId), { _collabMigrated: true }, { merge: true });
     return true;
   } catch(e) { console.warn("createCollabAgenda error:", e); return false; }
 }
@@ -3711,7 +3713,7 @@ function MensalistasScreen({ onBack, uid, user }) {
     const { db, collection, query, orderBy, onSnapshot } = fb;
     const q = query(collection(db, `users/${uid}/mensalistas`), orderBy("createdAt", "asc"));
     const unsub = onSnapshot(q, snap => {
-      const pessoais = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const pessoais = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(a => !a._collabMigrated);
       // Carregar agendas colaborativas
       loadCollabAgendaRefs(uid).then(refs => {
         if (refs.length === 0) { setAgendas(pessoais); setLoading(false); return; }
@@ -3849,12 +3851,20 @@ function MensalistasScreen({ onBack, uid, user }) {
                     </div>
                   </div>
                   <div style={{ display:"flex",alignItems:"center",gap:6 }}>
-                    <button onClick={e => { e.stopPropagation(); if(ag.isCollab){ setManageCollabAgenda(ag); } else { setEnableCollabAgenda(ag); } }} title={ag.isCollab?"Gerenciar colaboração":"Ativar colaboração"} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(59,130,246,0.25)",background:"rgba(59,130,246,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#60a5fa",flexShrink:0 }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                    </button>
-                    <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ag.id); }} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#F87171",flexShrink:0 }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                    </button>
+                    {!(ag.isCollab && ag.ownerUid !== uid) && (
+                      <button onClick={e => { e.stopPropagation(); if(ag.isCollab){ setManageCollabAgenda(ag); } else { setEnableCollabAgenda(ag); } }} title={ag.isCollab?"Gerenciar colaboração":"Ativar colaboração"} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(59,130,246,0.25)",background:"rgba(59,130,246,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#60a5fa",flexShrink:0 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                      </button>
+                    )}
+                    {ag.isCollab && ag.ownerUid !== uid ? (
+                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ag.id); }} title="Sair da agenda" style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(251,191,36,0.25)",background:"rgba(251,191,36,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#FBBF24",flexShrink:0 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                      </button>
+                    ) : (
+                      <button onClick={e => { e.stopPropagation(); setDeleteConfirm(ag.id); }} title="Excluir agenda" style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#F87171",flexShrink:0 }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                      </button>
+                    )}
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
                   </div>
                 </div>
@@ -3900,18 +3910,22 @@ function MensalistasScreen({ onBack, uid, user }) {
       )}
 
       {/* Confirm delete */}
-      {deleteConfirm && (
-        <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:"0 24px" }}>
-          <div style={{ background:"#0d1828",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:340,border:"1px solid rgba(239,68,68,0.2)" }}>
-            <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#F87171",letterSpacing:1,marginBottom:10 }}>EXCLUIR AGENDA?</div>
-            <div style={{ color:"#9CA3AF",fontSize:13,marginBottom:20,lineHeight:1.5 }}>Todos os dados desta agenda serão removidos permanentemente.</div>
-            <div style={{ display:"flex",gap:10 }}>
-              <button className="ms-btn-ghost" style={{ flex:1 }} onClick={() => setDeleteConfirm(null)}>Cancelar</button>
-              <button onClick={() => deleteAgenda(deleteConfirm)} style={{ flex:1,background:"linear-gradient(135deg,#dc2626,#ef4444)",border:"none",borderRadius:12,padding:"12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer" }}>Excluir</button>
+      {deleteConfirm && (() => {
+        const confirmAg = agendas.find(a => a.id === deleteConfirm);
+        const isGuest = confirmAg?.isCollab && confirmAg?.ownerUid !== uid;
+        return (
+          <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:"0 24px" }}>
+            <div style={{ background:"#0d1828",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:340,border:`1px solid ${isGuest?"rgba(251,191,36,0.2)":"rgba(239,68,68,0.2)"}` }}>
+              <div style={{ fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:isGuest?"#FBBF24":"#F87171",letterSpacing:1,marginBottom:10 }}>{isGuest?"SAIR DA AGENDA?":"EXCLUIR AGENDA?"}</div>
+              <div style={{ color:"#9CA3AF",fontSize:13,marginBottom:20,lineHeight:1.5 }}>{isGuest?"Você deixará de ter acesso a esta agenda colaborativa.":"Todos os dados desta agenda serão removidos permanentemente."}</div>
+              <div style={{ display:"flex",gap:10 }}>
+                <button className="ms-btn-ghost" style={{ flex:1 }} onClick={() => setDeleteConfirm(null)}>Cancelar</button>
+                <button onClick={() => deleteAgenda(deleteConfirm)} style={{ flex:1,background:isGuest?"linear-gradient(135deg,#b45309,#f59e0b)":"linear-gradient(135deg,#dc2626,#ef4444)",border:"none",borderRadius:12,padding:"12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontWeight:700,fontSize:14,cursor:"pointer" }}>{isGuest?"Sair":"Excluir"}</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {enableCollabAgenda&&user&&(
         <EnableCollabAgendaModal
