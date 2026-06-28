@@ -1533,21 +1533,54 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
     try {
       const now = fb.serverTimestamp();
       const tid = String(team.id);
+      const uid = user.uid;
+
+      // 1. Criar / atualizar doc raiz do collab
+      const { players: _p, lineups: _l, lineup: _li, ...teamMeta } = team;
       await fb.setDoc(fb.doc(fb.db, "collab_teams", tid), {
-        ...team,
+        ...teamMeta,
         isCollab: true,
-        ownerUid: user.uid,
+        ownerUid: uid,
         updatedAt: now,
       }, { merge: true });
-      await fb.setDoc(fb.doc(fb.db, "collab_teams", tid, "members", user.uid), {
-        uid: user.uid,
+
+      // 2. Copiar jogadores e escalações do path pessoal para as subcoleções do collab.
+      //    Necessário para reativações (segunda, terceira vez...) onde as subcoleções
+      //    foram deletadas pela desativação anterior.
+      const [personalPlayersSnap, personalLineupsSnap, personalStatsSnap, personalMatchesSnap] = await Promise.all([
+        fb.getDocs(fb.collection(fb.db, "users", uid, "teams", tid, "players")),
+        fb.getDocs(fb.collection(fb.db, "users", uid, "teams", tid, "lineups")),
+        fb.getDocs(fb.collection(fb.db, "users", uid, "teams", tid, "stats")),
+        fb.getDocs(fb.collection(fb.db, "users", uid, "teams", tid, "matches")),
+      ]);
+      const copyWrites = [];
+      personalPlayersSnap.docs.forEach(d => copyWrites.push(
+        fb.setDoc(fb.doc(fb.db, "collab_teams", tid, "players", d.id), { ...d.data(), updatedAt: now })
+      ));
+      personalLineupsSnap.docs.forEach(d => copyWrites.push(
+        fb.setDoc(fb.doc(fb.db, "collab_teams", tid, "lineups", d.id), { ...d.data(), updatedAt: now })
+      ));
+      personalStatsSnap.docs.forEach(d => copyWrites.push(
+        fb.setDoc(fb.doc(fb.db, "collab_teams", tid, "stats", d.id), { ...d.data(), updatedAt: now })
+      ));
+      personalMatchesSnap.docs.forEach(d => copyWrites.push(
+        fb.setDoc(fb.doc(fb.db, "collab_teams", tid, "matches", d.id), { ...d.data(), updatedAt: now })
+      ));
+      await Promise.all(copyWrites);
+
+      // 3. Adicionar dono como membro
+      await fb.setDoc(fb.doc(fb.db, "collab_teams", tid, "members", uid), {
+        uid,
         name: user.displayName || user.email || "Dono",
         email: user.email || "",
         role: "owner",
         joinedAt: now,
       });
-      await fb.setDoc(fb.doc(fb.db, "users", user.uid, "teams", tid), { isCollab: true, _collabMigrated: true }, { merge: true });
-      await fb.setDoc(fb.doc(fb.db, "users", user.uid, "collab_refs", tid), { teamId: tid, role: "owner", joinedAt: now });
+
+      // 4. Marcar time pessoal como migrado e criar collab_ref
+      await fb.setDoc(fb.doc(fb.db, "users", uid, "teams", tid), { isCollab: true, _collabMigrated: true }, { merge: true });
+      await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_refs", tid), { teamId: tid, role: "owner", joinedAt: now });
+
       setCollabActive(true);
       if (onEnabled) onEnabled();
     } catch(e) {
