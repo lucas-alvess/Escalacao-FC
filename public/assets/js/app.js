@@ -1763,7 +1763,7 @@ function JoinCollabModal({ user, onClose, onJoined, initialCode }) {
             />
             <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,textAlign:"center"}}>Códigos colaborativos começam com a letra C</div>
           </div>
-          <button onClick={handleLookup} disabled={code.length<7} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<7?"default":"pointer",background:code.length<7?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:code.length<7?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>
+          <button onClick={()=>handleLookup()} disabled={code.length<7} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<7?"default":"pointer",background:code.length<7?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:code.length<7?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>
             BUSCAR TIME
           </button>
         </>)}
@@ -3468,7 +3468,7 @@ function JoinCollabAgendaModal({ user, onClose, onJoined }) {
               onFocus={e=>e.target.style.borderColor="#3b82f6"} onBlur={e=>e.target.style.borderColor="rgba(59,130,246,0.25)"} autoCapitalize="characters"/>
             <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,textAlign:"center"}}>Codigos de agenda comecam com A</div>
           </div>
-          <button onClick={handleLookup} disabled={code.length<7} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<7?"default":"pointer",background:code.length<7?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:code.length<7?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>BUSCAR AGENDA</button>
+          <button onClick={()=>handleLookup()} disabled={code.length<7} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:code.length<7?"default":"pointer",background:code.length<7?"rgba(255,255,255,0.06)":"linear-gradient(135deg,#1e3a8a,#3b82f6)",color:code.length<7?"#4B5563":"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5}}>BUSCAR AGENDA</button>
         </>)}
         {(step==="loading"||step==="joining")&&(
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"30px 0"}}>
