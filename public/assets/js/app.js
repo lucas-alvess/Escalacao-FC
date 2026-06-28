@@ -1528,6 +1528,7 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
 
   const handleActivate = async () => {
     setStep("activating");
+    if (!team?.id) { setStep("error"); return; }
     const fb = getFirebase(); if (!fb) { setStep("error"); return; }
     try {
       const now = fb.serverTimestamp();
@@ -11392,6 +11393,12 @@ function App() {
     beginSync();
     saveTimersRef.current[key] = setTimeout(async () => {
       startSyncing();
+      // Skip if team was deleted from state while this timer was pending
+      if (!teamsRef.current.find(t => String(t.id) === String(team.id))) {
+        delete saveTimersRef.current[key];
+        endSync(true);
+        return;
+      }
       const ok = team.isCollab
         ? await saveCollabTeamMeta(team)
         : await saveTeamCloud(user.uid, team);
@@ -11505,7 +11512,9 @@ function App() {
     const uid = fb?.auth?.currentUser?.uid;
     // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
     t.photo = form.photo || "";
-    setTeams(prev => [...prev, t]);
+    const newTeams = [...teams, t];
+    setTeams(newTeams);
+    saveDataLocal({ teams: newTeams });
     setShowNewTeam(false);
     setActiveTeamId(t.id);
     setToast("Time criado!");
@@ -11560,7 +11569,9 @@ function App() {
 
   const deleteTeam = async (id) => {
     const team = teams.find(t => t.id === id);
-    setTeams(prev => prev.filter(t => t.id !== id));
+    const filteredTeams = teams.filter(t => t.id !== id);
+    setTeams(filteredTeams);
+    saveDataLocal({ teams: filteredTeams });
     if (activeTeamId === id) setActiveTeamId(null);
 
     if (team?.isCollab) {
@@ -11578,7 +11589,13 @@ function App() {
           // Recarregar o time pessoal que voltou (sem o flag _collabMigrated)
           _memCache.invalidateTeam(uid, id);
           const restored = await loadTeamFull(uid, { id, ...team, isCollab: false, _collabMigrated: false });
-          if (restored) setTeams(prev => [...prev.filter(t => t.id !== id), { ...restored, isCollab: false }]);
+          if (restored) {
+            setTeams(prev => {
+              const next = [...prev.filter(t => t.id !== id), { ...restored, isCollab: false }];
+              saveDataLocal({ teams: next });
+              return next;
+            });
+          }
         }
       } else {
         // Editor: sair do time colaborativo
@@ -11601,7 +11618,9 @@ function App() {
           // Falhou — reverter remoção da UI e avisar o usuário
           setTeams(prev => {
             if (prev.find(t => t.id === id)) return prev;
-            return [...prev, team];
+            const reverted = [...prev, team];
+            saveDataLocal({ teams: reverted });
+            return reverted;
           });
           setToast("Erro ao sair do time. Verifique sua conexão.");
         }
@@ -11629,7 +11648,9 @@ function App() {
     const uid = fb?.auth?.currentUser?.uid;
     // PhotoPicker already compressed the image (≤300x300, JPEG 75%) — use it as-is.
     const updated = { ...editingTeam, ...form };
-    setTeams(prev => prev.map(t => t.id === editingTeam.id ? updated : t));
+    const updatedTeams = teams.map(t => t.id === editingTeam.id ? updated : t);
+    setTeams(updatedTeams);
+    saveDataLocal({ teams: updatedTeams });
     setEditingTeam(null);
     setToast("Time atualizado!");
     if (uid) {
