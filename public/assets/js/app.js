@@ -7508,6 +7508,9 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   // ── Shared: draw one player avatar circle ────────────────────────────────
   // DPR=2 canvas: all coordinates passed in are LOGICAL (pre-scale) pixels.
   // ctx has already been scaled by DPR before this is called.
+  const showCircleRef=useRef(true);
+  const [showCircle,setShowCircle]=useState(true);
+
   const drawPlayerCircle=(ctx,slot,imageCache,R,isModern,FX,FY,FW,accent="#34d399")=>{
     const entry=lineup.find(l=>l.slotId===slot.id);
     const player=entry?players.find(p=>p.id===entry.playerId):null;
@@ -7516,35 +7519,37 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     const cy=FY+(slot.y/100)*FH;
     const cachedImg=player?.photo?imageCache[player.photo]:null;
 
-    if(isModern){
-      // Outer glow halo
-      ctx.save();
-      const halo=ctx.createRadialGradient(cx,cy,R*0.8,cx,cy,R*1.9);
-      halo.addColorStop(0,player?hexToRgba(accent,0.22):"rgba(255,255,255,0.05)");
-      halo.addColorStop(1,"rgba(0,0,0,0)");
-      ctx.fillStyle=halo;
-      ctx.beginPath();ctx.arc(cx,cy,R*2,0,Math.PI*2);ctx.fill();
-      ctx.restore();
-      // Glowing ring
-      ctx.save();
-      ctx.strokeStyle=player?accent:"rgba(255,255,255,0.25)";
-      ctx.lineWidth=player?3:1.5;
-      ctx.shadowColor=player?hexToRgba(accent,0.7):"transparent";
-      ctx.shadowBlur=player?10:0;
-      ctx.beginPath();ctx.arc(cx,cy,R+2,0,Math.PI*2);ctx.stroke();
-      ctx.restore();
-    } else {
-      // Clean: subtle shadow behind circle
-      ctx.save();
-      ctx.shadowColor="rgba(0,0,0,0.25)";ctx.shadowBlur=10;ctx.shadowOffsetY=3;
-      ctx.fillStyle=player?getPlayerJersey(team,player).primary:"#d1d5db";
-      ctx.beginPath();ctx.arc(cx,cy,R+3,0,Math.PI*2);ctx.fill();
-      ctx.restore();
-      // White border
-      ctx.save();
-      ctx.strokeStyle="#ffffff";ctx.lineWidth=3;
-      ctx.beginPath();ctx.arc(cx,cy,R+2,0,Math.PI*2);ctx.stroke();
-      ctx.restore();
+    if(showCircleRef.current){
+      if(isModern){
+        // Outer glow halo
+        ctx.save();
+        const halo=ctx.createRadialGradient(cx,cy,R*0.8,cx,cy,R*1.9);
+        halo.addColorStop(0,player?hexToRgba(accent,0.22):"rgba(255,255,255,0.05)");
+        halo.addColorStop(1,"rgba(0,0,0,0)");
+        ctx.fillStyle=halo;
+        ctx.beginPath();ctx.arc(cx,cy,R*2,0,Math.PI*2);ctx.fill();
+        ctx.restore();
+        // Glowing ring
+        ctx.save();
+        ctx.strokeStyle=player?accent:"rgba(255,255,255,0.25)";
+        ctx.lineWidth=player?3:1.5;
+        ctx.shadowColor=player?hexToRgba(accent,0.7):"transparent";
+        ctx.shadowBlur=player?10:0;
+        ctx.beginPath();ctx.arc(cx,cy,R+2,0,Math.PI*2);ctx.stroke();
+        ctx.restore();
+      } else {
+        // Clean: subtle shadow behind circle
+        ctx.save();
+        ctx.shadowColor="rgba(0,0,0,0.25)";ctx.shadowBlur=10;ctx.shadowOffsetY=3;
+        ctx.fillStyle=player?getPlayerJersey(team,player).primary:"#d1d5db";
+        ctx.beginPath();ctx.arc(cx,cy,R+3,0,Math.PI*2);ctx.fill();
+        ctx.restore();
+        // White border
+        ctx.save();
+        ctx.strokeStyle="#ffffff";ctx.lineWidth=3;
+        ctx.beginPath();ctx.arc(cx,cy,R+2,0,Math.PI*2);ctx.stroke();
+        ctx.restore();
+      }
     }
 
     // Avatar fill (clipped circle)
@@ -7571,7 +7576,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
           ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
           const kw=kitImg.naturalWidth||kitImg.width||1;
           const kh=kitImg.naturalHeight||kitImg.height||1;
-          const scale=Math.min((R*2)/kw,(R*2)/kh);
+          const scale=Math.min((R*2.5)/kw,(R*2.5)/kh);
           const sw=kw*scale,sh=kh*scale;
           ctx.drawImage(kitImg,cx-(sw/2),cy-(sh/2),sw,sh);
           ctx.restore();
@@ -7583,7 +7588,38 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
             const sy=cy-R+(tki.shieldY??30)/100*(R*2)-sSize/2;
             drawShieldInHeader(ctx,imageCache,sx,sy,sSize,isModern,accent);
           }
-          // Skip ctx.restore() — already done above
+          // Draw captain badge and name tag before exiting kit path
+          if(player&&team?.captainPlayerId&&String(team.captainPlayerId)===String(player.id)){
+            const br=R*0.32;
+            const bx=cx+R*0.74,by=cy-R*0.74;
+            ctx.save();
+            ctx.fillStyle="#F59E0B";
+            ctx.strokeStyle=isModern?"#050c0a":"#ffffff";
+            ctx.lineWidth=2;
+            ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fill();ctx.stroke();
+            ctx.fillStyle="#1a1a0a";
+            ctx.font=`bold ${br*1.25}px 'Bebas Neue',sans-serif`;
+            ctx.textAlign="center";ctx.textBaseline="middle";
+            ctx.fillText("C",bx,by+br*0.08);
+            ctx.restore();
+          }
+          ctx.textAlign="center";ctx.textBaseline="top";
+          const kitTag=player.name.split(" ")[0].toUpperCase();
+          ctx.font=`bold 18px 'Bebas Neue',sans-serif`;
+          if(isModern&&ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
+          const ktw=ctx.measureText(kitTag).width;
+          if(isModern){
+            ctx.fillStyle="rgba(3,12,8,0.88)";
+            ctx.strokeStyle=hexToRgba(accent,0.35);ctx.lineWidth=1;
+            ctx.beginPath();ctx.roundRect(cx-ktw/2-9,cy+R+4,ktw+18,26,6);ctx.fill();ctx.stroke();
+            ctx.fillStyle="#ffffff";
+          } else {
+            ctx.fillStyle="rgba(26,47,36,0.88)";
+            ctx.beginPath();ctx.roundRect(cx-ktw/2-8,cy+R+4,ktw+16,26,5);ctx.fill();
+            ctx.fillStyle="#ffffff";
+          }
+          ctx.fillText(kitTag,cx,cy+R+7);
+          if(isModern&&ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
           return;
         }
       }
@@ -8060,6 +8096,34 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
               <Ico.ChevR/>
             </button>
           </div>
+
+          {/* Toggle: círculo ao redor dos jogadores */}
+          <button onClick={()=>{
+            const next=!showCircleRef.current;
+            showCircleRef.current=next;
+            setShowCircle(next);
+            drewRef.current=false;
+            draw(theme);
+            drewRef.current=true;
+          }} style={{
+            width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
+            padding:"10px 12px",borderRadius:12,cursor:"pointer",
+            background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)",
+            color:"#9CA3AF",transition:"all 0.15s"
+          }}>
+            <span style={{display:"flex",alignItems:"center",gap:8,fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
+              <Icon id="circle" size={14}/> Círculo ao redor dos jogadores
+            </span>
+            <div style={{
+              width:36,height:20,borderRadius:10,transition:"background 0.2s",position:"relative",flexShrink:0,
+              background:showCircle?"#34d399":"rgba(255,255,255,0.1)"
+            }}>
+              <div style={{
+                position:"absolute",top:3,left:showCircle?16:3,width:14,height:14,borderRadius:"50%",
+                background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"
+              }}/>
+            </div>
+          </button>
 
           {/* Marca d'água personalizada — colapsada por padrão */}
           <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
