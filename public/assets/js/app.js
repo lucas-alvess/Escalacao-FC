@@ -1743,7 +1743,7 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
 }
 
 // ── Modal: Entrar em time colaborativo por código ─────────────────────────────
-function JoinCollabModal({ user, onClose, onJoined, initialCode }) {
+function JoinCollabModal({ user, onClose, onJoined, initialCode, isPremium, collabMemberCount }) {
   const [code, setCode] = useState(initialCode || "");
   const [step, setStep] = useState(initialCode && initialCode.length >= 7 ? "loading" : "input");
   const [invite, setInvite] = useState(null);
@@ -1781,7 +1781,15 @@ function JoinCollabModal({ user, onClose, onJoined, initialCode }) {
           <button onClick={onClose} style={{background:"none",border:"none",color:"#9CA3AF",cursor:"pointer",fontSize:20}}>✕</button>
         </div>
 
-        {step==="input"&&(<>
+        {!isPremium&&(collabMemberCount||0)>=1&&(
+          <div style={{textAlign:"center",padding:"20px 0"}}>
+            <div style={{fontSize:40,marginBottom:12}}>🔒</div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:18,color:"#fbbf24",letterSpacing:1,marginBottom:8}}>LIMITE DO PLANO GRATUITO</div>
+            <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6,maxWidth:300,margin:"0 auto"}}>No plano gratuito você pode participar de apenas 1 time colaborativo. Faça upgrade para o premium e entre em quantos times quiser.</div>
+            <button onClick={onClose} style={{marginTop:20,padding:"12px 24px",borderRadius:12,border:"none",cursor:"pointer",background:"rgba(255,255,255,0.06)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700}}>Fechar</button>
+          </div>
+        )}
+        {(isPremium||(collabMemberCount||0)<1)&&step==="input"&&(<>
           <div style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:13,lineHeight:1.6}}>
             Insira o código colaborativo recebido do dono do time. Você poderá editar o time em tempo real junto com os outros membros.
           </div>
@@ -1955,6 +1963,16 @@ async function deactivateCollabAgenda(agendaId, ownerUid) {
 
     return true;
   } catch(e) { console.warn("deactivateCollabAgenda error:", e); return false; }
+}
+
+/** Desativa todas as agendas colaborativas que o usuário possui (usado no downgrade). */
+async function deactivateAllOwnedCollabAgendas(uid) {
+  const fb = getFirebase(); if (!fb) return;
+  try {
+    const snap = await fb.getDocs(fb.collection(fb.db, "users", uid, "mensalistas"));
+    const owned = snap.docs.filter(d => { const data = d.data(); return data.isCollab && data.ownerUid === uid; });
+    if (owned.length > 0) await Promise.all(owned.map(d => deactivateCollabAgenda(d.id, uid)));
+  } catch(e) { console.warn("deactivateAllOwnedCollabAgendas error:", e); }
 }
 
 async function createCollabAgendaInvite(agendaId, agendaName, ownerUid, ownerName) {
@@ -3006,6 +3024,7 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
   const [tab,setTab]=useState("dados"); // "dados" | "uniformes"
   const [editingKitId,setEditingKitId]=useState(null);
   const [showKitUpsell,setShowKitUpsell]=useState(false);
+  const [showKitIconUpsell,setShowKitIconUpsell]=useState(false);
   const [kitRegion,setKitRegion]=useState("brasil"); // "brasil" | "europa"
   const [shieldDrag,setShieldDrag]=useState(null); // {x,y} during drag, null otherwise
   const kitPreviewRef=useRef(null);
@@ -3353,14 +3372,17 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                           <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700}}>Redondo</span>
                         </button>
                         <button onClick={()=>{
+                          if(!isPremium){ setShowKitIconUpsell(true); return; }
                           if(!hasKit) updateKit(kit.id,{teamKitIcon:{file:kitList[0].file,name:kitList[0].name,folder:kitRegion,shield:false,shieldX:50,shieldY:30,shieldScale:1}});
                         }} style={{
-                          flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"8px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",
+                          flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"8px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",position:"relative",
                           borderColor:hasKit?"#34d399":"rgba(255,255,255,0.08)",
-                          background:hasKit?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
+                          background:hasKit?"rgba(52,211,153,0.1)":"rgba(255,255,255,0.03)",transition:"all 0.15s",
+                          opacity:isPremium?1:0.65
                         }}>
+                          {!isPremium&&<span style={{position:"absolute",top:3,right:4,fontSize:8}}>🔒</span>}
                           <div style={{width:28,height:28,borderRadius:4,overflow:"hidden",background:"rgba(255,255,255,0.05)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H5v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h1.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/></svg>
                           </div>
                           <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700,textAlign:"center"}}>Uniforme</span>
                         </button>
@@ -3478,6 +3500,11 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
       title="Uniformes premium"
       description="No plano gratuito você tem acesso aos uniformes Titular e Goleiro. Os uniformes Reserva, Alternativo e a criação de uniformes personalizados são exclusivos do plano premium."
       onClose={()=>setShowKitUpsell(false)}
+    />}
+    {showKitIconUpsell&&<PremiumUpsellModal
+      title="Ícone de uniforme premium"
+      description="O uso de ícones de camiseta de times (brasileiros, europeus e seleções) no uniforme é um recurso exclusivo do plano premium. O estilo Redondo continua disponível gratuitamente."
+      onClose={()=>setShowKitIconUpsell(false)}
     />}
     </>
   );
@@ -3965,7 +3992,7 @@ function JoinCollabAgendaModal({ user, onClose, onJoined }) {
 }
 
 
-function MensalistasScreen({ onBack, uid, user }) {
+function MensalistasScreen({ onBack, uid, user, isPremium }) {
   const [agendas, setAgendas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeAgendaId, setActiveAgendaId] = useState(null);
@@ -3973,6 +4000,7 @@ function MensalistasScreen({ onBack, uid, user }) {
   const [newAgendaName, setNewAgendaName] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
+  const [showCollabAgendaUpsell, setShowCollabAgendaUpsell] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [enableCollabAgenda, setEnableCollabAgenda] = useState(null);
   const [manageCollabAgenda, setManageCollabAgenda] = useState(null);
@@ -4129,7 +4157,7 @@ function MensalistasScreen({ onBack, uid, user }) {
                   </div>
                   <div style={{ display:"flex",alignItems:"center",gap:6 }}>
                     {!(ag.isCollab && ag.ownerUid !== uid) && (
-                      <button onClick={e => { e.stopPropagation(); if(ag.isCollab){ setManageCollabAgenda(ag); } else { setEnableCollabAgenda(ag); } }} title={ag.isCollab?"Gerenciar colaboração":"Ativar colaboração"} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(59,130,246,0.25)",background:"rgba(59,130,246,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#60a5fa",flexShrink:0 }}>
+                      <button onClick={e => { e.stopPropagation(); if(!isPremium){ setShowCollabAgendaUpsell(true); return; } if(ag.isCollab){ setManageCollabAgenda(ag); } else { setEnableCollabAgenda(ag); } }} title={ag.isCollab?"Gerenciar colaboração":"Ativar colaboração"} style={{ width:30,height:30,borderRadius:8,border:"1px solid rgba(59,130,246,0.25)",background:"rgba(59,130,246,0.08)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#60a5fa",flexShrink:0 }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                       </button>
                     )}
@@ -4152,7 +4180,7 @@ function MensalistasScreen({ onBack, uid, user }) {
       </div>
 
       {/* Botao entrar em agenda collab */}
-      <button onClick={() => setShowJoinCollabAgenda(true)} style={{ position:"fixed",bottom:96,right:24,zIndex:50,padding:"8px 14px",borderRadius:14,border:"1px solid rgba(59,130,246,0.35)",background:"rgba(59,130,246,0.1)",color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6 }}>
+      <button onClick={() => { if(!isPremium&&agendas.filter(a=>a.isCollab&&a.ownerUid!==uid).length>=1){ setShowCollabAgendaUpsell(true); return; } setShowJoinCollabAgenda(true); }} style={{ position:"fixed",bottom:96,right:24,zIndex:50,padding:"8px 14px",borderRadius:14,border:"1px solid rgba(59,130,246,0.35)",background:"rgba(59,130,246,0.1)",color:"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:6 }}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         Entrar em agenda
       </button>
@@ -4247,6 +4275,11 @@ function MensalistasScreen({ onBack, uid, user }) {
       )}
 
       {toast && <div className="ms-toast">{toast}</div>}
+      {showCollabAgendaUpsell&&<PremiumUpsellModal
+        title="Colaboração de agenda premium"
+        description="Ativar e entrar em agendas colaborativas é exclusivo do plano premium. Faça upgrade para cogerenciar mensalidades e finanças com outros usuários em tempo real."
+        onClose={()=>setShowCollabAgendaUpsell(false)}
+      />}
     </div>
   );
 }
@@ -6198,6 +6231,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
   const [showImport,setShowImport]=useState(false);
   const [showTutorialPrompt,setShowTutorialPrompt]=useState(false);
   const [showTutorial,setShowTutorial]=useState(false);
+  const [showCollabUpsell,setShowCollabUpsell]=useState(false);
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",fontFamily:"'DM Sans',sans-serif",position:"relative"}}>
       {/* Botao de tutorial */}
@@ -6397,11 +6431,13 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                   {/* Botao COLABORAR — somente para o dono (ativar, gerenciar ou reativar) */}
                   {(!team.isCollab || team.ownerUid===user?.uid)&&(
                     <button onClick={e=>{e.stopPropagation();
+                      if(!isPremium){ setShowCollabUpsell(true); return; }
                       // Se está ativo ou já foi dono antes → modal de gerenciar (inclui toggle reativar)
                       if (team.isCollab || team.ownerUid===user?.uid) { onManageCollab&&onManageCollab(team); }
                       else { onEnableCollab&&onEnableCollab(team); }
-                    }} aria-label={team.isCollab?"Gerenciar colaboração":"Colaboração"} title={team.isCollab?"Gerenciar colaboração":"Colaboração"} className="tc-action-btn"
-                      style={{background:team.isCollab?"rgba(59,130,246,0.18)":"rgba(59,130,246,0.08)",border:team.isCollab?"1px solid rgba(59,130,246,0.45)":"1px solid rgba(59,130,246,0.2)",color:"#60a5fa"}}>
+                    }} aria-label={team.isCollab?"Gerenciar colaboração":"Colaboração"} title={!isPremium?"Colaboração (premium)":team.isCollab?"Gerenciar colaboração":"Colaboração"} className="tc-action-btn"
+                      style={{background:team.isCollab?"rgba(59,130,246,0.18)":"rgba(59,130,246,0.08)",border:team.isCollab?"1px solid rgba(59,130,246,0.45)":"1px solid rgba(59,130,246,0.2)",color:"#60a5fa",position:"relative",opacity:isPremium?1:0.65}}>
+                      {!isPremium&&<span style={{position:"absolute",top:-3,right:-3,fontSize:8,lineHeight:1}}>🔒</span>}
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     </button>
                   )}
@@ -6479,6 +6515,11 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           onImported={(newTeamId)=>{setShowImport(false);onImportDone&&onImportDone(newTeamId);}}
         />
       )}
+      {showCollabUpsell&&<PremiumUpsellModal
+        title="Colaboração premium"
+        description="Ativar colaboração em tempo real é um recurso exclusivo do plano premium. Faça upgrade para convidar outros usuários para editar e gerir o time junto com você."
+        onClose={()=>setShowCollabUpsell(false)}
+      />}
     </div>
   );
 }
@@ -12386,6 +12427,23 @@ function App() {
 
   const activeTeam = teams.find(t => t.id === activeTeamId);
   const uid = user?.uid;
+
+  // Chamado quando o usuário faz downgrade de premium → free.
+  // Desativa todos os times e agendas colaborativos de que ele é dono.
+  const handlePremiumDowngrade = async (currentUid, currentTeams) => {
+    if (!currentUid) return;
+    // 1. Times: desativa todos os collab de que o usuário é dono
+    const ownedCollabTeams = (currentTeams || []).filter(t => t.isCollab && t.ownerUid === currentUid);
+    if (ownedCollabTeams.length > 0) {
+      await Promise.all(ownedCollabTeams.map(t => deactivateCollabTeam(t.id, currentUid)));
+      setTeams(prev => prev.map(t =>
+        t.isCollab && t.ownerUid === currentUid ? { ...t, isCollab: false, _collabMigrated: false } : t
+      ));
+    }
+    // 2. Agendas: desativa todas as collab do usuário via Firestore
+    await deactivateAllOwnedCollabAgendas(currentUid);
+  };
+
   // When a team is active, sections "tactic" and "office" are available.
   // If the user navigates to "home", keep activeTeamId so they can come back.
   const showNav = authState === "loggedIn" && loaded && !!activeTeam;
@@ -12420,7 +12478,7 @@ function App() {
         <MainMenuScreen
           user={user}
           isPremium={isPremium}
-          onTogglePremium={()=>{const next=!isPremium;setIsPremium(next);if(user?.uid)setIsPremiumFlag(user.uid,next);}}
+          onTogglePremium={()=>{const next=!isPremium;setIsPremium(next);if(user?.uid){setIsPremiumFlag(user.uid,next);if(!next)handlePremiumDowngrade(user.uid,teams);}}}
           onLogout={handleLogout}
           onSelect={(mode)=>{ setProfileMode(mode); }}
         />
@@ -12433,7 +12491,7 @@ function App() {
 
       {/* ── Mensalistas mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "mensalistas" && (
-        <MensalistasScreen onBack={()=>setProfileMode("monthly")} uid={uid} user={user}/>
+        <MensalistasScreen onBack={()=>setProfileMode("monthly")} uid={uid} user={user} isPremium={isPremium}/>
       )}
 
       {/* ── Sorteio Lista mode ── */}
@@ -12462,7 +12520,10 @@ function App() {
           onTogglePremium={()=>{
             const next=!isPremium;
             setIsPremium(next);
-            if(user?.uid) setIsPremiumFlag(user.uid, next);
+            if(user?.uid){
+              setIsPremiumFlag(user.uid, next);
+              if(!next) handlePremiumDowngrade(user.uid, teams);
+            }
           }}
           onBackToMenu={()=>{ setProfileMode(null); setActiveTeamId(null); setNavSection("home"); }}
           onSelectTeam={async (t) => {
@@ -12672,6 +12733,8 @@ function App() {
         <JoinCollabModal
           user={user}
           initialCode={joinCollabCode}
+          isPremium={isPremium}
+          collabMemberCount={teams.filter(t=>t.isCollab&&t.ownerUid!==uid).length}
           onClose={()=>{ setShowJoinCollab(false); setJoinCollabCode(""); }}
           onJoined={async (teamId) => {
             // Carregar o time colaborativo que acabou de entrar
