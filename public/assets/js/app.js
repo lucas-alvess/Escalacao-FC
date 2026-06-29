@@ -39,7 +39,10 @@ function compressImage(dataUrl, maxDim = 300, quality = 0.75) {
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, 0, 0, nw, nh);
-        finish(canvas.toDataURL("image/jpeg", quality));
+        // Preserve PNG format (and transparency) when the source is PNG;
+        // JPEG would fill transparent pixels with black.
+        const isPng = dataUrl.startsWith("data:image/png");
+        finish(isPng ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", quality));
       } catch (e) { finish(dataUrl); }
     };
     img.onerror = () => { clearTimeout(timer); finish(dataUrl); };
@@ -3084,6 +3087,21 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                 </button>
               ))}
             </div>
+            {form.photo&&(
+              <button onClick={()=>set("shieldTransparent",!form.shieldTransparent)} style={{
+                display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:9,border:"1px solid",cursor:"pointer",
+                borderColor:form.shieldTransparent?"rgba(52,211,153,0.4)":"rgba(255,255,255,0.1)",
+                background:form.shieldTransparent?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
+              }}>
+                <div style={{width:14,height:14,borderRadius:3,border:"2px solid",flexShrink:0,transition:"all 0.15s",
+                  borderColor:form.shieldTransparent?"#34d399":"#6B7280",
+                  background:form.shieldTransparent?"#34d399":"transparent",
+                  display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {form.shieldTransparent&&<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="4" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                </div>
+                <span style={{color:form.shieldTransparent?"#34d399":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>Imagem sem fundo (PNG transparente)</span>
+              </button>
+            )}
           </div>
 
           {/* Emoji escudo */}
@@ -3121,21 +3139,6 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             <span style={LT}>Ou envie uma imagem do escudo (opcional)</span>
             <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
-            {form.photo&&(
-              <button onClick={()=>set("shieldTransparent",!form.shieldTransparent)} style={{
-                display:"flex",alignItems:"center",gap:8,padding:"7px 10px",borderRadius:9,border:"1px solid",cursor:"pointer",
-                borderColor:form.shieldTransparent?"rgba(52,211,153,0.4)":"rgba(255,255,255,0.1)",
-                background:form.shieldTransparent?"rgba(52,211,153,0.08)":"rgba(255,255,255,0.03)",transition:"all 0.15s"
-              }}>
-                <div style={{width:14,height:14,borderRadius:3,border:"2px solid",flexShrink:0,transition:"all 0.15s",
-                  borderColor:form.shieldTransparent?"#34d399":"#6B7280",
-                  background:form.shieldTransparent?"#34d399":"transparent",
-                  display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  {form.shieldTransparent&&<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="4" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
-                </div>
-                <span style={{color:form.shieldTransparent?"#34d399":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>Imagem sem fundo (PNG transparente)</span>
-              </button>
-            )}
           </div>
           </>)}
 
