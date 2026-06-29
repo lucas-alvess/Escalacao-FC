@@ -15,6 +15,13 @@ service cloud.firestore {
       return isAuth() && request.auth.uid == uid;
     }
 
+    // Lê isPremium diretamente do Firestore — fonte de verdade server-side.
+    // Somente o admin SDK (Cloud Function) pode escrever esse campo.
+    // Clientes nunca conseguem forjar isPremium=true por conta própria.
+    function userIsPremium(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data.get("isPremium", false) == true;
+    }
+
     function isCollabMember(teamId) {
       return isAuth() &&
         exists(/databases/$(database)/documents/collab_teams/$(teamId)/members/$(request.auth.uid));
@@ -30,7 +37,22 @@ service cloud.firestore {
     // users/{uid}
     // ─────────────────────────────────────────────────────────────────────────
     match /users/{uid} {
-      allow read, write: if isOwner(uid);
+      allow read: if isOwner(uid);
+
+      // CREATE: o campo isPremium não pode ser definido pelo cliente.
+      // Ele só existirá no doc após uma Cloud Function autorizá-lo.
+      allow create: if isOwner(uid) && (
+        !request.resource.data.keys().hasAny(["isPremium"]) ||
+        request.resource.data.isPremium == false
+      );
+
+      // UPDATE: o cliente pode atualizar qualquer campo EXCETO isPremium.
+      // Isso impede que qualquer usuário se auto-promova a premium via SDK,
+      // DevTools ou console do Firebase.
+      allow update: if isOwner(uid) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["isPremium"]);
+
+      allow delete: if isOwner(uid);
 
       match /teams/{teamId} {
         allow read, write: if isOwner(uid);
@@ -52,15 +74,12 @@ service cloud.firestore {
       // Índice de times colaborativos que o usuário participa
       match /collab_refs/{teamId} {
         allow read: if isOwner(uid);
-        // Unificado em um único allow para create/delete evitar ambiguidade
         allow create: if isOwner(uid);
         allow delete: if isOwner(uid) ||
           (isAuth() && get(/databases/$(database)/documents/collab_teams/$(teamId)).data.ownerUid == request.auth.uid);
       }
 
       // Índice de agendas colaborativas que o usuário participa
-      // CORREÇÃO: unificado create/delete e adicionado allow update para
-      // permitir que o próprio usuário atualize sua ref (reparação de estado parcial)
       match /collab_agenda_refs/{agendaId} {
         allow read: if isOwner(uid);
         allow create, update: if isOwner(uid);
@@ -75,7 +94,14 @@ service cloud.firestore {
     // ─────────────────────────────────────────────────────────────────────────
     match /collab_teams/{teamId} {
       allow read: if isAuth();
-      allow create: if isAuth() && request.resource.data.ownerUid == request.auth.uid;
+
+      // Somente usuários premium podem criar times colaborativos.
+      // A verificação usa userIsPremium() que lê o Firestore — não o estado
+      // local do app — eliminando o bypass via toggle de teste ou SDK direto.
+      allow create: if isAuth() &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        userIsPremium(request.auth.uid);
+
       allow update: if isCollabMember(teamId);
       allow delete: if isCollabOwner(teamId);
 
@@ -125,8 +151,6 @@ service cloud.firestore {
     // ─────────────────────────────────────────────────────────────────────────
     match /collab_agendas/{agendaId} {
 
-      // CORREÇÃO: extraídas como funções locais para garantir avaliação correta
-      // e evitar dependência circular entre isAgendaMember e isAgendaOwner
       function isAgendaMember() {
         return isAuth() &&
           exists(/databases/$(database)/documents/collab_agendas/$(agendaId)/members/$(request.auth.uid));
@@ -137,33 +161,26 @@ service cloud.firestore {
           get(/databases/$(database)/documents/collab_agendas/$(agendaId)).data.ownerUid == request.auth.uid;
       }
 
-      // Qualquer autenticado pode ler o doc raiz (necessário para aceitar convite)
       allow read: if isAuth();
-      allow create: if isAuth() && request.resource.data.ownerUid == request.auth.uid;
-      // CORREÇÃO: dono também pode atualizar (ex: salvar players/info como owner)
+
+      // Somente usuários premium podem criar agendas colaborativas.
+      allow create: if isAuth() &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        userIsPremium(request.auth.uid);
+
       allow update: if isAgendaMember() || isAgendaOwner();
       allow delete: if isAgendaOwner();
 
       match /mensalidades/{mesAno} {
-        // CORREÇÃO: isAgendaOwner separado para garantir acesso mesmo antes de
-        // isAgendaMember retornar true (lag de propagação do Firestore)
         allow read, write: if isAgendaMember() || isAgendaOwner();
       }
 
       match /members/{memberUid} {
-        // Leitura: membros veem todos; não-membros só veem o próprio doc
-        // (necessário para o app verificar se já é membro antes de entrar)
         allow read: if isAuth() && (isAgendaMember() || request.auth.uid == memberUid);
-
-        // CORREÇÃO: qualquer autenticado pode se adicionar como membro
-        // (o código de convite já é a "senha" — validado no app)
-        // Restrição: só pode criar o seu próprio doc (uid == memberUid)
         allow create: if isAuth() && (
           request.auth.uid == memberUid || isAgendaOwner()
         );
-
         allow update: if isAgendaOwner();
-
         allow delete: if isAuth() && (
           request.auth.uid == memberUid ||
           (isAgendaOwner() && memberUid != request.auth.uid)

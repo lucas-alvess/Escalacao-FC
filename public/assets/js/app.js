@@ -3805,11 +3805,11 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
             :<div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#166534,#34d399)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,flexShrink:0}}>{(user?.displayName||user?.email||"?")[0].toUpperCase()}</div>}
           <div style={{minWidth:0}}>
             <div style={{color:"#e5e7eb",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.displayName||user?.email||""}</div>
-            <button onClick={onTogglePremium} style={{background:"none",border:"none",padding:0,cursor:"pointer",color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3}}>
+            <div style={{background:"none",border:"none",padding:0,color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3,userSelect:"none"}}>
               {isPremium
                 ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
                 :"FREE"}
-            </button>
+            </div>
           </div>
         </div>
         <button onClick={onLogout} style={{
@@ -6462,18 +6462,18 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           </div>
           {user&&(
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              {/* TEMPORARY DEV TOGGLE — remove once real Play Billing is wired up.
-                  Lets the team test free vs premium UI before the purchase flow exists. */}
-              <button onClick={onTogglePremium} title="Alternar plano (modo de teste)" style={{
-                display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,cursor:"pointer",
+              {/* Badge de plano — somente leitura. isPremium é gerenciado pelo servidor. */}
+              <div style={{
+                display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,
                 border:isPremium?"1px solid rgba(250,204,21,0.4)":"1px solid rgba(255,255,255,0.1)",
                 background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
-                color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800
+                color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,
+                userSelect:"none"
               }}>
                 {isPremium
                   ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
                   :"FREE"}
-              </button>
+              </div>
               {user.photoURL?(
                 <img src={user.photoURL} alt={user.displayName||""} style={{width:36,height:36,borderRadius:"50%",border:"2px solid rgba(52,211,153,0.4)"}}/>
               ):(
