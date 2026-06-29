@@ -508,6 +508,11 @@ async function loadAllStatsCloud(uid, teamId) {
 // false) so it's available across devices. FREE_* constants define the limits
 // that apply while `isPremium` is false; gating UI (PremiumUpsellModal) and
 // checks live alongside the relevant features (e.g. lineup creation below).
+// Ativo apenas em localhost — nunca em produção.
+// Permite testar FREE vs PRO sem acesso ao Firebase Console.
+const IS_DEV = typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+
 const FREE_LINEUP_LIMIT = 1;  // max saved lineups per team on the free plan
 const FREE_TEAM_LIMIT = 1;    // max teams on the free plan
 const FREE_PLAYER_LIMIT = 12; // max players per team on the free plan
@@ -3805,11 +3810,20 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
             :<div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#166534,#34d399)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,flexShrink:0}}>{(user?.displayName||user?.email||"?")[0].toUpperCase()}</div>}
           <div style={{minWidth:0}}>
             <div style={{color:"#e5e7eb",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.displayName||user?.email||""}</div>
-            <div style={{background:"none",border:"none",padding:0,color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3,userSelect:"none"}}>
-              {isPremium
-                ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
-                :"FREE"}
-            </div>
+            {IS_DEV?(
+              <button onClick={onTogglePremium} title="[DEV] Alternar plano localmente" style={{background:"none",border:"1px dashed rgba(250,204,21,0.35)",borderRadius:6,padding:"3px 7px",cursor:"pointer",color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3}}>
+                {isPremium
+                  ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
+                  :"FREE"}
+                <span style={{fontSize:8,color:"#6b7280",marginLeft:1}}>DEV</span>
+              </button>
+            ):(
+              <div style={{background:"none",border:"none",padding:0,color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3,userSelect:"none"}}>
+                {isPremium
+                  ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
+                  :"FREE"}
+              </div>
+            )}
           </div>
         </div>
         <button onClick={onLogout} style={{
@@ -6462,18 +6476,32 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
           </div>
           {user&&(
             <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-              {/* Badge de plano — somente leitura. isPremium é gerenciado pelo servidor. */}
-              <div style={{
-                display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,
-                border:isPremium?"1px solid rgba(250,204,21,0.4)":"1px solid rgba(255,255,255,0.1)",
-                background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
-                color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,
-                userSelect:"none"
-              }}>
-                {isPremium
-                  ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
-                  :"FREE"}
-              </div>
+              {/* Badge de plano. Em localhost vira botão DEV para testes. */}
+              {IS_DEV?(
+                <button onClick={onTogglePremium} title="[DEV] Alternar plano localmente" style={{
+                  display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,cursor:"pointer",
+                  border:isPremium?"1px dashed rgba(250,204,21,0.5)":"1px dashed rgba(255,255,255,0.2)",
+                  background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
+                  color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800
+                }}>
+                  {isPremium
+                    ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
+                    :"FREE"}
+                  <span style={{fontSize:8,color:"#6b7280",marginLeft:1}}>DEV</span>
+                </button>
+              ):(
+                <div style={{
+                  display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,
+                  border:isPremium?"1px solid rgba(250,204,21,0.4)":"1px solid rgba(255,255,255,0.1)",
+                  background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
+                  color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,
+                  userSelect:"none"
+                }}>
+                  {isPremium
+                    ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
+                    :"FREE"}
+                </div>
+              )}
               {user.photoURL?(
                 <img src={user.photoURL} alt={user.displayName||""} style={{width:36,height:36,borderRadius:"50%",border:"2px solid rgba(52,211,153,0.4)"}}/>
               ):(
@@ -12658,7 +12686,12 @@ function App() {
         <MainMenuScreen
           user={user}
           isPremium={isPremium}
-          onTogglePremium={()=>{const next=!isPremium;setIsPremium(next);if(user?.uid){setIsPremiumFlag(user.uid,next);if(!next)handlePremiumDowngrade(user.uid,teams);}}}
+          onTogglePremium={()=>{
+            if(!IS_DEV) return;
+            const next=!isPremium;
+            setIsPremium(next);
+            if(!next) handlePremiumDowngrade(user?.uid, teams);
+          }}
           onLogout={handleLogout}
           onSelect={(mode)=>{ setProfileMode(mode); }}
         />
@@ -12703,12 +12736,12 @@ function App() {
           onRetrySync={handleForceSave}
           isPremium={isPremium}
           onTogglePremium={()=>{
+            if(!IS_DEV) return; // botão só ativo em localhost
             const next=!isPremium;
             setIsPremium(next);
-            if(user?.uid){
-              setIsPremiumFlag(user.uid, next);
-              if(!next) handlePremiumDowngrade(user.uid, teams);
-            }
+            // Em dev: só muda estado local — não grava no Firestore
+            // (as rules bloqueiam escrita de isPremium pelo cliente)
+            if(!next) handlePremiumDowngrade(user?.uid, teams);
           }}
           onBackToMenu={()=>{ setProfileMode(null); setActiveTeamId(null); setNavSection("home"); }}
           onSelectTeam={async (t) => {
