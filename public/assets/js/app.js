@@ -3510,6 +3510,152 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
   );
 }
 
+// ─── Premium Benefits Screen ──────────────────────────────────────────────────
+function PremiumBenefitsScreen({ onBack, isPremium }) {
+  const benefits = [
+    {
+      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+      title: "Colaboração em equipe",
+      desc: "Ative times e agendas colaborativas. Convide membros para editar juntos em tempo real.",
+    },
+    {
+      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.38 3.46L16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.57a1 1 0 0 0 .99.84H5v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h1.15a1 1 0 0 0 .99-.84l.58-3.57a2 2 0 0 0-1.34-2.23z"/></svg>,
+      title: "Ícones de uniformes reais",
+      desc: "Use camisetas de times brasileiros, europeus e seleções no seu uniforme.",
+    },
+    {
+      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>,
+      title: "Exportação avançada",
+      desc: "Temas exclusivos (Retrô, Neon, Mono, Personalizado), cores do círculo e escudo maior.",
+    },
+    {
+      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+      title: "Mais times e jogadores",
+      desc: "Crie times ilimitados com até 50 jogadores cada. Sem restrições de escalações.",
+    },
+    {
+      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
+      title: "Histórico completo",
+      desc: "Acesse e exporte todo o histórico de partidas, escalações e mensalidades.",
+    },
+    {
+      icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+      title: "Novidades em primeira mão",
+      desc: "Acesso antecipado a novas funcionalidades antes de chegarem ao plano gratuito.",
+    },
+  ];
+
+  const freeVsPremium = [
+    { feature: "Times",           free: "1",          premium: "Ilimitados" },
+    { feature: "Jogadores por time", free: "12",      premium: "50" },
+    { feature: "Escalações",      free: "1",          premium: "Ilimitadas" },
+    { feature: "Colaboração",     free: "Membro (1)", premium: "Criar + entrar" },
+    { feature: "Ícone de uniforme", free: "Redondo",  premium: "Camiseta real" },
+    { feature: "Temas de exportação", free: "Moderno",premium: "Todos (6)" },
+  ];
+
+  return (
+    <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif",overflowY:"auto"}}>
+      {/* Header */}
+      <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(5,12,10,0.96)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(250,204,21,0.1)",padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
+        <button onClick={onBack} style={{background:"none",border:"none",padding:"6px 8px",cursor:"pointer",color:"#9ca3af",display:"flex",alignItems:"center",borderRadius:8}}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fde68a",letterSpacing:1.5}}>ESCALAÇÃO FC PREMIUM</span>
+        </div>
+      </div>
+
+      <div style={{flex:1,padding:"24px 20px 40px",display:"flex",flexDirection:"column",gap:28}}>
+
+        {/* Hero */}
+        <div style={{borderRadius:20,background:"linear-gradient(135deg,#1c0d00 0%,#78350f 60%,#92400e 100%)",padding:"28px 24px",textAlign:"center",position:"relative",overflow:"hidden",boxShadow:"0 8px 32px rgba(250,204,21,0.15)"}}>
+          <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 30% 40%, rgba(250,204,21,0.12) 0%,transparent 60%), radial-gradient(circle at 75% 70%, rgba(251,146,60,0.1) 0%,transparent 50%)",pointerEvents:"none"}}/>
+          <svg width="52" height="52" viewBox="0 0 24 24" fill="none" style={{marginBottom:12,filter:"drop-shadow(0 4px 12px rgba(250,204,21,0.4))"}}>
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="#facc15" stroke="#f59e0b" strokeWidth="0.5"/>
+          </svg>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:28,color:"#fde68a",letterSpacing:2,lineHeight:1,marginBottom:8}}>DESBLOQUEIE O MÁXIMO</div>
+          <div style={{color:"rgba(253,230,138,0.75)",fontSize:13,lineHeight:1.55,maxWidth:280,margin:"0 auto"}}>
+            Gerencie seu time como um profissional com recursos exclusivos do plano premium.
+          </div>
+          {isPremium&&(
+            <div style={{marginTop:16,display:"inline-flex",alignItems:"center",gap:6,background:"rgba(52,211,153,0.15)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:20,padding:"6px 14px",color:"#34d399",fontSize:12,fontWeight:700}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              Você já é Premium!
+            </div>
+          )}
+        </div>
+
+        {/* Benefits list */}
+        <div>
+          <div style={{color:"#6b7280",fontSize:10,fontWeight:800,letterSpacing:1.2,textTransform:"uppercase",marginBottom:12}}>Recursos inclusos</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {benefits.map((b,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"flex-start",gap:14,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.06)",borderRadius:14,padding:"14px 16px"}}>
+                <div style={{width:40,height:40,borderRadius:12,background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {b.icon}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{color:"#e5e7eb",fontSize:13.5,fontWeight:700,marginBottom:3}}>{b.title}</div>
+                  <div style={{color:"#6b7280",fontSize:12,lineHeight:1.5}}>{b.desc}</div>
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" style={{flexShrink:0,marginTop:2}}><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Free vs Premium table */}
+        <div>
+          <div style={{color:"#6b7280",fontSize:10,fontWeight:800,letterSpacing:1.2,textTransform:"uppercase",marginBottom:12}}>Comparativo de planos</div>
+          <div style={{borderRadius:16,overflow:"hidden",border:"1px solid rgba(255,255,255,0.07)"}}>
+            {/* Table header */}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 90px 100px",background:"rgba(255,255,255,0.05)",padding:"10px 16px",gap:8}}>
+              <div style={{color:"#6b7280",fontSize:10,fontWeight:800,letterSpacing:0.8,textTransform:"uppercase"}}>Recurso</div>
+              <div style={{color:"#6b7280",fontSize:10,fontWeight:800,letterSpacing:0.8,textTransform:"uppercase",textAlign:"center"}}>FREE</div>
+              <div style={{color:"#fde68a",fontSize:10,fontWeight:800,letterSpacing:0.8,textTransform:"uppercase",textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                PRO
+              </div>
+            </div>
+            {freeVsPremium.map((row,i)=>(
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 90px 100px",padding:"11px 16px",gap:8,borderTop:"1px solid rgba(255,255,255,0.04)",background:i%2===0?"transparent":"rgba(255,255,255,0.015)"}}>
+                <div style={{color:"#d1d5db",fontSize:12,fontWeight:500,display:"flex",alignItems:"center"}}>{row.feature}</div>
+                <div style={{color:"#6b7280",fontSize:11,fontWeight:600,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center"}}>{row.free}</div>
+                <div style={{color:"#34d399",fontSize:11,fontWeight:700,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center"}}>{row.premium}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA / Payment placeholder */}
+        {!isPremium&&(
+          <div style={{borderRadius:20,border:"1px solid rgba(250,204,21,0.2)",background:"rgba(250,204,21,0.04)",padding:"24px 20px",textAlign:"center"}}>
+            <div style={{color:"#fde68a",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1.5,marginBottom:6}}>ASSINAR PREMIUM</div>
+            <div style={{color:"#9ca3af",fontSize:12,lineHeight:1.55,marginBottom:20}}>
+              Pagamento seguro via Google Play. Cancele quando quiser.
+            </div>
+            <button disabled style={{
+              width:"100%",padding:"15px 20px",borderRadius:14,border:"none",cursor:"not-allowed",
+              background:"linear-gradient(135deg,#78350f,#92400e)",
+              color:"rgba(253,230,138,0.5)",fontFamily:"'Bebas Neue',sans-serif",
+              fontSize:16,letterSpacing:1.5,display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:0.6
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              EM BREVE — VIA GOOGLE PLAY
+            </button>
+            <div style={{marginTop:10,color:"#4b5563",fontSize:10,fontWeight:600,letterSpacing:0.5}}>
+              Pagamento por assinatura será disponibilizado em breve
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
 // ─── Home / Team List ─────────────────────────────────────────────────────────
 // ─── Main Menu Screen ─────────────────────────────────────────────────────────
 // First screen after login — user picks which mode to enter.
@@ -3614,6 +3760,39 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
           </div>
         </button>
+
+        {/* Card 3 — Seja Premium (only FREE users) */}
+        {!isPremium&&(
+          <button className="pm-card" onClick={(e)=>{const b=e.currentTarget;const r=document.createElement("span");r.className="pm-ripple";const rect=b.getBoundingClientRect();r.style.left=(e.clientX-rect.left)+"px";r.style.top=(e.clientY-rect.top)+"px";b.appendChild(r);b.classList.add("pm-pressing");setTimeout(()=>{r.remove();b.classList.remove("pm-pressing");},600);onSelect("premium");}} aria-label="Seja Premium" style={{background:"linear-gradient(135deg,#1a0a00,#3d1500)"}}>
+            <div className="pm-card-img-wrap" style={{height:140,background:"linear-gradient(135deg,#1a0a00 0%,#78350f 50%,#92400e 100%)"}}>
+              {/* Star pattern overlay */}
+              <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 20% 50%, rgba(250,204,21,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(251,146,60,0.12) 0%, transparent 40%)"}}/>
+              {/* Crown icon centered */}
+              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <svg width="72" height="72" viewBox="0 0 24 24" fill="none" style={{opacity:0.25}}>
+                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="#facc15" stroke="#f59e0b" strokeWidth="0.5"/>
+                </svg>
+              </div>
+              <div className="pm-card-overlay" style={{background:"linear-gradient(to top,rgba(26,10,0,0.92) 0%,rgba(26,10,0,0.3) 60%,transparent 100%)"}}/>
+              <div className="pm-card-body">
+                <div className="pm-card-badge" style={{background:"rgba(250,204,21,0.18)",border:"1px solid rgba(250,204,21,0.35)",color:"#fde68a"}}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  PREMIUM
+                </div>
+                <div className="pm-card-title" style={{color:"#fde68a",fontSize:22}}>Seja Premium</div>
+                <div className="pm-card-desc">Desbloqueie recursos exclusivos, colaboração em equipe e exportações avançadas.</div>
+                <div className="pm-tags">
+                  {["Colaboração","Exportação","Uniformes","Sem limites"].map(tag=>(
+                    <span key={tag} className="pm-tag" style={{background:"rgba(250,204,21,0.15)",color:"#fde68a",border:"1px solid rgba(250,204,21,0.25)"}}>{tag}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="pm-card-arrow">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          </button>
+        )}
 
       </div>
 
@@ -12502,6 +12681,11 @@ function App() {
       {/* ── Sorteio Tampinhas mode ── */}
       {authState === "loggedIn" && loaded && profileMode === "sorteio-tampinhas" && (
         <SorteioTampinhasScreen onBack={()=>setProfileMode("monthly")}/>
+      )}
+
+      {/* ── Premium Benefits ── */}
+      {authState === "loggedIn" && loaded && profileMode === "premium" && (
+        <PremiumBenefitsScreen onBack={()=>setProfileMode(null)} isPremium={isPremium}/>
       )}
 
       {/* ── Field mode: full app ── */}
