@@ -3700,7 +3700,7 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
         .pm-premium-body{display:none;}
         @media(min-width:480px){.pm-premium-body{display:block;}}
       `}</style>
-      <div style={{flex:1,padding:"28px 20px 24px",display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{flex:1,padding:"28px 20px 24px",display:"flex",flexDirection:"column",gap:16,maxWidth:480,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
 
         {/* Card 1 — Futebol de Campo */}
         <button className="pm-card" onClick={(e)=>{const b=e.currentTarget;const r=document.createElement("span");r.className="pm-ripple";const rect=b.getBoundingClientRect();r.style.left=(e.clientX-rect.left)+"px";r.style.top=(e.clientY-rect.top)+"px";b.appendChild(r);b.classList.add("pm-pressing");setTimeout(()=>{r.remove();b.classList.remove("pm-pressing");},600);onSelect("field");}} aria-label="Futebol de Campo">
@@ -3803,7 +3803,7 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
       </div>
 
       {/* Footer: user info + logout */}
-      <div style={{padding:"0 20px 44px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+      <div style={{padding:"0 20px 44px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,maxWidth:480,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
           {user?.photoURL
             ?<img src={user.photoURL} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(52,211,153,0.3)",flexShrink:0}}/>
