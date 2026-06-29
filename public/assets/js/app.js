@@ -7258,11 +7258,12 @@ function FootballField({slots,lineup,players,onLineupChange,onSlotTap,team,freeM
 // ─── Export Modal ─────────────────────────────────────────────────────────────
 // Export theme options — shown as a horizontal carousel (3 visible at a time)
 const THEME_OPTIONS = [
-  {key:"modern",label:"Moderno",desc:"Verde escuro"},
-  {key:"clean", label:"Simples", desc:"Fundo claro"},
-  {key:"retro", label:"Retrô",   desc:"Vintage"},
-  {key:"neon",  label:"Neon",    desc:"E-sports"},
-  {key:"mono",  label:"Mono",    desc:"P&B"},
+  {key:"modern",    label:"Moderno",       desc:"Verde escuro"},
+  {key:"clean",     label:"Simples",       desc:"Fundo claro"},
+  {key:"retro",     label:"Retrô",         desc:"Vintage"},
+  {key:"neon",      label:"Neon",          desc:"E-sports"},
+  {key:"mono",      label:"Mono",          desc:"P&B"},
+  {key:"custom",    label:"Personalizado", desc:"Suas cores"},
 ];
 
 function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPlayerIds,onClose,isPremium}) {
@@ -7510,6 +7511,21 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   // ctx has already been scaled by DPR before this is called.
   const showCircleRef=useRef(true);
   const [showCircle,setShowCircle]=useState(true);
+  const circleColorRef=useRef(null); // null = usa cor do tema (accent)
+  const [circleColor,setCircleColor]=useState(null);
+
+  const customAccentRef=useRef("#34d399");
+  const [customAccent,setCustomAccent]=useState("#34d399");
+  const customBgRef=useRef("#060e0a");
+  const [customBg,setCustomBg]=useState("#060e0a");
+  const customFieldRef=useRef("#1c7a40");
+  const [customField,setCustomField]=useState("#1c7a40");
+
+  const darkenHex=(hex,f)=>{
+    const c=hex.replace("#","");
+    const r=parseInt(c.slice(0,2),16),g=parseInt(c.slice(2,4),16),b=parseInt(c.slice(4,6),16);
+    return `#${Math.round(r*f).toString(16).padStart(2,"0")}${Math.round(g*f).toString(16).padStart(2,"0")}${Math.round(b*f).toString(16).padStart(2,"0")}`;
+  };
 
   const drawPlayerCircle=(ctx,slot,imageCache,R,isModern,FX,FY,FW,accent="#34d399")=>{
     const entry=lineup.find(l=>l.slotId===slot.id);
@@ -7518,22 +7534,23 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     const cx=FX+(slot.x/100)*FW;
     const cy=FY+(slot.y/100)*FH;
     const cachedImg=player?.photo?imageCache[player.photo]:null;
+    const cClr=circleColorRef.current||accent; // cor efetiva do círculo
 
     if(showCircleRef.current){
       if(isModern){
         // Outer glow halo
         ctx.save();
         const halo=ctx.createRadialGradient(cx,cy,R*0.8,cx,cy,R*1.9);
-        halo.addColorStop(0,player?hexToRgba(accent,0.22):"rgba(255,255,255,0.05)");
+        halo.addColorStop(0,player?hexToRgba(cClr,0.22):"rgba(255,255,255,0.05)");
         halo.addColorStop(1,"rgba(0,0,0,0)");
         ctx.fillStyle=halo;
         ctx.beginPath();ctx.arc(cx,cy,R*2,0,Math.PI*2);ctx.fill();
         ctx.restore();
         // Glowing ring
         ctx.save();
-        ctx.strokeStyle=player?accent:"rgba(255,255,255,0.25)";
+        ctx.strokeStyle=player?cClr:"rgba(255,255,255,0.25)";
         ctx.lineWidth=player?3:1.5;
-        ctx.shadowColor=player?hexToRgba(accent,0.7):"transparent";
+        ctx.shadowColor=player?hexToRgba(cClr,0.7):"transparent";
         ctx.shadowBlur=player?10:0;
         ctx.beginPath();ctx.arc(cx,cy,R+2,0,Math.PI*2);ctx.stroke();
         ctx.restore();
@@ -7729,47 +7746,47 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     ctx.save();
     ctx.fillStyle=cfg.cardBg;
     ctx.strokeStyle=cfg.cardBorder;ctx.lineWidth=1;
-    ctx.beginPath();ctx.roundRect(14,12,W-28,102,14);ctx.fill();ctx.stroke();
+    ctx.beginPath();ctx.roundRect(14,12,W-28,112,14);ctx.fill();ctx.stroke();
     ctx.restore();
 
-    // Shield — real team photo/emoji/color
-    drawShieldInHeader(ctx,imageCache,26,18,60,true,cfg.accent);
+    // Shield — real team photo/emoji/color (tamanho aumentado)
+    drawShieldInHeader(ctx,imageCache,20,16,80,true,cfg.accent);
 
     // Team name
     ctx.fillStyle=cfg.textPrimary;
     ctx.font="bold 30px 'Bebas Neue',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="middle";
-    ctx.fillText(teamName.toUpperCase(),94,38);
+    ctx.fillText(teamName.toUpperCase(),108,40);
 
     // Sub info
     const escalados=lineup.filter(l=>l.playerId).length;
     ctx.fillStyle=cfg.textSecondary;
     ctx.font="bold 11px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="middle";
-    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,94,61);
+    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,108,64);
 
     // Coach (técnico)
     if(coach&&coach.trim()){
       ctx.fillStyle=cfg.accent;
       ctx.font="bold 11px 'DM Sans',sans-serif";
       ctx.textAlign="left";ctx.textBaseline="middle";
-      ctx.fillText(`TÉCNICO: ${coach.trim().toUpperCase()}`,94,80);
+      ctx.fillText(`TÉCNICO: ${coach.trim().toUpperCase()}`,108,84);
     }
 
     // Formation — no pill background, large & bold for emphasis
     ctx.fillStyle=cfg.textSecondary;
     ctx.font="bold 9px 'DM Sans',sans-serif";
     ctx.textAlign="right";ctx.textBaseline="alphabetic";
-    ctx.fillText("FORMAÇÃO",W-22,32);
+    ctx.fillText("FORMAÇÃO",W-22,36);
     ctx.fillStyle=cfg.accent;
     ctx.font="bold 40px 'Bebas Neue',sans-serif";
     ctx.textAlign="right";ctx.textBaseline="middle";
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
-    ctx.fillText(formation,W-22,62);
+    ctx.fillText(formation,W-22,68);
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
 
     // Field
-    const FX=16,FY=122,FW=W-32,FH=FW/0.65;
+    const FX=16,FY=132,FW=W-32,FH=FW/0.65;
     ctx.save();
     ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,14);ctx.clip();
     for(let i=0;i<8;i++){
@@ -7891,6 +7908,28 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
   };
   const drawMono=(canvas,imageCache)=>drawThemedCard(canvas,imageCache,MONO_CFG);
 
+  // ── Theme F: Personalizado (cores livres do usuário) ─────────────────────
+  const drawCustom=(canvas,imageCache)=>{
+    const acc=customAccentRef.current||"#34d399";
+    const bg=customBgRef.current||"#060e0a";
+    const fld=customFieldRef.current||"#1c7a40";
+    const fldDark=darkenHex(fld,0.88);
+    const CUSTOM_CFG={
+      bg:[[0,bg],[0.45,bg],[1,darkenHex(bg,0.85)]],
+      glow:hexToRgba(acc,0.08),
+      topBar:[acc,hexToRgba(acc,0.6)],
+      cardBg:"rgba(255,255,255,0.04)", cardBorder:hexToRgba(acc,0.22),
+      accent:acc,
+      textPrimary:"#ffffff", textSecondary:"rgba(255,255,255,0.45)",
+      fieldStripes:[fld,fldDark], fieldLine:"rgba(255,255,255,0.65)", fieldPenalty:"rgba(255,255,255,0.5)",
+      fieldGlow:hexToRgba(acc,0.3),
+      benchBg:"rgba(255,255,255,0.035)", benchBorder:"rgba(255,255,255,0.07)",
+      watermark:hexToRgba(acc,0.25),
+      grayscalePlayers:false,
+    };
+    return drawThemedCard(canvas,imageCache,CUSTOM_CFG);
+  };
+
   // ── Theme B: Clean / Light ───────────────────────────────────────────────
   const drawClean=async(canvas,imageCache)=>{
     const W=540,H=1120;
@@ -7913,47 +7952,47 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     // Top solid accent bar
     ctx.fillStyle="#166534";ctx.fillRect(0,0,W,5);
 
-    // Shield — real team photo/emoji/color (left side, aligned with content)
-    drawShieldInHeader(ctx,imageCache,16,12,62,false);
+    // Shield — real team photo/emoji/color (left side, tamanho aumentado)
+    drawShieldInHeader(ctx,imageCache,14,10,80,false);
 
     // Header row — name and info offset to the right of the shield
     ctx.fillStyle="#0f1f16";
     ctx.font="bold 32px 'Bebas Neue',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="top";
-    ctx.fillText(teamName.toUpperCase(),90,16);
+    ctx.fillText(teamName.toUpperCase(),102,14);
 
     // Formation — no badge background, large & bold for emphasis
     ctx.fillStyle="#9CA3AF";
     ctx.font="bold 9px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="alphabetic";
-    ctx.fillText("FORMAÇÃO",90,58);
+    ctx.fillText("FORMAÇÃO",102,56);
     ctx.fillStyle="#166534";
     ctx.font="bold 34px 'Bebas Neue',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="middle";
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="1px";
-    ctx.fillText(formation,90,82);
+    ctx.fillText(formation,102,80);
     if(ctx.letterSpacing!==undefined) ctx.letterSpacing="0px";
 
     // Player count
     const escalados=lineup.filter(l=>l.playerId).length;
     ctx.fillStyle="#6B7280";ctx.font="12px 'DM Sans',sans-serif";
     ctx.textAlign="left";ctx.textBaseline="middle";
-    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,90,104);
+    ctx.fillText(`${players.length} jogadores  ·  ${escalados}/${slots.length} escalados`,102,102);
 
     // Coach (técnico)
     if(coach&&coach.trim()){
       ctx.fillStyle="#166534";
       ctx.font="bold 12px 'DM Sans',sans-serif";
       ctx.textAlign="left";ctx.textBaseline="middle";
-      ctx.fillText(`TÉCNICO: ${coach.trim().toUpperCase()}`,90,122);
+      ctx.fillText(`TÉCNICO: ${coach.trim().toUpperCase()}`,102,120);
     }
 
     // Thin separator
     ctx.strokeStyle="#e5e7eb";ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(16,138);ctx.lineTo(W-16,138);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(16,146);ctx.lineTo(W-16,146);ctx.stroke();
 
     // Field
-    const FX=16,FY=144,FW=W-32,FH=FW/0.65;
+    const FX=16,FY=152,FW=W-32,FH=FW/0.65;
     ctx.save();
     ctx.beginPath();ctx.roundRect(FX,FY,FW,FH,10);ctx.clip();
     for(let i=0;i<8;i++){
@@ -8011,7 +8050,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       // (e.g. unexpected browser quirk), never leave the UI stuck on "Gerando...".
       const url=await withTimeout((async()=>{
         const imageCache=await loadImages();
-        const drawFn={modern:drawModern,clean:drawClean,retro:drawRetro,neon:drawNeon,mono:drawMono}[selectedTheme]||drawModern;
+        const drawFn={modern:drawModern,clean:drawClean,retro:drawRetro,neon:drawNeon,mono:drawMono,custom:drawCustom}[selectedTheme]||drawModern;
         return await drawFn(canvasRef.current,imageCache);
       })(), 20000);
       if(url){ setImgUrl(url); }
@@ -8048,6 +8087,16 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     drewRef.current=false;
     draw(theme);
     drewRef.current=true;
+  };
+
+  const handleCircleColorChange=(val)=>{
+    const c=val||null;
+    circleColorRef.current=c;setCircleColor(c);
+    drewRef.current=false;draw(theme);drewRef.current=true;
+  };
+  const handleCustomColor=(ref,setter,val)=>{
+    ref.current=val;setter(val);
+    drewRef.current=false;draw("custom");drewRef.current=true;
   };
 
   const download=()=>{const a=document.createElement("a");a.href=imgUrl;a.download=`${teamName.replace(/\s+/g,"_")}_escalacao_${theme}.png`;a.click();};
@@ -8097,33 +8146,69 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
             </button>
           </div>
 
-          {/* Toggle: círculo ao redor dos jogadores */}
-          <button onClick={()=>{
-            const next=!showCircleRef.current;
-            showCircleRef.current=next;
-            setShowCircle(next);
-            drewRef.current=false;
-            draw(theme);
-            drewRef.current=true;
-          }} style={{
-            width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
-            padding:"10px 12px",borderRadius:12,cursor:"pointer",
-            background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)",
-            color:"#9CA3AF",transition:"all 0.15s"
-          }}>
-            <span style={{display:"flex",alignItems:"center",gap:8,fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
-              <Icon id="circle" size={14}/> Círculo ao redor dos jogadores
-            </span>
-            <div style={{
-              width:36,height:20,borderRadius:10,transition:"background 0.2s",position:"relative",flexShrink:0,
-              background:showCircle?"#34d399":"rgba(255,255,255,0.1)"
-            }}>
-              <div style={{
-                position:"absolute",top:3,left:showCircle?16:3,width:14,height:14,borderRadius:"50%",
-                background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"
-              }}/>
+          {/* Painel de cores do tema Personalizado */}
+          {theme==="custom"&&(
+            <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8,padding:"10px 12px",borderRadius:12,background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.07)"}}>
+              <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,color:"#9CA3AF",textTransform:"uppercase",letterSpacing:0.5}}>Cores do tema</span>
+              {[
+                {label:"Cor de fundo",ref:customBgRef,val:customBg,setter:setCustomBg},
+                {label:"Cor de destaque",ref:customAccentRef,val:customAccent,setter:setCustomAccent},
+                {label:"Cor do campo",ref:customFieldRef,val:customField,setter:setCustomField},
+              ].map(({label,ref,val,setter})=>(
+                <div key={label} style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:600,color:"#e5e7eb",flex:1}}>{label}</span>
+                  <div style={{position:"relative",display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{width:22,height:22,borderRadius:6,background:val,border:"2px solid rgba(255,255,255,0.2)",flexShrink:0}}/>
+                    <input type="color" value={val} onChange={e=>handleCustomColor(ref,setter,e.target.value)}
+                      style={{width:60,height:28,padding:"0 4px",border:"1px solid rgba(255,255,255,0.1)",borderRadius:6,cursor:"pointer",background:"rgba(255,255,255,0.05)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:11}}/>
+                  </div>
+                </div>
+              ))}
             </div>
-          </button>
+          )}
+
+          {/* Toggle: círculo ao redor dos jogadores + cor do círculo */}
+          <div style={{width:"100%",display:"flex",flexDirection:"column",gap:6}}>
+            <button onClick={()=>{
+              const next=!showCircleRef.current;
+              showCircleRef.current=next;
+              setShowCircle(next);
+              drewRef.current=false;
+              draw(theme);
+              drewRef.current=true;
+            }} style={{
+              width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
+              padding:"10px 12px",borderRadius:12,cursor:"pointer",
+              background:"rgba(255,255,255,0.025)",border:"1px solid rgba(255,255,255,0.06)",
+              color:"#9CA3AF",transition:"all 0.15s"
+            }}>
+              <span style={{display:"flex",alignItems:"center",gap:8,fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
+                <Icon id="circle" size={14}/> Círculo ao redor dos jogadores
+              </span>
+              <div style={{
+                width:36,height:20,borderRadius:10,transition:"background 0.2s",position:"relative",flexShrink:0,
+                background:showCircle?"#34d399":"rgba(255,255,255,0.1)"
+              }}>
+                <div style={{
+                  position:"absolute",top:3,left:showCircle?16:3,width:14,height:14,borderRadius:"50%",
+                  background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"
+                }}/>
+              </div>
+            </button>
+            {showCircle&&(
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:10,background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.05)"}}>
+                <span style={{fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,color:"#9CA3AF",flex:1}}>Cor do círculo</span>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <input type="color" value={circleColor||"#34d399"} onChange={e=>handleCircleColorChange(e.target.value)}
+                    style={{width:36,height:28,padding:2,border:"1px solid rgba(255,255,255,0.15)",borderRadius:8,cursor:"pointer",background:"rgba(255,255,255,0.05)"}}
+                    title="Escolher cor do círculo"/>
+                  {circleColor&&(
+                    <button onClick={()=>handleCircleColorChange(null)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",padding:"0 2px",fontFamily:"'DM Sans',sans-serif",fontSize:14}} title="Usar cor do tema">↺</button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Marca d'água personalizada — colapsada por padrão */}
           <div style={{width:"100%",display:"flex",flexDirection:"column",gap:8}}>
