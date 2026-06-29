@@ -6380,7 +6380,7 @@ function PeladaMensalScreen({onBack, onSelect, uid}) {
       </div>
 
       {/* Cards */}
-      <div style={{flex:1,padding:"24px 20px 32px",display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{flex:1,padding:"24px 20px 32px",display:"flex",flexDirection:"column",gap:14,maxWidth:480,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
         {cards.map(card=>(
           <button
             key={card.key}
