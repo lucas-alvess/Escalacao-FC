@@ -2888,7 +2888,9 @@ function ImageCropperModal({src,onConfirm,onCancel}) {
     canvas.width=300;canvas.height=300;
     const ctx=canvas.getContext("2d");
     ctx.drawImage(imgRef.current,-pos.x/pos.scale,-pos.y/pos.scale,BOX/pos.scale,BOX/pos.scale,0,0,300,300);
-    onConfirm(canvas.toDataURL("image/jpeg",0.82));
+    // Preserve PNG transparency — JPEG fills transparent pixels with black
+    const isPng=src.startsWith("data:image/png");
+    onConfirm(isPng?canvas.toDataURL("image/png"):canvas.toDataURL("image/jpeg",0.82));
   };
 
   return (
