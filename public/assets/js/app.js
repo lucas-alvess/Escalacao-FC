@@ -6563,7 +6563,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
         .home-fab:active{transform:scale(0.95);box-shadow:0 4px 14px rgba(52,211,153,0.35);}
       `}</style>
 
-      <div style={{padding:"16px 16px 120px",display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{padding:"16px 16px 120px",display:"flex",flexDirection:"column",gap:12,maxWidth:480,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
         {teams.length===0&&(
           <div style={{textAlign:"center",padding:"64px 20px 32px",animation:"cardFadeUp 0.4s ease"}}>
             {/* Pitch icon */}
