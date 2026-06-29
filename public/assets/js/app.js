@@ -3664,7 +3664,19 @@ function PremiumBenefitsScreen({ onBack, isPremium }) {
 // ─── Home / Team List ─────────────────────────────────────────────────────────
 // ─── Main Menu Screen ─────────────────────────────────────────────────────────
 // First screen after login — user picks which mode to enter.
-function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) {
+function MainMenuScreen({user, onSelect, onLogout, onDeleteAccount, isPremium, onTogglePremium}) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
+  const [deleteInput, setDeleteInput] = React.useState("");
+  const [deleting, setDeleting] = React.useState(false);
+
+  const confirmDelete = async () => {
+    if (deleteInput.trim().toUpperCase() !== "EXCLUIR") return;
+    setDeleting(true);
+    await onDeleteAccount();
+    setDeleting(false);
+    setShowDeleteConfirm(false);
+  };
+
   return (
     <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
       {/* Header */}
@@ -3802,41 +3814,78 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
       </div>
 
       {/* Footer: user info + logout */}
-      <div style={{padding:"0 20px 44px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,maxWidth:480,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
-          {user?.photoURL
-            ?<img src={user.photoURL} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(52,211,153,0.3)",flexShrink:0}}/>
-            :<div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#166534,#34d399)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,flexShrink:0}}>{(user?.displayName||user?.email||"?")[0].toUpperCase()}</div>}
-          <div style={{minWidth:0}}>
-            <div style={{color:"#e5e7eb",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.displayName||user?.email||""}</div>
-            {IS_DEV?(
-              <button onClick={onTogglePremium} title="[DEV] Alternar plano localmente" style={{background:"none",border:"1px dashed rgba(250,204,21,0.35)",borderRadius:6,padding:"3px 7px",cursor:"pointer",color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3}}>
-                {isPremium
-                  ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
-                  :"FREE"}
-                <span style={{fontSize:8,color:"#6b7280",marginLeft:1}}>DEV</span>
+      <div style={{padding:"0 20px 8px",maxWidth:480,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+            {user?.photoURL
+              ?<img src={user.photoURL} alt="" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(52,211,153,0.3)",flexShrink:0}}/>
+              :<div style={{width:34,height:34,borderRadius:"50%",background:"linear-gradient(135deg,#166534,#34d399)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13,flexShrink:0}}>{(user?.displayName||user?.email||"?")[0].toUpperCase()}</div>}
+            <div style={{minWidth:0}}>
+              <div style={{color:"#e5e7eb",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.displayName||user?.email||""}</div>
+              {IS_DEV?(
+                <button onClick={onTogglePremium} title="[DEV] Alternar plano localmente" style={{background:"none",border:"1px dashed rgba(250,204,21,0.35)",borderRadius:6,padding:"3px 7px",cursor:"pointer",color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3}}>
+                  {isPremium
+                    ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
+                    :"FREE"}
+                  <span style={{fontSize:8,color:"#6b7280",marginLeft:1}}>DEV</span>
+                </button>
+              ):(
+                <div style={{background:"none",border:"none",padding:0,color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3,userSelect:"none"}}>
+                  {isPremium
+                    ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
+                    :"FREE"}
+                </div>
+              )}
+            </div>
+          </div>
+          <button onClick={onLogout} style={{
+            display:"flex",alignItems:"center",gap:5,
+            background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.18)",
+            borderRadius:10,padding:"8px 14px",color:"#f87171",cursor:"pointer",
+            fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,flexShrink:0,transition:"background 0.15s"
+          }}
+            onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}
+            onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.08)"}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sair
+          </button>
+        </div>
+
+        {/* Links legais */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16,padding:"12px 0 32px",borderTop:"1px solid rgba(255,255,255,0.05)",marginTop:12}}>
+          <a href="/privacy.html" target="_blank" rel="noopener" style={{color:"#4b5563",fontSize:10,fontWeight:600,letterSpacing:0.3,textDecoration:"none"}}>Política de Privacidade</a>
+          <span style={{color:"#1f2937",fontSize:10}}>·</span>
+          <button onClick={()=>setShowDeleteConfirm(true)} style={{background:"none",border:"none",color:"#4b5563",fontSize:10,fontWeight:600,letterSpacing:0.3,cursor:"pointer",padding:0,fontFamily:"'DM Sans',sans-serif"}}>Excluir minha conta</button>
+        </div>
+      </div>
+
+      {/* Modal confirmação exclusão de conta */}
+      {showDeleteConfirm&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",backdropFilter:"blur(6px)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+          <div style={{background:"#0f1a14",border:"1px solid rgba(239,68,68,0.3)",borderRadius:20,padding:28,maxWidth:360,width:"100%",boxShadow:"0 24px 64px rgba(0,0,0,0.7)"}}>
+            <div style={{width:48,height:48,borderRadius:14,background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:16}}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+            </div>
+            <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1,marginBottom:8}}>Excluir conta</div>
+            <div style={{color:"#9ca3af",fontSize:13,lineHeight:1.6,marginBottom:20}}>
+              Esta ação é <strong style={{color:"#f87171"}}>permanente e irreversível</strong>. Todos os seus times, jogadores, escalações e mensalistas serão apagados.<br/><br/>
+              Digite <strong style={{color:"#fff",letterSpacing:1}}>EXCLUIR</strong> para confirmar:
+            </div>
+            <input
+              value={deleteInput}
+              onChange={e=>setDeleteInput(e.target.value)}
+              placeholder="EXCLUIR"
+              style={{width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:10,padding:"10px 14px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:14,fontWeight:700,letterSpacing:1,outline:"none",marginBottom:16,boxSizing:"border-box"}}
+            />
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>{setShowDeleteConfirm(false);setDeleteInput("");}} style={{flex:1,padding:"11px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.05)",color:"#9ca3af",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,cursor:"pointer"}}>Cancelar</button>
+              <button onClick={confirmDelete} disabled={deleteInput.trim().toUpperCase()!=="EXCLUIR"||deleting} style={{flex:1,padding:"11px",borderRadius:10,border:"none",background:deleteInput.trim().toUpperCase()==="EXCLUIR"?"rgba(239,68,68,0.85)":"rgba(239,68,68,0.2)",color:deleteInput.trim().toUpperCase()==="EXCLUIR"?"#fff":"#6b7280",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:700,cursor:deleteInput.trim().toUpperCase()==="EXCLUIR"?"pointer":"default",transition:"background 0.15s"}}>
+                {deleting?"Excluindo...":"Excluir conta"}
               </button>
-            ):(
-              <div style={{background:"none",border:"none",padding:0,color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3,userSelect:"none"}}>
-                {isPremium
-                  ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
-                  :"FREE"}
-              </div>
-            )}
+            </div>
           </div>
         </div>
-        <button onClick={onLogout} style={{
-          display:"flex",alignItems:"center",gap:5,
-          background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.18)",
-          borderRadius:10,padding:"8px 14px",color:"#f87171",cursor:"pointer",
-          fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700,flexShrink:0,transition:"background 0.15s"
-        }}
-          onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}
-          onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.08)"}>
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-          Sair
-        </button>
-      </div>
+      )}
     </div>
   );
 }
@@ -12418,6 +12467,56 @@ function App() {
     setActiveTeamId(null);
   };
 
+  const handleDeleteAccount = async () => {
+    const fb = getFirebase(); if (!fb) return;
+    const user = fb.auth.currentUser; if (!user) return;
+    const uid = user.uid;
+    try {
+      // Apagar times próprios e suas subcoleções
+      const teamsSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "teams"));
+      for (const teamDoc of teamsSnap.docs) {
+        const tid = teamDoc.id;
+        const subcols = ["players","lineups","matches","stats"];
+        for (const sub of subcols) {
+          const subSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "teams", tid, sub));
+          const batch = fb.writeBatch(fb.db);
+          subSnap.docs.forEach(d => batch.delete(d.ref));
+          if (subSnap.docs.length) await batch.commit();
+        }
+        await fb.deleteDoc(teamDoc.ref);
+      }
+      // Apagar mensalistas e mensalidades
+      const menSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "mensalistas"));
+      for (const menDoc of menSnap.docs) {
+        const mensSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "mensalistas", menDoc.id, "mensalidades"));
+        const batch = fb.writeBatch(fb.db);
+        mensSnap.docs.forEach(d => batch.delete(d.ref));
+        if (mensSnap.docs.length) await batch.commit();
+        await fb.deleteDoc(menDoc.ref);
+      }
+      // Apagar collab_refs e collab_agenda_refs
+      const collabRefsSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "collab_refs"));
+      const agendaRefsSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "collab_agenda_refs"));
+      const batch2 = fb.writeBatch(fb.db);
+      collabRefsSnap.docs.forEach(d => batch2.delete(d.ref));
+      agendaRefsSnap.docs.forEach(d => batch2.delete(d.ref));
+      await batch2.commit();
+      // Apagar documento raiz do usuário
+      await fb.deleteDoc(fb.doc(fb.db, "users", uid));
+      // Apagar conta de autenticação
+      await user.delete();
+      setActiveTeamId(null);
+    } catch(e) {
+      console.error("Erro ao excluir conta:", e);
+      // Se o Firebase exigir reautenticação (token expirado), orientar o usuário
+      if (e.code === "auth/requires-recent-login") {
+        alert("Por segurança, faça logout e login novamente antes de excluir sua conta.");
+      } else {
+        alert("Erro ao excluir conta. Tente novamente.");
+      }
+    }
+  };
+
   // ── CRUD helpers ───────────────────────────────────────────────────────────
   const createTeam = async (form) => {
     const t = makeTeam(form.name, form.colorIdx);
@@ -12692,6 +12791,7 @@ function App() {
             if(!next) handlePremiumDowngrade(user?.uid, teams);
           }}
           onLogout={handleLogout}
+          onDeleteAccount={handleDeleteAccount}
           onSelect={(mode)=>{ setProfileMode(mode); }}
         />
       )}
