@@ -3692,6 +3692,8 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
         .pm-card-arrow{position:absolute;top:16px;right:16px;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,0.15);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;pointer-events:none;}
         .pm-card:active .pm-card-img{transform:scale(1.03);}
         @media(min-width:480px){.pm-card-img-wrap{height:220px;}}
+        .pm-premium-body{display:none;}
+        @media(min-width:480px){.pm-premium-body{display:block;}}
       `}</style>
       <div style={{flex:1,padding:"28px 20px 24px",display:"flex",flexDirection:"column",gap:16}}>
 
@@ -3772,8 +3774,8 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
                 alt="Premium"
                 loading="eager"
               />
-              <div className="pm-card-overlay" style={{background:"linear-gradient(to top,rgba(26,10,0,0.92) 0%,rgba(26,10,0,0.3) 60%,transparent 100%)"}}/>
-              <div className="pm-card-body">
+              <div className="pm-card-overlay pm-premium-body" style={{background:"linear-gradient(to top,rgba(26,10,0,0.92) 0%,rgba(26,10,0,0.3) 60%,transparent 100%)"}}/>
+              <div className="pm-card-body pm-premium-body">
                 <div className="pm-card-badge" style={{background:"rgba(250,204,21,0.18)",border:"1px solid rgba(250,204,21,0.35)",color:"#fde68a"}}>
                   <svg width="9" height="9" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
                   PREMIUM
