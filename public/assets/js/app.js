@@ -1982,20 +1982,29 @@ async function fetchCollabAgendaInvite(code) {
 
 async function acceptCollabAgendaInvite(inviteData, uid, user) {
   const fb = getFirebase(); if (!fb) return false;
+  const agendaId = inviteData.agendaId;
+  const now = fb.serverTimestamp();
   try {
-    const agendaId = inviteData.agendaId;
-    const now = fb.serverTimestamp();
     const refSnapA = await fb.getDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId));
     if (refSnapA.exists()) return "already_member";
+  } catch(e) { console.warn("acceptCollabAgendaInvite check error:", e); return false; }
+  try {
     await fb.setDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid), {
       uid, name: user.displayName || user.email || "Editor",
       email: user.email || "", role: "editor", joinedAt: now,
     });
+  } catch(e) { console.warn("acceptCollabAgendaInvite members write error:", e); return false; }
+  try {
     await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_agenda_refs", agendaId), {
       agendaId, role: "editor", joinedAt: now,
     });
-    return true;
-  } catch(e) { console.warn("acceptCollabAgendaInvite error:", e); return false; }
+  } catch(e) {
+    // Membro foi adicionado mas ref local falhou — limpar para evitar estado parcial
+    console.warn("acceptCollabAgendaInvite collab_agenda_refs write error:", e);
+    try { await fb.deleteDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid)); } catch {}
+    return false;
+  }
+  return true;
 }
 
 async function removeCollabAgendaMember(agendaId, memberUid) {
