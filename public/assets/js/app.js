@@ -3765,14 +3765,13 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
         {!isPremium&&(
           <button className="pm-card" onClick={(e)=>{const b=e.currentTarget;const r=document.createElement("span");r.className="pm-ripple";const rect=b.getBoundingClientRect();r.style.left=(e.clientX-rect.left)+"px";r.style.top=(e.clientY-rect.top)+"px";b.appendChild(r);b.classList.add("pm-pressing");setTimeout(()=>{r.remove();b.classList.remove("pm-pressing");},600);onSelect("premium");}} aria-label="Seja Premium" style={{background:"linear-gradient(135deg,#1a0a00,#3d1500)"}}>
             <div className="pm-card-img-wrap" style={{height:140,background:"linear-gradient(135deg,#1a0a00 0%,#78350f 50%,#92400e 100%)"}}>
-              {/* Star pattern overlay */}
-              <div style={{position:"absolute",inset:0,backgroundImage:"radial-gradient(circle at 20% 50%, rgba(250,204,21,0.15) 0%, transparent 50%), radial-gradient(circle at 80% 20%, rgba(251,146,60,0.12) 0%, transparent 40%)"}}/>
-              {/* Crown icon centered */}
-              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <svg width="72" height="72" viewBox="0 0 24 24" fill="none" style={{opacity:0.25}}>
-                  <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="#facc15" stroke="#f59e0b" strokeWidth="0.5"/>
-                </svg>
-              </div>
+              <img
+                className="pm-card-img"
+                src="/assets/images/premium.png"
+                onError={e=>{e.target.style.display="none";}}
+                alt="Premium"
+                loading="eager"
+              />
               <div className="pm-card-overlay" style={{background:"linear-gradient(to top,rgba(26,10,0,0.92) 0%,rgba(26,10,0,0.3) 60%,transparent 100%)"}}/>
               <div className="pm-card-body">
                 <div className="pm-card-badge" style={{background:"rgba(250,204,21,0.18)",border:"1px solid rgba(250,204,21,0.35)",color:"#fde68a"}}>
