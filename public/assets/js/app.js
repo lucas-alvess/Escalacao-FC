@@ -2450,6 +2450,18 @@ const TEAM_KITS_EUROPA = [
   { file:"atletico_madrid.png",name:"Atlético Madrid" },
   { file:"psg.png",           name:"PSG" },
 ];
+const TEAM_KITS_SELECOES = [
+  { file:"brasil.png",    name:"Brasil" },
+  { file:"argentina.png", name:"Argentina" },
+  { file:"portugal.png",  name:"Portugal" },
+  { file:"franca.png",    name:"França" },
+  { file:"espanha.png",   name:"Espanha" },
+  { file:"inglaterra.png",name:"Inglaterra" },
+  { file:"alemanha.png",  name:"Alemanha" },
+  { file:"mexico.png",    name:"México" },
+  { file:"equador.png",   name:"Equador" },
+  { file:"japao.png",     name:"Japão" },
+];
 
 /** Resolves the jersey a player should wear, based on the team's kit library. */
 function getPlayerJersey(team,player){
@@ -2478,7 +2490,7 @@ function KitIconPreview({kit,size=38,number,team=null}){
   const num=number||(kit?.type==="goleiro"?"1":"10");
   const tki=kit?.teamKitIcon;
   if(tki?.file){
-    const folder=tki.folder==="europa"?"icones_uniformes_europa":"icones_uniformes_brasil";
+    const folder=tki.folder==="europa"?"icones_uniformes_europa":tki.folder==="selecoes"?"icones_uniformes_selecoes":"icones_uniformes_brasil";
     const shieldScale=tki.shieldScale||1;
     const shieldSize=Math.round(size*0.38*shieldScale);
     const shieldX=tki.shieldX??50; // percent from left
@@ -3140,6 +3152,12 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
           {/* Foto escudo (opcional) */}
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             <span style={LT}>Ou envie uma imagem do escudo (opcional)</span>
+            <div style={{display:"flex",alignItems:"flex-start",gap:6,padding:"7px 10px",borderRadius:9,background:"rgba(251,191,36,0.07)",border:"1px solid rgba(251,191,36,0.2)"}}>
+              <span style={{fontSize:13,marginTop:1}}>💡</span>
+              <span style={{color:"#D97706",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:600,lineHeight:1.4}}>
+                Recomendamos imagens <b>PNG sem fundo</b> para melhor visualização. Ative "Imagem sem fundo" em Formato do Escudo após enviar.
+              </span>
+            </div>
             <PhotoPicker photo={form.photo} onChange={v=>set("photo",v)}/>
           </div>
           </>)}
@@ -3274,8 +3292,8 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                 {(()=>{
                   const tki=kit.teamKitIcon;
                   const hasKit=!!tki?.file;
-                  const kitList=kitRegion==="brasil"?TEAM_KITS_BRASIL:TEAM_KITS_EUROPA;
-                  const kitFolder=kitRegion==="brasil"?"icones_uniformes_brasil":"icones_uniformes_europa";
+                  const kitList=kitRegion==="brasil"?TEAM_KITS_BRASIL:kitRegion==="europa"?TEAM_KITS_EUROPA:TEAM_KITS_SELECOES;
+                  const kitFolder=kitRegion==="brasil"?"icones_uniformes_brasil":kitRegion==="europa"?"icones_uniformes_europa":"icones_uniformes_selecoes";
 
                   const handleDragStart=(e)=>{
                     e.preventDefault();
@@ -3326,7 +3344,7 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                           <span style={{color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:8,fontWeight:700}}>Redondo</span>
                         </button>
                         <button onClick={()=>{
-                          if(!hasKit) updateKit(kit.id,{teamKitIcon:{file:kitList[0].file,name:kitList[0].name,folder:kitRegion,shield:false,shieldX:50,shieldY:30}});
+                          if(!hasKit) updateKit(kit.id,{teamKitIcon:{file:kitList[0].file,name:kitList[0].name,folder:kitRegion,shield:false,shieldX:50,shieldY:30,shieldScale:1}});
                         }} style={{
                           flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"8px 4px",borderRadius:9,border:"2px solid",cursor:"pointer",
                           borderColor:hasKit?"#34d399":"rgba(255,255,255,0.08)",
@@ -3340,9 +3358,9 @@ function TeamFormModal({initial,onSave,onClose,isPremium}) {
                       </div>
 
                       {hasKit&&(<>
-                        {/* Tabs Brasil / Europa */}
+                        {/* Tabs Brasil / Europa / Seleções */}
                         <div style={{display:"flex",gap:4,background:"rgba(255,255,255,0.04)",borderRadius:8,padding:3}}>
-                          {[["brasil","🇧🇷 Brasil"],["europa","🌍 Europeus"]].map(([r,label])=>(
+                          {[["brasil","🇧🇷 Brasil"],["europa","🌍 Europeus"],["selecoes","🏆 Seleções"]].map(([r,label])=>(
                             <button key={r} onClick={()=>setKitRegion(r)} style={{
                               flex:1,padding:"5px 0",borderRadius:6,border:"none",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,
                               background:kitRegion===r?"rgba(52,211,153,0.2)":"transparent",
@@ -7353,7 +7371,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
     // Preload kit uniform images if any kit has teamKitIcon set
     for(const kit of (team?.kits||[])){
       if(kit.teamKitIcon?.file){
-        const f=kit.teamKitIcon.folder==="europa"?"icones_uniformes_europa":"icones_uniformes_brasil";
+        const f=kit.teamKitIcon.folder==="europa"?"icones_uniformes_europa":kit.teamKitIcon.folder==="selecoes"?"icones_uniformes_selecoes":"icones_uniformes_brasil";
         await loadImg(`/assets/images/icones_uniformes/${f}/${kit.teamKitIcon.file}`);
       }
     }
@@ -7538,7 +7556,7 @@ function ExportModal({slots,lineup,players,teamName,formation,team,coach,benchPl
       const playerKit=getPlayerKit(team,player);
       const tki=playerKit?.teamKitIcon;
       if(tki?.file){
-        const f=tki.folder==="europa"?"icones_uniformes_europa":"icones_uniformes_brasil";
+        const f=tki.folder==="europa"?"icones_uniformes_europa":tki.folder==="selecoes"?"icones_uniformes_selecoes":"icones_uniformes_brasil";
         const kitImg=imageCache[`/assets/images/icones_uniformes/${f}/${tki.file}`];
         if(kitImg){
           ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
