@@ -3786,7 +3786,6 @@ function MainMenuScreen({user, onSelect, onLogout, isPremium, onTogglePremium}) 
                   PREMIUM
                 </div>
                 <div className="pm-card-title" style={{color:"#fde68a",fontSize:22}}>Seja Premium</div>
-                <div className="pm-card-desc">Desbloqueie recursos exclusivos, colaboração em equipe e exportações avançadas.</div>
                 <div className="pm-tags">
                   {["Colaboração","Exportação","Uniformes","Sem limites"].map(tag=>(
                     <span key={tag} className="pm-tag" style={{background:"rgba(250,204,21,0.15)",color:"#fde68a",border:"1px solid rgba(250,204,21,0.25)"}}>{tag}</span>
