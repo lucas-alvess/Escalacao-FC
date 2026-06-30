@@ -8,6 +8,14 @@ const LOGO_URI2 = "/assets/images/escalacao-blue.png";
 let FB = null;
 function getFirebase() { return window.__firebase || null; }
 
+// ─── Analytics helper ────────────────────────────────────────────────────────
+function logA(event, params) {
+  try {
+    const fb = getFirebase();
+    if (fb?.logEvent && fb?.analytics) fb.logEvent(fb.analytics, event, params || {});
+  } catch(e) {}
+}
+
 // ─── Image Compression ───────────────────────────────────────────────────────
 /**
  * Compresses a base64 data URL to ~300×300px at 75% JPEG quality.
@@ -12185,6 +12193,7 @@ function App() {
         if (u) {
           setUser(u);
           setAuthState("loggedIn");
+          logA('login', { method: 'google' });
 
           // Non-blocking: fetch the user's premium status. Defaults to false
           // until/unless a real purchase flow (Play Billing, after the
@@ -12463,6 +12472,7 @@ function App() {
 
   const handleLogout = async () => {
     const fb = getFirebase(); if (!fb) return;
+    logA('logout');
     await fb.signOut(fb.auth);
     setActiveTeamId(null);
   };
@@ -12504,6 +12514,7 @@ function App() {
       // Apagar documento raiz do usuário
       await fb.deleteDoc(fb.doc(fb.db, "users", uid));
       // Apagar conta de autenticação
+      logA('delete_account');
       await user.delete();
       setActiveTeamId(null);
     } catch(e) {
@@ -12534,6 +12545,7 @@ function App() {
     setShowNewTeam(false);
     setActiveTeamId(t.id);
     setToast("Time criado!");
+    logA('create_team', { formation: t.formation });
     if (uid) {
       beginSync();
       startSyncing();
@@ -12792,7 +12804,7 @@ function App() {
           }}
           onLogout={handleLogout}
           onDeleteAccount={handleDeleteAccount}
-          onSelect={(mode)=>{ setProfileMode(mode); }}
+          onSelect={(mode)=>{ logA('select_mode', { mode }); setProfileMode(mode); }}
         />
       )}
 

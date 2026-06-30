@@ -1,4 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAnalytics, logEvent } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-analytics.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence }
   from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
@@ -22,6 +23,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const analytics = getAnalytics(app);
 
 // Garante que a sessão persista entre fechamentos do app (crítico no Capacitor/WebView)
 setPersistence(auth, browserLocalPersistence).catch(() => {});
@@ -40,11 +42,12 @@ const provider = new GoogleAuthProvider();
 
 // Expose to global scope for Babel script
 window.__firebase = {
-  auth, db, storage, provider,
+  auth, db, storage, provider, analytics,
   signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   doc, setDoc, getDoc, getDocFromServer, deleteDoc,
   collection, getDocs, writeBatch,
   onSnapshot, query, orderBy, serverTimestamp, limit,
-  storageRef, uploadBytes, getDownloadURL, deleteObject
+  storageRef, uploadBytes, getDownloadURL, deleteObject,
+  logEvent
 };
 window.dispatchEvent(new Event("firebase-ready"));
