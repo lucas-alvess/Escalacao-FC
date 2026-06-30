@@ -70,4 +70,4 @@ node_modules/
 
 # Capacitor Android
 android/
-package-lock.json
+package-lock.jsondist/
