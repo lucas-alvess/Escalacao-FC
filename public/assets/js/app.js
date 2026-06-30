@@ -2865,25 +2865,51 @@ function TeamShield({team, size=56}) {
 
 function PlayerAvatar({player,size=44,style:ex={},team=null}) {
   const base = {width:size,height:size,borderRadius:"50%",flexShrink:0,overflow:"hidden",...ex};
-  if (player?.photo) return <div style={base}><img src={player.photo} alt={player?.name||""} style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>;
-  if(team){
-    const kit=getPlayerKit(team,player);
-    if(kit?.teamKitIcon?.file){
-      return <div style={{...base,background:"transparent"}}><KitIconPreview kit={kit} size={size} team={team}/></div>;
+  const [imgError, setImgError] = React.useState(false);
+
+  // Quando a internet volta, tenta recarregar a foto
+  React.useEffect(() => {
+    if (!imgError || !player?.photo) return;
+    const handleOnline = () => setImgError(false);
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, [imgError, player?.photo]);
+
+  const KitFallback = () => {
+    if (team) {
+      const kit = getPlayerKit(team, player);
+      if (kit?.teamKitIcon?.file) {
+        return <div style={{...base,background:"transparent"}}><KitIconPreview kit={kit} size={size} team={team}/></div>;
+      }
+      const jersey = kit?.jersey || defaultJersey(player?.number);
+      return (
+        <div style={{...base,background:getJerseyBackground(jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <span style={{fontFamily:getJerseyFontFamily(jersey),fontSize:size*0.38,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
+        </div>
+      );
     }
-    const jersey=kit?.jersey||defaultJersey(player?.number);
+    const jersey = player?.jersey || defaultJersey(player?.number);
     return (
       <div style={{...base,background:getJerseyBackground(jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
         <span style={{fontFamily:getJerseyFontFamily(jersey),fontSize:size*0.38,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
       </div>
     );
+  };
+
+  if (player?.photo && !imgError) {
+    return (
+      <div style={base}>
+        <img
+          src={player.photo}
+          alt={player?.name||""}
+          style={{width:"100%",height:"100%",objectFit:"cover"}}
+          onError={()=>setImgError(true)}
+        />
+      </div>
+    );
   }
-  const jersey = player?.jersey || defaultJersey(player?.number);
-  return (
-    <div style={{...base,background:getJerseyBackground(jersey),display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <span style={{fontFamily:getJerseyFontFamily(jersey),fontSize:size*0.38,lineHeight:1,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center"}}>{player?.number||"?"}</span>
-    </div>
-  );
+
+  return <KitFallback/>;
 }
 
 // ─── Image Cropper Modal ──────────────────────────────────────────────────────
