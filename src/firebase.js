@@ -1,9 +1,13 @@
 import { initializeApp } from 'firebase/app';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { getAnalytics, logEvent } from 'firebase/analytics';
 import {
   getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
-  getRedirectResult, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence
+  getRedirectResult, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence,
+  signInWithCredential
 } from 'firebase/auth';
+
+export { GoogleAuthProvider };
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   doc, setDoc, getDoc, getDocFromServer, deleteDoc,
@@ -39,6 +43,8 @@ export const db = initializeFirestore(app, {
 
 export const storage = getStorage(app);
 export const provider = new GoogleAuthProvider();
+
+export { FirebaseAuthentication, signInWithCredential };
 
 export {
   logEvent,

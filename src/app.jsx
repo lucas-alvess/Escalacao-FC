@@ -37,6 +37,9 @@ function getFirebase() {
     uploadBytes: _fb.uploadBytes,
     getDownloadURL: _fb.getDownloadURL,
     deleteObject: _fb.deleteObject,
+    FirebaseAuthentication: _fb.FirebaseAuthentication,
+    signInWithCredential: _fb.signInWithCredential,
+    GoogleAuthProvider: _fb.GoogleAuthProvider,
   };
 }
 
@@ -12624,7 +12627,11 @@ function App() {
     setLoginLoading(true);
     try {
       if (isWebView()) {
-        await fb.signInWithRedirect(fb.auth, fb.provider);
+        // Login nativo via plugin Capacitor (evita redirecionamento para localhost)
+        const result = await fb.FirebaseAuthentication.signInWithGoogle();
+        const idToken = result.credential?.idToken;
+        const credential = _fb.GoogleAuthProvider.credential(idToken);
+        await fb.signInWithCredential(fb.auth, credential);
       } else {
         await fb.signInWithPopup(fb.auth, fb.provider);
       }
