@@ -1,4 +1,4 @@
-const CACHE = 'escalacaofc-v1';
+const CACHE = 'escalacaofc-v2';
 
 const LOCAL_ASSETS = [
   '/',
@@ -16,6 +16,7 @@ const LOCAL_ASSETS = [
   '/assets/images/premium.png',
   '/assets/images/ball.png',
   '/assets/images/dado-colete.png',
+  '/assets/images/escalacao-blue.png',
   '/assets/images/tampinha-green.png',
   '/assets/images/tampinha-red.png',
   '/assets/images/tampinha-blue.png',
@@ -31,6 +32,41 @@ const LOCAL_ASSETS = [
   '/assets/images/icon-192.png',
   '/assets/images/icon-512.png',
   '/assets/images/apple-touch-icon.png',
+  // Ícones de uniformes — Brasil
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/atlmg.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/cor.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/cru.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/fla.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/flu.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/gre.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/int.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/pal.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/san.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/sao.png',
+  '/assets/images/icones_uniformes/icones_uniformes_brasil/vas.png',
+  // Ícones de uniformes — Europa
+  '/assets/images/icones_uniformes/icones_uniformes_europa/atletico_madrid.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/barcelona.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/bayern.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/chelsea.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/juventus.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/liverpool.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/man_city.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/man_united.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/milan.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/psg.png',
+  '/assets/images/icones_uniformes/icones_uniformes_europa/real_madrid.png',
+  // Ícones de uniformes — Seleções
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/alemanha.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/argentina.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/brasil.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/equador.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/espanha.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/franca.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/inglaterra.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/japao.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/mexico.png',
+  '/assets/images/icones_uniformes/icones_uniformes_selecoes/portugal.png',
 ];
 
 const EXTERNAL_ASSETS = [
