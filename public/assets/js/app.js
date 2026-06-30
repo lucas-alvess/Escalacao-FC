@@ -3670,6 +3670,113 @@ function PremiumBenefitsScreen({ onBack, isPremium }) {
 }
 
 // ─── Home / Team List ─────────────────────────────────────────────────────────
+// ─── Onboarding Screen ────────────────────────────────────────────────────────
+const ONBOARDING_KEY = "escalacaofc_onboarding_v1";
+
+function OnboardingScreen({ onDone }) {
+  const [step, setStep] = React.useState(0);
+
+  const slides = [
+    {
+      icon: (
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="1.4" strokeLinecap="round">
+          <rect x="2" y="3" width="20" height="18" rx="2.5"/>
+          <line x1="12" y1="3" x2="12" y2="21"/>
+          <circle cx="12" cy="12" r="3"/>
+          <rect x="2" y="8" width="4" height="8"/>
+          <rect x="18" y="8" width="4" height="8"/>
+        </svg>
+      ),
+      color: "#34d399",
+      glow: "rgba(52,211,153,0.18)",
+      title: "Monte suas escalações",
+      desc: "Crie times, escolha formações táticas, escale jogadores e personalize uniformes. Tudo em um só lugar.",
+    },
+    {
+      icon: (
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="1.4" strokeLinecap="round">
+          <rect x="3" y="4" width="18" height="18" rx="2"/>
+          <line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/>
+          <line x1="3" y1="10" x2="21" y2="10"/>
+          <circle cx="8" cy="15" r="1" fill="#60a5fa"/>
+          <circle cx="12" cy="15" r="1" fill="#60a5fa"/>
+          <circle cx="16" cy="15" r="1" fill="#60a5fa"/>
+        </svg>
+      ),
+      color: "#60a5fa",
+      glow: "rgba(96,165,250,0.18)",
+      title: "Organize sua pelada",
+      desc: "Controle mensalidades, presenças e sorteie times por tampinhas ou lista. Perfeito para peladas fixas.",
+    },
+    {
+      icon: (
+        <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.4" strokeLinecap="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+      ),
+      color: "#a78bfa",
+      glow: "rgba(167,139,250,0.18)",
+      title: "Sempre sincronizado",
+      desc: "Seus dados ficam salvos na nuvem e disponíveis offline. Edite sem internet e sincronize ao reconectar.",
+    },
+  ];
+
+  const slide = slides[step];
+  const isLast = step === slides.length - 1;
+
+  const finish = () => {
+    localStorage.setItem(ONBOARDING_KEY, "1");
+    logA("onboarding_complete");
+    onDone();
+  };
+
+  return (
+    <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",fontFamily:"'DM Sans',sans-serif",padding:"32px 28px",boxSizing:"border-box"}}>
+      <style>{`
+        @keyframes ob-fade{from{opacity:0;transform:translateY(20px);}to{opacity:1;transform:translateY(0);}}
+        .ob-slide{animation:ob-fade 0.4s ease both;}
+      `}</style>
+
+      {/* Logo topo */}
+      <img src="/assets/images/icon-192.png" alt="Escalação FC" style={{width:52,height:52,borderRadius:14,marginBottom:40,boxShadow:"0 6px 24px rgba(52,211,153,0.3)"}}/>
+
+      {/* Slide */}
+      <div key={step} className="ob-slide" style={{display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",maxWidth:340,flex:1,justifyContent:"center"}}>
+        <div style={{width:96,height:96,borderRadius:28,background:slide.glow,border:`1px solid ${slide.color}33`,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:32,boxShadow:`0 0 40px ${slide.glow}`}}>
+          {slide.icon}
+        </div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:30,color:"#fff",letterSpacing:1.5,lineHeight:1.1,marginBottom:16}}>{slide.title}</div>
+        <div style={{color:"#6b7280",fontSize:15,lineHeight:1.7,maxWidth:280}}>{slide.desc}</div>
+      </div>
+
+      {/* Dots */}
+      <div style={{display:"flex",gap:8,marginBottom:36}}>
+        {slides.map((_,i)=>(
+          <div key={i} onClick={()=>setStep(i)} style={{width:i===step?22:7,height:7,borderRadius:4,background:i===step?slide.color:"rgba(255,255,255,0.12)",transition:"all 0.3s",cursor:"pointer"}}/>
+        ))}
+      </div>
+
+      {/* Botões */}
+      <div style={{width:"100%",maxWidth:340,display:"flex",flexDirection:"column",gap:10}}>
+        <button
+          onClick={isLast ? finish : ()=>setStep(s=>s+1)}
+          style={{width:"100%",padding:"15px",borderRadius:14,border:"none",background:`linear-gradient(135deg,${slide.color},${slide.color}bb)`,color:"#050c0a",fontFamily:"'Bebas Neue',sans-serif",fontSize:18,letterSpacing:1.5,cursor:"pointer",boxShadow:`0 6px 24px ${slide.glow}`,transition:"transform 0.15s,box-shadow 0.15s"}}
+          onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow=`0 10px 32px ${slide.glow}`;}}
+          onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow=`0 6px 24px ${slide.glow}`;}}
+        >
+          {isLast ? "Começar" : "Próximo"}
+        </button>
+        {!isLast && (
+          <button onClick={finish} style={{width:"100%",padding:"12px",borderRadius:14,border:"none",background:"none",color:"#4b5563",fontFamily:"'DM Sans',sans-serif",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+            Pular
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Menu Screen ─────────────────────────────────────────────────────────
 // First screen after login — user picks which mode to enter.
 function MainMenuScreen({user, onSelect, onLogout, onDeleteAccount, isPremium, onTogglePremium}) {
@@ -12080,6 +12187,7 @@ function App() {
   const [profileMode, setProfileMode] = useState(null); // null = main menu | "field" | "monthly"
   const [loginLoading, setLoginLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [onboardingDone, setOnboardingDone] = useState(()=>!!localStorage.getItem(ONBOARDING_KEY));
   const [migrating, setMigrating] = useState(false);
   const [teams, setTeams] = useState([]);
   const [activeTeamId, setActiveTeamId] = useState(null);
@@ -12791,8 +12899,13 @@ function App() {
         </div>
       )}
 
+      {/* ── Onboarding (primeira vez) ── */}
+      {authState === "loggedIn" && loaded && !onboardingDone && (
+        <OnboardingScreen onDone={()=>setOnboardingDone(true)}/>
+      )}
+
       {/* ── Main menu (mode selector) ── */}
-      {authState === "loggedIn" && loaded && !profileMode && (
+      {authState === "loggedIn" && loaded && !profileMode && onboardingDone && (
         <MainMenuScreen
           user={user}
           isPremium={isPremium}
