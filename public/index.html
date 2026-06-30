@@ -58,5 +58,39 @@
       });
     }
   </script>
+
+  <!-- Monitor de erros global -->
+  <script>
+    function _reportError(message, source, extra) {
+      try {
+        var fb = window.__firebase;
+        if (!fb || !fb.db) return;
+        var uid = fb.auth && fb.auth.currentUser ? fb.auth.currentUser.uid : null;
+        var entry = {
+          message: String(message).slice(0, 500),
+          source: String(source || '').slice(0, 200),
+          extra: String(extra || '').slice(0, 300),
+          uid: uid || 'anonymous',
+          appVersion: 'v1',
+          userAgent: navigator.userAgent.slice(0, 200),
+          url: location.pathname,
+          ts: new Date().toISOString()
+        };
+        var docRef = fb.doc(fb.db, 'app_errors', Date.now() + '_' + Math.random().toString(36).slice(2, 7));
+        fb.setDoc(docRef, entry).catch(function(){});
+      } catch(e) {}
+    }
+
+    window.onerror = function(message, source, lineno, colno, error) {
+      _reportError(message, source + ':' + lineno, error ? error.stack : '');
+    };
+
+    window.addEventListener('unhandledrejection', function(e) {
+      var reason = e.reason;
+      var msg = reason instanceof Error ? reason.message : String(reason);
+      var stack = reason instanceof Error ? reason.stack : '';
+      _reportError('UnhandledRejection: ' + msg, 'promise', stack);
+    });
+  </script>
 </body>
 </html>

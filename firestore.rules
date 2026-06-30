@@ -203,6 +203,14 @@ service cloud.firestore {
 
 
     // ─────────────────────────────────────────────────────────────────────────
+    // app_errors/{errorId} — log de erros do cliente
+    // ─────────────────────────────────────────────────────────────────────────
+    match /app_errors/{errorId} {
+      allow create: if isAuth();
+      allow read, update, delete: if false;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Negar tudo o que não foi explicitamente permitido acima
     // ─────────────────────────────────────────────────────────────────────────
     match /{document=**} {
