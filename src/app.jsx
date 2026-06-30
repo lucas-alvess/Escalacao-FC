@@ -12637,8 +12637,7 @@ function App() {
       }
     } catch(e) {
       console.error("Login error:", e);
-      alert("Erro login: " + (e?.message || JSON.stringify(e)));
-      setLoginLoading(false);
+setLoginLoading(false);
     }
   };
 
