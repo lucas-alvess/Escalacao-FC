@@ -1,7 +1,7 @@
 {
   "appId": "com.escalacaofc.app",
   "appName": "Escalação FC",
-  "webDir": "public",
+  "webDir": "dist",
   "server": {
     "url": "https://escalacao-fc.web.app",
     "cleartext": false
