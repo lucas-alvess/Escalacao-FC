@@ -12037,7 +12037,7 @@ function TutorialPrompt({ screenName, onConfirm, onCancel }) {
               fontFamily: "'DM Sans',sans-serif", fontSize: 13, fontWeight: 700,
             }}
           >
-            Agora nao
+            Agora não
           </button>
           <button
             onClick={onConfirm}
@@ -12061,90 +12061,95 @@ function TutorialPrompt({ screenName, onConfirm, onCancel }) {
 const TUTORIAL_HOME = [
   {
     title: "Tela de Times",
-    body: "Esta e a tela principal do Futebol de Campo. Aqui voce gerencia todos os seus times. Vamos ver cada elemento.",
+    body: "Esta é a tela principal do Futebol de Campo. Aqui você gerencia todos os seus times. Vamos conhecer cada elemento.",
     highlight: null,
   },
   {
-    title: "Seu contador de times",
-    body: "Este numero mostra quantos times voce ja criou. No plano gratuito voce pode ter ate 1 time; no PRO, times ilimitados.",
+    title: "Contador de times",
+    body: "Este número mostra quantos times você já criou. No plano gratuito você pode ter até 1 time; no PRO, times ilimitados.",
     highlight: ".home-times-counter",
   },
   {
     title: "Importar time",
-    body: "Use o botao Importar para adicionar um time compartilhado por outro usuario via codigo. Ideal para copiar elencos prontos.",
+    body: "Use o botão Importar para adicionar um time compartilhado por outro usuário via código. Ideal para copiar elencos prontos.",
     highlight: ".home-import-btn",
   },
   {
     title: "Card do time",
-    body: "Cada time aparece como um card. Ele mostra a formacao tatica, numero de jogadores e quantos estao escalados. Toque no card para abrir a prancheta.",
+    body: "Cada time aparece como um card. Ele mostra a formação tática, número de jogadores e quantos estão escalados. Toque no card para abrir a prancheta.",
     highlight: ".team-card",
   },
   {
     title: "Editar, compartilhar e excluir",
-    body: "Nos botoes laterais do card voce pode: editar o nome e cores do time (azul), compartilhar via codigo (verde), ou excluir o time (vermelho).",
+    body: "Nos botões laterais do card você pode: editar o nome, cores e foto do time (azul), compartilhar via código (verde), ou excluir o time (vermelho).",
     highlight: ".tc-action-btn",
   },
   {
-    title: "Abrir prancheta tatica",
-    body: "Toque em 'Abrir prancheta tatica' no rodape do card para entrar na tela de Escalacao, onde voce posiciona jogadores no campo.",
+    title: "Edição colaborativa",
+    body: "Ao editar um time, você pode ativar o modo Colaborativo. Com ele, outros membros podem registrar dados do time em tempo real usando o mesmo código.",
+    highlight: ".tc-action-btn",
+  },
+  {
+    title: "Abrir prancheta tática",
+    body: "Toque em 'Abrir prancheta tática' no rodapé do card para entrar na tela de Escalação, onde você posiciona jogadores no campo.",
     highlight: ".tc-footer",
   },
   {
     title: "Criar novo time",
-    body: "O botao verde + no canto inferior direito cria um novo time. Voce define nome, cores do escudo e formacao inicial.",
+    body: "O botão verde + no canto inferior direito cria um novo time. Você define nome, cores do escudo, foto e formação inicial.",
     highlight: ".home-fab",
   },
 ];
 
 const TUTORIAL_TACTIC_FIELD = [
   {
-    title: "Prancheta Tatica",
-    body: "Esta e a aba de Escalacao. Aqui voce posiciona os jogadores no campo de acordo com a formacao do time. Vamos conhecer cada parte.",
+    title: "Prancheta Tática",
+    body: "Esta é a aba de Escalação. Aqui você posiciona os jogadores no campo de acordo com a formação do time. Vamos conhecer cada parte.",
     highlight: null,
   },
   {
-    title: "Cabecalho do time",
-    body: "Toque no escudo ou nome do time para editar cores, nome e foto. O indicador mostra quantos jogadores estao escalados e o status de sincronizacao com a nuvem.",
+    title: "Cabeçalho do time",
+    body: "Toque no escudo ou nome do time para editar cores, nome e foto. O indicador mostra quantos jogadores estão escalados e o status de sincronização com a nuvem.",
     highlight: ".teamview-header",
   },
   {
-    title: "Exportar escalacao",
-    body: "O botao EXPORTAR gera uma imagem da sua prancheta tatica pronta para compartilhar no WhatsApp, Instagram ou onde quiser.",
+    title: "Exportar escalação",
+    body: "O botão EXPORTAR gera uma imagem da sua prancheta tática pronta para compartilhar no WhatsApp, Instagram ou onde quiser.",
     highlight: ".teamview-export-btn",
   },
   {
     title: "Salvar dados",
-    body: "O botao SALVAR envia todos os dados para a nuvem imediatamente. Os dados tambem sao salvos automaticamente a cada alteracao.",
+    body: "O botão SALVAR envia todos os dados para a nuvem imediatamente. Os dados também são salvos automaticamente a cada alteração.",
     highlight: ".teamview-save-btn",
   },
   {
-    title: "Formacao tatica",
-    body: "Toque nas setas para trocar a formacao (ex: 4-4-2, 4-3-3). O botao de lista mostra todas as formacoes disponiveis. O botao ao lado gerencia multiplas escalacoes salvas.",
+    title: "Formação tática",
+    body: "Toque nas setas para trocar a formação (ex: 4-4-2, 4-3-3). O botão de lista mostra todas as formações disponíveis. O botão ao lado gerencia múltiplas escalações salvas.",
     highlight: ".teamview-formation-row",
   },
   {
     title: "Modo Livre (PRO)",
-    body: "O botao LIVRE (exclusivo PRO) permite arrastar qualquer jogador para qualquer posicao no campo, sem restricao de slots.",
+    body: "O botão LIVRE (exclusivo PRO) permite arrastar qualquer jogador para qualquer posição no campo, sem restrição de slots. Ideal para montar formações personalizadas.",
     highlight: ".teamview-freemode-btn",
   },
   {
     title: "Campo interativo",
-    body: "Toque em qualquer posicao vazia no campo para escolher o jogador que vai ocupa-la. Para reposicionar, toque e segure o jogador e arraste.",
+    body: "Toque em qualquer posição vazia no campo para escolher o jogador que vai ocupá-la. Para reposicionar, toque e segure o jogador e arraste até a nova posição.",
     highlight: ".football-field-wrap",
   },
   {
-    title: "Nome do tecnico",
-    body: "Digite o nome do tecnico e confirme com OK. Ele aparecera na imagem exportada da escalacao.",
+    title: "Nome do técnico",
+    body: "Digite o nome do técnico e confirme com OK. Ele aparecerá na imagem exportada da escalação.",
     highlight: "#coach-name",
   },
   {
     title: "Banco de reservas",
-    body: "Jogadores nao escalados aparecem aqui. Toque em um nome para marca-lo como reserva oficial. Reservas aparecem na imagem exportada.",
+    body: "Jogadores não escalados aparecem aqui. Toque em um nome para marcá-lo como reserva oficial. Reservas aparecem na imagem exportada.",
     highlight: ".teamview-bench",
   },
   {
-    title: "Abas Escalacao e Elenco",
-    body: "Use as abas no topo para alternar entre a prancheta tatica (Escalacao) e a lista completa de jogadores (Elenco).",
+    title: "Abas Escalação e Elenco",
+    body: "Use as abas no topo para alternar entre a prancheta tática (Escalação) e a lista completa de jogadores (Elenco).",
     highlight: ".teamview-tabs",
   },
 ];
@@ -12152,22 +12157,27 @@ const TUTORIAL_TACTIC_FIELD = [
 const TUTORIAL_TACTIC_PLAYERS = [
   {
     title: "Aba Elenco",
-    body: "Aqui voce ve e gerencia todos os jogadores cadastrados no time. Cada card mostra numero, nome, posicao e foto do jogador.",
+    body: "Aqui você vê e gerencia todos os jogadores cadastrados no time. Cada card mostra número, nome, posição e foto do jogador.",
     highlight: null,
   },
   {
     title: "Card do jogador",
-    body: "Toque no card do jogador para ver opcoes de edicao e exclusao. O icone de coroa marca o capitao do time.",
+    body: "Toque no card do jogador para ver opções de edição e exclusão. O ícone de coroa marca o capitão do time. Você também pode alterar o número da camisa diretamente pelo card.",
+    highlight: ".player-card",
+  },
+  {
+    title: "Uniforme do jogador",
+    body: "Cada jogador pode ter um uniforme personalizado. Ao editar o jogador, escolha entre uniformes de times brasileiros, europeus ou seleções nacionais.",
     highlight: ".player-card",
   },
   {
     title: "Adicionar jogador",
-    body: "O botao + (verde) abre o formulario para cadastrar um novo jogador: nome, numero, posicao, foto e numero de camisa.",
+    body: "O botão + (verde) abre o formulário para cadastrar um novo jogador: nome, número, posição, foto e número de camisa.",
     highlight: ".players-fab",
   },
   {
     title: "Adicionar convidado",
-    body: "O botao + Convidado adiciona um jogador temporario (pelada, reforco). Convidados aparecem em laranja e nao contam no limite de jogadores do plano gratuito.",
+    body: "O botão + Convidado adiciona um jogador temporário (pelada, reforço). Convidados aparecem em laranja e não contam no limite de jogadores do plano gratuito.",
     highlight: ".players-guest-fab",
   },
 ];
@@ -12175,27 +12185,32 @@ const TUTORIAL_TACTIC_PLAYERS = [
 const TUTORIAL_OFFICE_CALENDAR = [
   {
     title: "Aba Calendário",
-    body: "Aqui voce registra todas as partidas do seu time: amistosos, campeonatos, torneios e rachas. Partidas futuras aparecem no topo; passadas abaixo em ordem decrescente.",
+    body: "Aqui você registra todas as partidas do seu time: amistosos, campeonatos, torneios e rachas. Partidas futuras aparecem no topo; passadas abaixo em ordem decrescente.",
     highlight: null,
   },
   {
     title: "Abas do Escritório",
-    body: "O Escritório tem tres abas: Calendario (partidas), Estatísticas (desempenho dos jogadores) e Importar (importacao de elenco via planilha CSV).",
+    body: "O Escritório tem três abas: Calendário (partidas), Estatísticas (desempenho dos jogadores) e Importar (importação de elenco via planilha CSV).",
     highlight: ".office-tabs",
   },
   {
     title: "Nova Partida",
-    body: "Toque em NOVA PARTIDA para cadastrar uma partida. Voce pode registrar adversario, data, horario, local, tipo (amistoso, copa, etc.), resultado, gols, assistencias e presenca dos jogadores.",
+    body: "Toque em NOVA PARTIDA para cadastrar uma partida. Você pode registrar adversário, data, horário, local, tipo (amistoso, copa, etc.), resultado, gols, assistências e presença dos jogadores.",
     highlight: ".office-new-match-btn",
   },
   {
     title: "Card de partida",
-    body: "Cada partida mostra o placar (V/E/D em cores), adversario, data e tipo. Se a partida ainda nao aconteceu, aparece 'EM BREVE' em verde.",
+    body: "Cada partida mostra o placar (V/E/D em cores), adversário, data e tipo. Se a partida ainda não aconteceu, aparece 'EM BREVE' em verde.",
     highlight: ".office-match-list",
   },
   {
     title: "Convocar jogadores",
-    body: "Em partidas futuras com lista de presenca preenchida, o botao CONVOCAR gera uma mensagem de convocacao pronta para enviar pelo WhatsApp.",
+    body: "Em partidas futuras com lista de presença preenchida, o botão CONVOCAR gera uma mensagem de convocação pronta para enviar pelo WhatsApp.",
+    highlight: ".office-match-list",
+  },
+  {
+    title: "Editar ou excluir partida",
+    body: "Toque no card de uma partida para abrir as opções de edição. Você pode atualizar o resultado, marcar presenças ou excluir a partida.",
     highlight: ".office-match-list",
   },
 ];
@@ -12203,22 +12218,22 @@ const TUTORIAL_OFFICE_CALENDAR = [
 const TUTORIAL_OFFICE_STATS = [
   {
     title: "Aba Estatísticas",
-    body: "Aqui voce acompanha o desempenho de cada jogador ao longo da temporada: gols, assistencias, presencas e gols sofridos (para goleiros).",
+    body: "Aqui você acompanha o desempenho de cada jogador ao longo da temporada: gols, assistências, presenças e gols sofridos (para goleiros).",
     highlight: null,
   },
   {
     title: "Resumo de gols",
-    body: "Os tres cards no topo mostram o total de gols marcados, gols sofridos e saldo de gols do time, calculados automaticamente a partir das partidas registradas.",
+    body: "Os três cards no topo mostram o total de gols marcados, gols sofridos e saldo de gols do time, calculados automaticamente a partir das partidas registradas.",
     highlight: ".office-goal-summary",
   },
   {
     title: "Tabela de jogadores",
-    body: "Cada jogador aparece com seus numeros acumulados. Voce pode ajustar manualmente gols e assistencias usando os botoes + e - caso queira registrar estatísticas fora de partidas.",
+    body: "Cada jogador aparece com seus números acumulados. Você pode ajustar manualmente gols e assistências usando os botões + e - caso queira registrar estatísticas fora de partidas.",
     highlight: ".office-stats-view",
   },
   {
     title: "Exportar estatísticas",
-    body: "O botao EXPORTAR / FILTRAR abre opcoes para gerar uma imagem da tabela de estatísticas, filtrar por periodo ou tipo de partida. Funcao completa disponivel no plano PRO.",
+    body: "O botão EXPORTAR / FILTRAR abre opções para gerar uma imagem da tabela de estatísticas, filtrar por período ou tipo de partida. Função completa disponível no plano PRO.",
     highlight: ".office-export-stats-btn",
   },
 ];
@@ -12226,12 +12241,17 @@ const TUTORIAL_OFFICE_STATS = [
 const TUTORIAL_OFFICE_IMPORT = [
   {
     title: "Aba Importar",
-    body: "Aqui voce pode importar um elenco inteiro de uma vez via arquivo CSV, sem precisar cadastrar jogador por jogador.",
+    body: "Aqui você pode importar um elenco inteiro de uma vez via arquivo CSV, sem precisar cadastrar jogador por jogador.",
     highlight: null,
   },
   {
     title: "Importar planilha CSV",
-    body: "Toque em INICIAR IMPORTACAO, selecione o arquivo CSV exportado do Excel ou Google Sheets e o app vai adicionar ou atualizar os jogadores automaticamente.",
+    body: "Toque em INICIAR IMPORTAÇÃO, selecione o arquivo CSV exportado do Excel ou Google Sheets e o app vai adicionar ou atualizar os jogadores automaticamente.",
+    highlight: ".office-import-card",
+  },
+  {
+    title: "Formato do arquivo",
+    body: "O CSV deve ter a primeira linha como cabeçalho com os nomes das colunas (ex: Nome, Número, Posição). Colunas extras são ignoradas automaticamente.",
     highlight: ".office-import-card",
   },
 ];
@@ -12313,12 +12333,20 @@ function App() {
   }, []);
 
   // ── Android hardware/gesture back button ────────────────────────────────────
-  // Intercepts the Capacitor "backButton" event and navega entre telas do app
+  // Intercepts the Capacitor "backButton" event e navega entre telas do app
   // em vez de fechar o app imediatamente.
-  // Hierarquia de navegação (do mais profundo para o mais raso):
-  //   office/tactic → home → profileMode → menu principal (fecha o app)
+  // Hierarquia (do mais profundo para o mais raso):
+  //   modal aberto → office/tactic → home → profileMode → menu principal (fica)
   useEffect(() => {
     const handleBack = () => {
+      // Primeiro: fechar qualquer modal aberto antes de navegar
+      if (showNewTeam) { setShowNewTeam(false); return; }
+      if (editingTeam) { setEditingTeam(null); return; }
+      if (showTeamLimitUpsell) { setShowTeamLimitUpsell(false); return; }
+      if (enableCollabTeam) { setEnableCollabTeam(null); return; }
+      if (manageCollabTeam) { setManageCollabTeam(null); return; }
+      if (showJoinCollab) { setShowJoinCollab(false); return; }
+
       // Dentro do modo "field": navegar entre seções
       if (profileMode === "field") {
         if (navSection === "office" || navSection === "tactic") {
@@ -12339,8 +12367,7 @@ function App() {
         setProfileMode(null);
         return;
       }
-      // No menu principal (profileMode === null): permite fechar o app normalmente
-      // Não chamamos App.exitApp() — o Capacitor usa o comportamento padrão do SO.
+      // No menu principal: não faz nada — impede o fechamento do app pelo botão voltar.
     };
 
     // Capacitor App plugin (disponível no wrapper nativo)
@@ -12350,7 +12377,7 @@ function App() {
       return () => { listener.remove(); };
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileMode, navSection]);
+  }, [profileMode, navSection, showNewTeam, editingTeam, showTeamLimitUpsell, enableCollabTeam, manageCollabTeam, showJoinCollab]);
 
   // ── Auth listener + initial data load ──────────────────────────────────────
   useEffect(() => {
