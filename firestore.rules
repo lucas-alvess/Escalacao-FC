@@ -57,10 +57,11 @@ service cloud.firestore {
       match /teams/{teamId} {
         allow read, write: if isOwner(uid);
 
-        match /players/{playerId}   { allow read, write: if isOwner(uid); }
-        match /lineups/{lineupId}   { allow read, write: if isOwner(uid); }
-        match /matches/{matchId}    { allow read, write: if isOwner(uid); }
-        match /stats/{statId}       { allow read, write: if isOwner(uid); }
+        match /players/{playerId}    { allow read, write: if isOwner(uid); }
+        match /lineups/{lineupId}    { allow read, write: if isOwner(uid); }
+        match /matches/{matchId}     { allow read, write: if isOwner(uid); }
+        match /stats/{statId}        { allow read, write: if isOwner(uid); }
+        match /financeiro/{mesAnoKey} { allow read, write: if isOwner(uid); }
       }
 
       match /mensalistas/{agendaId} {

@@ -11353,8 +11353,433 @@ function ImportPlayersModal({team, onClose, onImport}) {
 }
 
 
+// ─── Financeiro Tab ───────────────────────────────────────────────────────────
+// Dados salvos em: users/{uid}/teams/{teamId}/financeiro/{MM_YYYY}
+// Estrutura do doc: { pagamentos:[{id,name,pago,dataPagamento,obs}],
+//   entradas:[{id,desc,valor,data}], despesas:[{id,desc,valor,data}],
+//   saldoAnterior:"", saldoAnteriorNome:"", outrosCaixas:[{id,nome,valor}] }
+
+const MESES_FIN = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+function FinanceiroTab({ team, uid }) {
+  const now = new Date();
+  const [mes, setMes] = useState(now.getMonth());
+  const [ano, setAno] = useState(now.getFullYear());
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+
+  // Entradas avulsas
+  const [showAddEntrada, setShowAddEntrada] = useState(false);
+  const [entradaDesc, setEntradaDesc] = useState("");
+  const [entradaValor, setEntradaValor] = useState("");
+  // Despesas
+  const [showAddDespesa, setShowAddDespesa] = useState(false);
+  const [despesaDesc, setDespesaDesc] = useState("");
+  const [despesaValor, setDespesaValor] = useState("");
+  // Saldo anterior
+  const [editingSaldoNome, setEditingSaldoNome] = useState(false);
+  // Outros caixas
+  const [showAddCaixa, setShowAddCaixa] = useState(false);
+  const [novoCaixaNome, setNovoCaixaNome] = useState("");
+  // Copiar
+  const [copiedPag, setCopiedPag] = useState(false);
+  const [copiedRel, setCopiedRel] = useState(false);
+
+  const saveTimer = useRef(null);
+  const mesAnoKey = `${String(mes+1).padStart(2,"0")}_${ano}`;
+  const docPath = uid ? `users/${uid}/teams/${String(team.id)}/financeiro/${mesAnoKey}` : null;
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null),2200); };
+
+  // Jogadores do elenco (excluindo convidados)
+  const rosterPlayers = (team.players||[]).filter(p=>!p.isGuest);
+
+  useEffect(()=>{
+    if(!uid||!docPath){setLoading(false);return;}
+    const fb=getFirebase();if(!fb){setLoading(false);return;}
+    setLoading(true);
+    const unsub=fb.onSnapshot(fb.doc(fb.db,docPath),snap=>{
+      if(snap.exists()){
+        setData(snap.data());
+      } else {
+        const initialPagamentos=rosterPlayers.map(p=>({id:p.id,name:p.name,pago:false,dataPagamento:"",obs:""}));
+        setData({pagamentos:initialPagamentos,entradas:[],despesas:[],saldoAnterior:"",saldoAnteriorNome:"Saldo em Caixa Anterior",outrosCaixas:[]});
+      }
+      setLoading(false);
+    },()=>setLoading(false));
+    return()=>unsub();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[mesAnoKey,uid,docPath,team.id]);
+
+  // Sincroniza novos jogadores do elenco sem apagar os existentes
+  const syncedKeyRef = useRef(null);
+  useEffect(()=>{
+    if(!data||loading)return;
+    const key=mesAnoKey+"_"+rosterPlayers.map(p=>p.id).join(",");
+    if(syncedKeyRef.current===key)return;
+    const existingIds=new Set((data.pagamentos||[]).map(p=>p.id));
+    const novos=rosterPlayers.filter(p=>!existingIds.has(p.id));
+    syncedKeyRef.current=key;
+    if(novos.length>0){
+      const added=novos.map(p=>({id:p.id,name:p.name,pago:false,dataPagamento:"",obs:""}));
+      const next={...data,pagamentos:[...(data.pagamentos||[]),...added]};
+      setData(next); save(next);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[data,rosterPlayers.length,mesAnoKey,loading]);
+
+  const save=async(next)=>{
+    const fb=getFirebase();if(!fb||!uid)return;
+    await fb.setDoc(fb.doc(fb.db,docPath),next,{merge:true});
+  };
+  const saveDebounced=(next)=>{
+    setData(next);
+    clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(()=>save(next),800);
+  };
+
+  const navMes=(dir)=>{
+    let m=mes+dir,a=ano;
+    if(m<0){m=11;a--;}if(m>11){m=0;a++;}
+    setMes(m);setAno(a);
+  };
+
+  const parseVal=(v)=>parseFloat(String(v||"").replace(/[^\d.,]/g,"").replace(",","."))||0;
+
+  const totalEntradas=(data?.entradas||[]).reduce((s,e)=>s+parseVal(e.valor),0);
+  const totalPagamentos=(data?.pagamentos||[]).filter(p=>p.pago).length;
+  const totalDespesas=(data?.despesas||[]).reduce((s,d)=>s+parseVal(d.valor),0);
+  const saldoAnteriorNum=parseVal(data?.saldoAnterior);
+  const outrosCaixasTotal=(data?.outrosCaixas||[]).reduce((s,c)=>s+parseVal(c.valor),0);
+  // Saldo = entradas + pagamentos (sem valor unitário nesta versão) + outros caixas + saldo anterior - despesas
+  // Nota: como o Financeiro do time não tem "valor da mensalidade" fixo, o saldo de pagamentos é só contagem.
+  // Para consistência, entradas avulsas + outros caixas + saldo anterior - despesas = saldo.
+  const saldo=totalEntradas+outrosCaixasTotal+saldoAnteriorNum-totalDespesas;
+
+  const togglePago=(id)=>{
+    const list=[...(data.pagamentos||[])];
+    const idx=list.findIndex(p=>p.id===id);if(idx===-1)return;
+    const wasPago=list[idx].pago;
+    list[idx]={...list[idx],pago:!wasPago,dataPagamento:!wasPago?new Date().toLocaleDateString("pt-BR"):list[idx].dataPagamento};
+    saveDebounced({...data,pagamentos:list});
+  };
+  const updatePag=(id,field,val)=>{
+    const list=[...(data.pagamentos||[])];
+    const idx=list.findIndex(p=>p.id===id);if(idx===-1)return;
+    list[idx]={...list[idx],[field]:val};
+    saveDebounced({...data,pagamentos:list});
+  };
+
+  const addEntrada=()=>{
+    const desc=entradaDesc.trim();if(!desc)return;
+    const e={id:genUUID(),desc,valor:entradaValor,data:new Date().toLocaleDateString("pt-BR")};
+    const next={...data,entradas:[...(data.entradas||[]),e]};
+    save(next);setData(next);setEntradaDesc("");setEntradaValor("");setShowAddEntrada(false);
+    showToast("Entrada registrada!");
+  };
+  const removeEntrada=(id)=>{
+    const next={...data,entradas:(data.entradas||[]).filter(e=>e.id!==id)};
+    save(next);setData(next);showToast("Entrada removida");
+  };
+
+  const addDespesa=()=>{
+    const desc=despesaDesc.trim();if(!desc)return;
+    const d={id:genUUID(),desc,valor:despesaValor,data:new Date().toLocaleDateString("pt-BR")};
+    const next={...data,despesas:[...(data.despesas||[]),d]};
+    save(next);setData(next);setDespesaDesc("");setDespesaValor("");setShowAddDespesa(false);
+    showToast("Despesa registrada!");
+  };
+  const removeDespesa=(id)=>{
+    const next={...data,despesas:(data.despesas||[]).filter(d=>d.id!==id)};
+    save(next);setData(next);showToast("Despesa removida");
+  };
+
+  const addOutroCaixa=()=>{
+    const nome=novoCaixaNome.trim();if(!nome)return;
+    const novo={id:genUUID(),nome,valor:""};
+    const next=[...(data.outrosCaixas||[]),novo];
+    const nextData={...data,outrosCaixas:next};
+    setData(nextData);save(nextData);setNovoCaixaNome("");setShowAddCaixa(false);
+  };
+  const updateOutroCaixa=(id,field,val)=>{
+    const next=(data.outrosCaixas||[]).map(c=>c.id===id?{...c,[field]:val}:c);
+    saveDebounced({...data,outrosCaixas:next});
+  };
+  const removeOutroCaixa=(id)=>{
+    const next=(data.outrosCaixas||[]).filter(c=>c.id!==id);
+    const nextData={...data,outrosCaixas:next};
+    setData(nextData);save(nextData);
+  };
+
+  const mesLabel=`${MESES_FIN[mes]} ${ano}`;
+
+  const buildTextoPagamentos=()=>{
+    const pagos=(data.pagamentos||[]).filter(p=>p.pago).map(p=>p.name);
+    const nao=(data.pagamentos||[]).filter(p=>!p.pago).map(p=>p.name);
+    const lines=[
+      `💰 *MENSALIDADE — ${mesLabel.toUpperCase()}*`,
+      `🏟️ *${team.name}*`,
+      ``,
+      `✅ *Pagaram (${pagos.length}):*`,
+      ...pagos.map(n=>`  ✔ ${n}`),
+      ``,
+      `⏳ *Pendentes (${nao.length}):*`,
+      ...nao.map(n=>`  ✗ ${n}`),
+      ``,
+      `_Escalação FC_ ⚽`,
+    ];
+    return lines.join("\n");
+  };
+
+  const buildTextoRelatorio=()=>{
+    const lines=[
+      `📊 *RELATÓRIO FINANCEIRO — ${mesLabel.toUpperCase()}*`,
+      `🏟️ *${team.name}*`,
+      ``,
+    ];
+    if(saldoAnteriorNum>0) lines.push(`🏦 ${data.saldoAnteriorNome||"Saldo Anterior"}: R$ ${saldoAnteriorNum.toFixed(2).replace(".",",")}`,``);
+    if((data.outrosCaixas||[]).length>0){
+      lines.push(`💼 *Outros caixas:*`);
+      (data.outrosCaixas||[]).forEach(c=>{ if(parseVal(c.valor)>0) lines.push(`  + ${c.nome}: R$ ${parseVal(c.valor).toFixed(2).replace(".",",")}`); });
+      lines.push(``);
+    }
+    if((data.entradas||[]).length>0){
+      lines.push(`💵 *Entradas:*`);
+      (data.entradas||[]).forEach(e=>lines.push(`  + ${e.desc}: R$ ${parseVal(e.valor).toFixed(2).replace(".",",")}`));
+      lines.push(`  📥 Total entradas: R$ ${totalEntradas.toFixed(2).replace(".",",")}`,``);
+    }
+    if((data.despesas||[]).length>0){
+      lines.push(`🔴 *Despesas:*`);
+      (data.despesas||[]).forEach(d=>lines.push(`  - ${d.desc}: R$ ${parseVal(d.valor).toFixed(2).replace(".",",")}`));
+      lines.push(`  📤 Total despesas: R$ ${totalDespesas.toFixed(2).replace(".",",")}`,``);
+    }
+    lines.push(`${saldo>=0?"🟢":"🔴"} *Saldo Final: R$ ${saldo.toFixed(2).replace(".",",")}*`,``);
+    lines.push(`_Escalação FC_ ⚽`);
+    return lines.join("\n");
+  };
+
+  const copyText=(text,setCopied)=>{
+    navigator.clipboard.writeText(text).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
+  };
+
+  const inputStyle={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:10,padding:"10px 12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,outline:"none",boxSizing:"border-box"};
+  const labelStyle={color:"#9CA3AF",fontSize:10,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:5,display:"block"};
+
+  return (
+    <div style={{flex:1,padding:"14px 0 40px",display:"flex",flexDirection:"column",gap:14}}>
+      {toast&&<div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",background:"#1d4ed8",color:"#fff",padding:"10px 22px",borderRadius:20,fontSize:13,fontWeight:600,zIndex:999,whiteSpace:"nowrap",pointerEvents:"none",animation:"toastIn 0.25s ease"}}>{toast}</div>}
+
+      {/* Nav mês */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(59,130,246,0.15)",borderRadius:14,padding:"10px 14px"}}>
+        <button onClick={()=>navMes(-1)} style={{width:32,height:32,borderRadius:8,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1.5}}>{mesLabel}</div>
+          <div style={{fontSize:10,color:"#4B5563",fontWeight:700}}>{totalPagamentos}/{rosterPlayers.length} PAGAMENTOS CONFIRMADOS</div>
+        </div>
+        <button onClick={()=>navMes(1)} style={{width:32,height:32,borderRadius:8,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+
+      {loading?(
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 0"}}>
+          <div style={{width:28,height:28,border:"3px solid rgba(59,130,246,0.3)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+        </div>
+      ):(<>
+
+      {/* Painel do caixa */}
+      <div style={{background:"linear-gradient(135deg,#0a1628,#0d1f38)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:16,padding:16}}>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#60a5fa",display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
+          💰 CAIXA DO MÊS
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+          <div style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{color:"#6B7280",fontSize:10,fontWeight:700}}>ENTRADAS</div>
+            <div style={{color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1}}>R$ {(totalEntradas+saldoAnteriorNum+outrosCaixasTotal).toFixed(2).replace(".",",")}</div>
+            <div style={{color:"#4B5563",fontSize:10,marginTop:2}}>{totalPagamentos} pagtos{outrosCaixasTotal>0?` + outros`:""}{saldoAnteriorNum>0?` + ant.`:""}</div>
+          </div>
+          <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{color:"#6B7280",fontSize:10,fontWeight:700}}>DESPESAS</div>
+            <div style={{color:"#F87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1}}>R$ {totalDespesas.toFixed(2).replace(".",",")}</div>
+          </div>
+        </div>
+        <div style={{background:saldo>=0?"rgba(52,211,153,0.1)":"rgba(239,68,68,0.1)",border:`1px solid ${saldo>=0?"rgba(52,211,153,0.3)":"rgba(239,68,68,0.3)"}`,borderRadius:10,padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{color:"#9CA3AF",fontSize:11,fontWeight:700}}>SALDO FINAL</div>
+          <div style={{color:saldo>=0?"#34d399":"#F87171",fontFamily:"'Bebas Neue',sans-serif",fontSize:26,letterSpacing:1}}>R$ {saldo.toFixed(2).replace(".",",")}</div>
+        </div>
+
+        {/* Saldo anterior */}
+        <div style={{marginBottom:10}}>
+          <div style={{...labelStyle,display:"flex",alignItems:"center",gap:4,cursor:"pointer"}} onClick={()=>setEditingSaldoNome(true)}>
+            🏦 {editingSaldoNome?(
+              <input autoFocus style={{...inputStyle,padding:"4px 8px",fontSize:10}} value={data.saldoAnteriorNome||"Saldo em Caixa Anterior"} onChange={e=>setData(d=>({...d,saldoAnteriorNome:e.target.value}))} onBlur={()=>{setEditingSaldoNome(false);save({...data});}} onKeyDown={e=>{if(e.key==="Enter"||e.key==="Escape"){setEditingSaldoNome(false);save({...data});}}}/>
+            ):(data.saldoAnteriorNome||"Saldo em Caixa Anterior")}
+          </div>
+          <input style={inputStyle} placeholder="Ex: 50,00" value={data.saldoAnterior||""} onChange={e=>{const v=e.target.value;saveDebounced({...data,saldoAnterior:v});}}/>
+        </div>
+
+        {/* Outros caixas */}
+        {(data.outrosCaixas||[]).map(c=>(
+          <div key={c.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+            <input style={{...inputStyle,flex:2}} placeholder="Nome do caixa" value={c.nome||""} onChange={e=>updateOutroCaixa(c.id,"nome",e.target.value)}/>
+            <input style={{...inputStyle,flex:1}} placeholder="R$" value={c.valor||""} onChange={e=>updateOutroCaixa(c.id,"valor",e.target.value)}/>
+            <button onClick={()=>removeOutroCaixa(c.id)} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"8px 10px",color:"#F87171",cursor:"pointer",flexShrink:0,fontSize:13}}>✕</button>
+          </div>
+        ))}
+        {showAddCaixa?(
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <input autoFocus style={{...inputStyle,flex:1}} placeholder="Nome do caixa" value={novoCaixaNome} onChange={e=>setNovoCaixaNome(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addOutroCaixa();if(e.key==="Escape")setShowAddCaixa(false);}}/>
+            <button onClick={addOutroCaixa} style={{background:"rgba(52,211,153,0.15)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"8px 12px",color:"#34d399",cursor:"pointer",fontSize:12,fontWeight:700}}>OK</button>
+          </div>
+        ):(
+          <button onClick={()=>setShowAddCaixa(true)} style={{width:"100%",background:"rgba(59,130,246,0.08)",border:"1px dashed rgba(59,130,246,0.3)",borderRadius:9,padding:"8px",color:"#60a5fa",cursor:"pointer",fontSize:11,fontWeight:700}}>
+            + Adicionar Caixa
+          </button>
+        )}
+      </div>
+
+      {/* Mensalidade / Pagamentos */}
+      <div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+          👥 MENSALIDADE
+        </div>
+        {rosterPlayers.length===0?(
+          <div style={{textAlign:"center",color:"#4B5563",fontSize:13,padding:"20px 0"}}>Nenhum jogador no elenco.</div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {(data.pagamentos||[]).filter(p=>rosterPlayers.some(r=>r.id===p.id)).map(item=>{
+              const isExp=expandedId===item.id;
+              return (
+                <div key={item.id} style={{background:item.pago?"rgba(52,211,153,0.07)":"rgba(255,255,255,0.03)",border:`1px solid ${item.pago?"rgba(52,211,153,0.2)":"rgba(255,255,255,0.07)"}`,borderRadius:12,overflow:"hidden"}}>
+                  <div style={{padding:"11px 13px",display:"flex",alignItems:"center",gap:10,cursor:"pointer"}} onClick={()=>setExpandedId(isExp?null:item.id)}>
+                    <button onClick={e=>{e.stopPropagation();togglePago(item.id);}} style={{width:28,height:28,borderRadius:8,border:`2px solid ${item.pago?"#34d399":"rgba(156,163,175,0.35)"}`,background:item.pago?"rgba(52,211,153,0.15)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.2s"}}>
+                      {item.pago&&<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="3" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </button>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{color:item.pago?"#6ee7b7":"#E5E7EB",fontWeight:700,fontSize:13}}>{item.name}</div>
+                      <div style={{fontSize:10,color:item.pago?"#34d399":"#6B7280",marginTop:1}}>
+                        {item.pago?`✓ Pago${item.dataPagamento?` em ${item.dataPagamento}`:""}`:item.obs?item.obs.slice(0,28):"Aguardando pagamento"}
+                      </div>
+                    </div>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2" strokeLinecap="round" style={{transform:isExp?"rotate(90deg)":"none",transition:"transform 0.2s",flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
+                  </div>
+                  {isExp&&(
+                    <div style={{padding:"0 13px 13px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                      <div style={{marginTop:10,marginBottom:8}}>
+                        <label style={labelStyle}>DATA PAGAMENTO</label>
+                        <input style={inputStyle} placeholder="dd/mm/aaaa" value={item.dataPagamento||""} onChange={e=>updatePag(item.id,"dataPagamento",e.target.value)}/>
+                      </div>
+                      <div>
+                        <label style={labelStyle}>OBSERVAÇÃO</label>
+                        <input style={inputStyle} placeholder="Ex: Vai pagar na quinta..." value={item.obs||""} onChange={e=>updatePag(item.id,"obs",e.target.value)}/>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {/* Copiar lista de pagamentos */}
+        <button onClick={()=>copyText(buildTextoPagamentos(),setCopiedPag)} style={{width:"100%",marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px",borderRadius:12,border:"1px solid rgba(52,211,153,0.25)",background:"rgba(52,211,153,0.07)",color:"#34d399",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
+          {copiedPag?"✅ Copiado!":"📋 Copiar lista de pagamentos (WhatsApp)"}
+        </button>
+      </div>
+
+      {/* Entradas avulsas */}
+      <div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+          💵 ENTRADAS
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {(data.entradas||[]).map(e=>(
+            <div key={e.id} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(52,211,153,0.05)",border:"1px solid rgba(52,211,153,0.15)",borderRadius:11,padding:"10px 13px"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{color:"#E5E7EB",fontWeight:700,fontSize:13}}>{e.desc}</div>
+                <div style={{color:"#34d399",fontSize:11,fontWeight:700,marginTop:1}}>R$ {parseVal(e.valor).toFixed(2).replace(".",",")} · {e.data||""}</div>
+              </div>
+              <button onClick={()=>removeEntrada(e.id)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:16,padding:"2px 6px"}}>✕</button>
+            </div>
+          ))}
+        </div>
+        {showAddEntrada?(
+          <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(59,130,246,0.15)",borderRadius:12,padding:12}}>
+            <div>
+              <label style={labelStyle}>DESCRIÇÃO</label>
+              <input autoFocus style={inputStyle} placeholder="Ex: Patrocínio, Rifa..." value={entradaDesc} onChange={e=>setEntradaDesc(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addEntrada();}}/>
+            </div>
+            <div>
+              <label style={labelStyle}>VALOR (R$)</label>
+              <input style={inputStyle} placeholder="0,00" value={entradaValor} onChange={e=>setEntradaValor(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addEntrada();}}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={addEntrada} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"rgba(52,211,153,0.15)",color:"#34d399",fontWeight:700,fontSize:13,cursor:"pointer"}}>Salvar</button>
+              <button onClick={()=>{setShowAddEntrada(false);setEntradaDesc("");setEntradaValor("");}} style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#6B7280",fontWeight:700,fontSize:13,cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>
+        ):(
+          <button onClick={()=>setShowAddEntrada(true)} style={{width:"100%",marginTop:8,background:"rgba(52,211,153,0.08)",border:"1px dashed rgba(52,211,153,0.3)",borderRadius:9,padding:"9px",color:"#34d399",cursor:"pointer",fontSize:12,fontWeight:700}}>
+            + Adicionar Entrada
+          </button>
+        )}
+      </div>
+
+      {/* Despesas */}
+      <div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+          🔴 DESPESAS
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {(data.despesas||[]).map(d=>(
+            <div key={d.id} style={{display:"flex",alignItems:"center",gap:10,background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:11,padding:"10px 13px"}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{color:"#E5E7EB",fontWeight:700,fontSize:13}}>{d.desc}</div>
+                <div style={{color:"#F87171",fontSize:11,fontWeight:700,marginTop:1}}>R$ {parseVal(d.valor).toFixed(2).replace(".",",")} · {d.data||""}</div>
+              </div>
+              <button onClick={()=>removeDespesa(d.id)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:16,padding:"2px 6px"}}>✕</button>
+            </div>
+          ))}
+        </div>
+        {showAddDespesa?(
+          <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:12,padding:12}}>
+            <div>
+              <label style={labelStyle}>DESCRIÇÃO</label>
+              <input autoFocus style={inputStyle} placeholder="Ex: Aluguel do campo, bolas..." value={despesaDesc} onChange={e=>setDespesaDesc(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addDespesa();}}/>
+            </div>
+            <div>
+              <label style={labelStyle}>VALOR (R$)</label>
+              <input style={inputStyle} placeholder="0,00" value={despesaValor} onChange={e=>setDespesaValor(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addDespesa();}}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={addDespesa} style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"rgba(239,68,68,0.12)",color:"#F87171",fontWeight:700,fontSize:13,cursor:"pointer"}}>Salvar</button>
+              <button onClick={()=>{setShowAddDespesa(false);setDespesaDesc("");setDespesaValor("");}} style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid rgba(255,255,255,0.1)",background:"transparent",color:"#6B7280",fontWeight:700,fontSize:13,cursor:"pointer"}}>Cancelar</button>
+            </div>
+          </div>
+        ):(
+          <button onClick={()=>setShowAddDespesa(true)} style={{width:"100%",marginTop:8,background:"rgba(239,68,68,0.06)",border:"1px dashed rgba(239,68,68,0.3)",borderRadius:9,padding:"9px",color:"#F87171",cursor:"pointer",fontSize:12,fontWeight:700}}>
+            + Adicionar Despesa
+          </button>
+        )}
+      </div>
+
+      {/* Exportar relatório */}
+      <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:14}}>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",marginBottom:10}}>📤 EXPORTAR</div>
+        <button onClick={()=>copyText(buildTextoRelatorio(),setCopiedRel)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px",borderRadius:12,border:"1px solid rgba(59,130,246,0.25)",background:"rgba(59,130,246,0.07)",color:"#60a5fa",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
+          {copiedRel?"✅ Copiado!":"📊 Copiar relatório mensal (WhatsApp)"}
+        </button>
+      </div>
+
+      </>)}
+    </div>
+  );
+}
+
 function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
-  const [officeTab,setOfficeTab]=useState("calendar"); // "calendar" | "stats" | "import"
+  const [officeTab,setOfficeTab]=useState("calendar"); // "calendar" | "stats" | "import" | "financeiro"
   const [matches,setMatches]=useState(null); // null=loading, []+=loaded
   const [stats,setStats]=useState({});
   const [showMatchModal,setShowMatchModal]=useState(false);
@@ -11576,16 +12001,17 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
 
       {/* Sub-tabs */}
       <div className="office-tabs" style={{display:"flex",gap:0,margin:"14px 16px 0",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:3}}>
-        {[["calendar","Calendário","calendar"],["stats","Estatísticas","stats"],["import","Importar","import"]].map(([id,label,ico])=>(
+        {[["calendar","Calendário","calendar"],["stats","Stats","stats"],["financeiro","Financeiro","fin"],["import","Importar","import"]].map(([id,label,ico])=>(
           <button key={id} onClick={()=>setOfficeTab(id)} style={{
-            flex:1,padding:"9px 4px",borderRadius:9,border:"none",cursor:"pointer",
-            fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,letterSpacing:0.2,
+            flex:1,padding:"9px 2px",borderRadius:9,border:"none",cursor:"pointer",
+            fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,letterSpacing:0.2,
             background:officeTab===id?`linear-gradient(135deg,${c1},${c2})`:"transparent",
             color:officeTab===id?"#fff":"#6B7280",transition:"all 0.18s",
-            display:"flex",alignItems:"center",justifyContent:"center",gap:5
+            display:"flex",alignItems:"center",justifyContent:"center",gap:4
           }}>
             {ico==="calendar"&&<Ico.Calendar/>}
             {ico==="stats"&&<Ico.Stats/>}
+            {ico==="fin"&&<span style={{fontSize:12}}>💰</span>}
             {ico==="import"&&<Ico.Import/>}
             {label}
           </button>
@@ -11750,6 +12176,10 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
           </>
         )}
         {/* ── Import tab ── */}
+        {officeTab==="financeiro"&&(
+          <FinanceiroTab team={team} uid={uid}/>
+        )}
+
         {officeTab==="import"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div className="office-import-card" style={{padding:"14px",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14}}>
@@ -12225,7 +12655,7 @@ const TUTORIAL_OFFICE_CALENDAR = [
   },
   {
     title: "Abas do Escritório",
-    body: "O Escritório tem três abas: Calendário (partidas), Estatísticas (desempenho dos jogadores) e Importar (importação de elenco via planilha CSV).",
+    body: "O Escritório tem quatro abas: Calendário (partidas), Stats (desempenho), Financeiro (caixa e mensalidades) e Importar (importação via CSV).",
     highlight: ".office-tabs",
   },
   {
@@ -12754,7 +13184,7 @@ setLoginLoading(false);
       // ── 1. Times próprios (users/{uid}/teams) ──────────────────────────────
       const teamsSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "teams"));
       for (const teamDoc of teamsSnap.docs) {
-        await deleteSubcols(`users/${uid}/teams/${teamDoc.id}`, ["players","lineups","matches","stats"]);
+        await deleteSubcols(`users/${uid}/teams/${teamDoc.id}`, ["players","lineups","matches","stats","financeiro"]);
         await fb.deleteDoc(teamDoc.ref);
       }
 
