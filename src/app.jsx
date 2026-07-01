@@ -11593,7 +11593,7 @@ function FinanceiroTab({ team, uid }) {
       {/* Painel do caixa */}
       <div style={{background:"linear-gradient(135deg,#0a1628,#0d1f38)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:16,padding:16}}>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#60a5fa",display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
-          💰 CAIXA DO MÊS
+          <Ico.Money/> CAIXA DO MÊS
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           <div style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"10px 12px"}}>
@@ -11614,7 +11614,7 @@ function FinanceiroTab({ team, uid }) {
         {/* Saldo anterior */}
         <div style={{marginBottom:10}}>
           <div style={{...labelStyle,display:"flex",alignItems:"center",gap:4,cursor:"pointer"}} onClick={()=>setEditingSaldoNome(true)}>
-            🏦 {editingSaldoNome?(
+            <Ico.Banknote/> {editingSaldoNome?(
               <input autoFocus style={{...inputStyle,padding:"4px 8px",fontSize:10}} value={data.saldoAnteriorNome||"Saldo em Caixa Anterior"} onChange={e=>setData(d=>({...d,saldoAnteriorNome:e.target.value}))} onBlur={()=>{setEditingSaldoNome(false);save({...data});}} onKeyDown={e=>{if(e.key==="Enter"||e.key==="Escape"){setEditingSaldoNome(false);save({...data});}}}/>
             ):(data.saldoAnteriorNome||"Saldo em Caixa Anterior")}
           </div>
@@ -11626,7 +11626,7 @@ function FinanceiroTab({ team, uid }) {
           <div key={c.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
             <input style={{...inputStyle,flex:2}} placeholder="Nome do caixa" value={c.nome||""} onChange={e=>updateOutroCaixa(c.id,"nome",e.target.value)}/>
             <input style={{...inputStyle,flex:1}} placeholder="R$" value={c.valor||""} onChange={e=>updateOutroCaixa(c.id,"valor",e.target.value)}/>
-            <button onClick={()=>removeOutroCaixa(c.id)} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"8px 10px",color:"#F87171",cursor:"pointer",flexShrink:0,fontSize:13}}>✕</button>
+            <button onClick={()=>removeOutroCaixa(c.id)} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:8,padding:"8px 10px",color:"#F87171",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center"}}><Ico.Trash/></button>
           </div>
         ))}
         {showAddCaixa?(
@@ -11644,7 +11644,7 @@ function FinanceiroTab({ team, uid }) {
       {/* Mensalidade / Pagamentos */}
       <div>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-          👥 MENSALIDADE
+          <Ico.Users/> MENSALIDADE
         </div>
         {rosterPlayers.length===0?(
           <div style={{textAlign:"center",color:"#4B5563",fontSize:13,padding:"20px 0"}}>Nenhum jogador no elenco.</div>
@@ -11685,14 +11685,14 @@ function FinanceiroTab({ team, uid }) {
         )}
         {/* Copiar lista de pagamentos */}
         <button onClick={()=>copyText(buildTextoPagamentos(),setCopiedPag)} style={{width:"100%",marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px",borderRadius:12,border:"1px solid rgba(52,211,153,0.25)",background:"rgba(52,211,153,0.07)",color:"#34d399",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
-          {copiedPag?"✅ Copiado!":"📋 Copiar lista de pagamentos (WhatsApp)"}
+          {copiedPag?<><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>Copiado!</>:<><Ico.Clipboard/>Copiar lista de pagamentos (WhatsApp)</>}
         </button>
       </div>
 
       {/* Entradas avulsas */}
       <div>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-          💵 ENTRADAS
+          <Ico.Banknote/> ENTRADAS
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {(data.entradas||[]).map(e=>(
@@ -11701,7 +11701,7 @@ function FinanceiroTab({ team, uid }) {
                 <div style={{color:"#E5E7EB",fontWeight:700,fontSize:13}}>{e.desc}</div>
                 <div style={{color:"#34d399",fontSize:11,fontWeight:700,marginTop:1}}>R$ {parseVal(e.valor).toFixed(2).replace(".",",")} · {e.data||""}</div>
               </div>
-              <button onClick={()=>removeEntrada(e.id)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:16,padding:"2px 6px"}}>✕</button>
+              <button onClick={()=>removeEntrada(e.id)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",padding:"2px 4px",display:"flex",alignItems:"center"}}><Ico.Trash/></button>
             </div>
           ))}
         </div>
@@ -11730,7 +11730,7 @@ function FinanceiroTab({ team, uid }) {
       {/* Despesas */}
       <div>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-          🔴 DESPESAS
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#F87171" stroke="none"><circle cx="12" cy="12" r="10"/></svg> DESPESAS
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {(data.despesas||[]).map(d=>(
@@ -11739,7 +11739,7 @@ function FinanceiroTab({ team, uid }) {
                 <div style={{color:"#E5E7EB",fontWeight:700,fontSize:13}}>{d.desc}</div>
                 <div style={{color:"#F87171",fontSize:11,fontWeight:700,marginTop:1}}>R$ {parseVal(d.valor).toFixed(2).replace(".",",")} · {d.data||""}</div>
               </div>
-              <button onClick={()=>removeDespesa(d.id)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:16,padding:"2px 6px"}}>✕</button>
+              <button onClick={()=>removeDespesa(d.id)} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",padding:"2px 4px",display:"flex",alignItems:"center"}}><Ico.Trash/></button>
             </div>
           ))}
         </div>
@@ -11767,9 +11767,9 @@ function FinanceiroTab({ team, uid }) {
 
       {/* Exportar relatório */}
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:14}}>
-        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",marginBottom:10}}>📤 EXPORTAR</div>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",marginBottom:10,display:"flex",alignItems:"center",gap:6}}><Ico.Share/> EXPORTAR</div>
         <button onClick={()=>copyText(buildTextoRelatorio(),setCopiedRel)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px",borderRadius:12,border:"1px solid rgba(59,130,246,0.25)",background:"rgba(59,130,246,0.07)",color:"#60a5fa",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
-          {copiedRel?"✅ Copiado!":"📊 Copiar relatório mensal (WhatsApp)"}
+          {copiedRel?<><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>Copiado!</>:<><Ico.Stats/>Copiar relatório mensal (WhatsApp)</>}
         </button>
       </div>
 
@@ -12011,7 +12011,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
           }}>
             {ico==="calendar"&&<Ico.Calendar/>}
             {ico==="stats"&&<Ico.Stats/>}
-            {ico==="fin"&&<span style={{fontSize:12}}>💰</span>}
+            {ico==="fin"&&<Ico.Money/>}
             {ico==="import"&&<Ico.Import/>}
             {label}
           </button>
