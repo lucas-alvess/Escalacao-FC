@@ -9095,13 +9095,18 @@ const LINEUP_TYPES = [
 // `onUpgrade` has no real purchase flow yet (that requires Play Billing after
 // the Capacitor wrap); it's left as a hook for that integration.
 function PremiumUpsellModal({title,description,onClose,onUpgrade}) {
+  const handleUpgrade = onUpgrade || (() => {
+    // Navega para a tela de premium sem perder o contexto atual da tela
+    window.dispatchEvent(new CustomEvent('escalacaofc:show-premium'));
+    onClose();
+  });
   return (
     <div style={{position:"fixed",inset:0,zIndex:1500,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.78)",backdropFilter:"blur(5px)",padding:"16px"}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#0d1f17",border:"1px solid rgba(250,204,21,0.25)",borderRadius:18,width:"100%",maxWidth:380,padding:"24px 22px",display:"flex",flexDirection:"column",alignItems:"center",gap:12,textAlign:"center",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
         <div style={{width:54,height:54,borderRadius:"50%",background:"rgba(250,204,21,0.12)",border:"1px solid rgba(250,204,21,0.3)",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon id="crown" size={26} style={{color:"#facc15"}}/></div>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:22,color:"#fff",letterSpacing:1}}>{title||"Recurso Premium"}</div>
         <div style={{fontFamily:"'DM Sans',sans-serif",fontSize:13,color:"#9CA3AF",lineHeight:1.5}}>{description||"Esse recurso faz parte do plano premium."}</div>
-        <button onClick={onUpgrade||onClose} style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",
+        <button onClick={handleUpgrade} style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",
           background:"linear-gradient(135deg,#b45309,#facc15)",color:"#1a1305",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,
           boxShadow:"0 6px 20px rgba(250,204,21,0.3)",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><Icon id="star" size={16} style={{color:"#1a1305"}}/> CONHECER O PREMIUM</button>
         <button onClick={onClose} style={{width:"100%",padding:"11px 0",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",cursor:"pointer",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>Agora não</button>
@@ -12278,6 +12283,7 @@ function App() {
   const [isPremium, setIsPremium] = useState(false);
   const [navSection, setNavSection] = useState("home"); // "home" | "tactic" | "office"
   const [profileMode, setProfileMode] = useState(null); // null = main menu | "field" | "monthly"
+  const [showPremiumOverlay, setShowPremiumOverlay] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [onboardingDone, setOnboardingDone] = useState(()=>!!localStorage.getItem(ONBOARDING_KEY));
@@ -12345,6 +12351,13 @@ function App() {
     return () => clearInterval(interval);
   }, []);
 
+  // ── Listener global: abrir tela premium a partir de qualquer upsell modal ──
+  useEffect(() => {
+    const handler = () => setShowPremiumOverlay(true);
+    window.addEventListener('escalacaofc:show-premium', handler);
+    return () => window.removeEventListener('escalacaofc:show-premium', handler);
+  }, []);
+
   // ── Android hardware/gesture back button ────────────────────────────────────
   // Intercepts the Capacitor "backButton" event e navega entre telas do app
   // em vez de fechar o app imediatamente.
@@ -12352,7 +12365,9 @@ function App() {
   //   modal aberto → office/tactic → home → profileMode → menu principal (fica)
   useEffect(() => {
     const handleBack = () => {
-      // Primeiro: fechar qualquer modal aberto antes de navegar
+      // Primeiro: fechar o overlay de premium se estiver aberto
+      if (showPremiumOverlay) { setShowPremiumOverlay(false); return; }
+      // Segundo: fechar qualquer modal aberto antes de navegar
       if (showNewTeam) { setShowNewTeam(false); return; }
       if (editingTeam) { setEditingTeam(null); return; }
       if (showTeamLimitUpsell) { setShowTeamLimitUpsell(false); return; }
@@ -12394,7 +12409,7 @@ function App() {
     });
     return () => { cancelled = true; handle?.remove(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileMode, navSection, showNewTeam, editingTeam, showTeamLimitUpsell, enableCollabTeam, manageCollabTeam, showJoinCollab]);
+  }, [profileMode, navSection, showPremiumOverlay, showNewTeam, editingTeam, showTeamLimitUpsell, enableCollabTeam, manageCollabTeam, showJoinCollab]);
 
   // ── Auth listener + initial data load ──────────────────────────────────────
   useEffect(() => {
@@ -13319,6 +13334,13 @@ setLoginLoading(false);
         />
       )}
       </>)}
+
+      {/* ── Overlay de tela Premium (acessível de qualquer ponto do app) ── */}
+      {showPremiumOverlay && (
+        <div style={{position:"fixed",inset:0,zIndex:9000}}>
+          <PremiumBenefitsScreen onBack={()=>setShowPremiumOverlay(false)} isPremium={isPremium}/>
+        </div>
+      )}
     </div>
   );
 }
