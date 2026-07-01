@@ -11488,25 +11488,30 @@ function buildFinanceiroCsv(team, mesesData) {
 
   // Resumo mensal
   rows.push(["=== RESUMO MENSAL ==="].map(esc));
-  rows.push(["Mês","Entradas","Outros Caixas","Saldo Anterior","Despesas","Saldo Final","Pagantes","Total Elenco"].map(esc));
+  rows.push(["Mês","Mensalidades","Entradas Avulsas","Outros Caixas","Saldo Anterior","Despesas","Saldo Final","Pagantes","Total Elenco"].map(esc));
   for(const {label,data:d} of mesesData){
+    const vlMens=parseVal(d.valorMensalidade);
+    const mens=(d.pagamentos||[]).filter(p=>p.pago).reduce((s,p)=>s+(parseVal(p.valor)||vlMens)+parseVal(p.valorAdicional),0);
     const entradas=(d.entradas||[]).reduce((s,e)=>s+parseVal(e.valor),0);
     const outros=(d.outrosCaixas||[]).reduce((s,c)=>s+parseVal(c.valor),0);
     const ant=parseVal(d.saldoAnterior);
     const desp=(d.despesas||[]).reduce((s,x)=>s+parseVal(x.valor),0);
-    const saldo=entradas+outros+ant-desp;
+    const saldo=mens+entradas+outros+ant-desp;
     const pagantes=(d.pagamentos||[]).filter(p=>p.pago).length;
     const total=(d.pagamentos||[]).length;
-    rows.push([label,entradas.toFixed(2),outros.toFixed(2),ant.toFixed(2),desp.toFixed(2),saldo.toFixed(2),pagantes,total].map(esc));
+    rows.push([label,mens.toFixed(2),entradas.toFixed(2),outros.toFixed(2),ant.toFixed(2),desp.toFixed(2),saldo.toFixed(2),pagantes,total].map(esc));
   }
   rows.push([]);
 
   // Mensalidade detalhada
   rows.push(["=== MENSALIDADE ==="].map(esc));
-  rows.push(["Mês","Jogador","Status","Data Pagamento","Observação"].map(esc));
+  rows.push(["Mês","Jogador","Status","Valor Pago","Adicional","Total","Data Pagamento","Observação"].map(esc));
   for(const {label,data:d} of mesesData){
+    const vlMens=parseVal(d.valorMensalidade);
     for(const p of (d.pagamentos||[])){
-      rows.push([label,p.name,p.pago?"Pago":"Pendente",p.dataPagamento||"",p.obs||""].map(esc));
+      const base=parseVal(p.valor)||vlMens;
+      const adic=parseVal(p.valorAdicional);
+      rows.push([label,p.name,p.pago?"Pago":"Pendente",p.pago?base.toFixed(2):"",p.pago&&adic?adic.toFixed(2):"",p.pago?(base+adic).toFixed(2):"",p.dataPagamento||"",p.obs||""].map(esc));
     }
   }
   rows.push([]);
@@ -11633,21 +11638,31 @@ function FinanceiroTab({ team, uid }) {
 
   const parseVal=(v)=>parseFloat(String(v||"").replace(/[^\d.,]/g,"").replace(",","."))||0;
 
+  const valorMensalidadeNum=parseVal(data?.valorMensalidade);
   const totalEntradas=(data?.entradas||[]).reduce((s,e)=>s+parseVal(e.valor),0);
   const totalPagamentos=(data?.pagamentos||[]).filter(p=>p.pago).length;
   const totalDespesas=(data?.despesas||[]).reduce((s,d)=>s+parseVal(d.valor),0);
   const saldoAnteriorNum=parseVal(data?.saldoAnterior);
   const outrosCaixasTotal=(data?.outrosCaixas||[]).reduce((s,c)=>s+parseVal(c.valor),0);
-  // Saldo = entradas + pagamentos (sem valor unitário nesta versão) + outros caixas + saldo anterior - despesas
-  // Nota: como o Financeiro do time não tem "valor da mensalidade" fixo, o saldo de pagamentos é só contagem.
-  // Para consistência, entradas avulsas + outros caixas + saldo anterior - despesas = saldo.
-  const saldo=totalEntradas+outrosCaixasTotal+saldoAnteriorNum-totalDespesas;
+  // Total das mensalidades pagas (valor individual ou padrão + adicional)
+  const totalMensalidades=(data?.pagamentos||[]).filter(p=>p.pago).reduce((s,p)=>{
+    const base=parseVal(p.valor)||valorMensalidadeNum;
+    return s+base+parseVal(p.valorAdicional);
+  },0);
+  const saldo=totalEntradas+totalMensalidades+outrosCaixasTotal+saldoAnteriorNum-totalDespesas;
 
   const togglePago=(id)=>{
     const list=[...(data.pagamentos||[])];
     const idx=list.findIndex(p=>p.id===id);if(idx===-1)return;
     const wasPago=list[idx].pago;
-    list[idx]={...list[idx],pago:!wasPago,dataPagamento:!wasPago?new Date().toLocaleDateString("pt-BR"):list[idx].dataPagamento};
+    // Ao marcar como pago, pré-preenche o valor com a mensalidade padrão (se ainda não tiver valor)
+    const valorAtual=list[idx].valor||"";
+    list[idx]={
+      ...list[idx],
+      pago:!wasPago,
+      dataPagamento:!wasPago?new Date().toLocaleDateString("pt-BR"):list[idx].dataPagamento,
+      valor:!wasPago&&!valorAtual&&valorMensalidadeNum?String(valorMensalidadeNum.toFixed(2).replace(".",",")):valorAtual,
+    };
     saveDebounced({...data,pagamentos:list});
   };
   const updatePag=(id,field,val)=>{
@@ -11724,6 +11739,17 @@ function FinanceiroTab({ team, uid }) {
       `🏟️ *${team.name}*`,
       ``,
     ];
+    if(valorMensalidadeNum>0) lines.push(`💳 Mensalidade padrão: R$ ${valorMensalidadeNum.toFixed(2).replace(".",",")}`,``);
+    if(totalMensalidades>0){
+      lines.push(`👥 *Mensalidades (${totalPagamentos} pagos):*`);
+      (data.pagamentos||[]).filter(p=>p.pago).forEach(p=>{
+        const base=parseVal(p.valor)||valorMensalidadeNum;
+        const adic=parseVal(p.valorAdicional);
+        const total=base+adic;
+        lines.push(`  ✔ ${p.name}: R$ ${total.toFixed(2).replace(".",",")}`);
+      });
+      lines.push(`  📥 Total mensalidades: R$ ${totalMensalidades.toFixed(2).replace(".",",")}`,``);
+    }
     if(saldoAnteriorNum>0) lines.push(`🏦 ${data.saldoAnteriorNome||"Saldo Anterior"}: R$ ${saldoAnteriorNum.toFixed(2).replace(".",",")}`,``);
     if((data.outrosCaixas||[]).length>0){
       lines.push(`💼 *Outros caixas:*`);
@@ -11731,7 +11757,7 @@ function FinanceiroTab({ team, uid }) {
       lines.push(``);
     }
     if((data.entradas||[]).length>0){
-      lines.push(`💵 *Entradas:*`);
+      lines.push(`💵 *Entradas avulsas:*`);
       (data.entradas||[]).forEach(e=>lines.push(`  + ${e.desc}: R$ ${parseVal(e.valor).toFixed(2).replace(".",",")}`));
       lines.push(`  📥 Total entradas: R$ ${totalEntradas.toFixed(2).replace(".",",")}`,``);
     }
@@ -11784,8 +11810,10 @@ function FinanceiroTab({ team, uid }) {
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
           <div style={{background:"rgba(52,211,153,0.08)",border:"1px solid rgba(52,211,153,0.2)",borderRadius:10,padding:"10px 12px"}}>
             <div style={{color:"#6B7280",fontSize:10,fontWeight:700}}>ENTRADAS</div>
-            <div style={{color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1}}>R$ {(totalEntradas+saldoAnteriorNum+outrosCaixasTotal).toFixed(2).replace(".",",")}</div>
-            <div style={{color:"#4B5563",fontSize:10,marginTop:2}}>{totalPagamentos} pagtos{outrosCaixasTotal>0?` + outros`:""}{saldoAnteriorNum>0?` + ant.`:""}</div>
+            <div style={{color:"#34d399",fontFamily:"'Bebas Neue',sans-serif",fontSize:22,letterSpacing:1}}>R$ {(totalEntradas+totalMensalidades+saldoAnteriorNum+outrosCaixasTotal).toFixed(2).replace(".",",")}</div>
+            <div style={{color:"#4B5563",fontSize:10,marginTop:2}}>
+              {totalPagamentos>0?`${totalPagamentos} mens.`:""}{totalEntradas>0?(totalPagamentos>0?" + ":"")+"avulsas":""}{outrosCaixasTotal>0?" + outros":""}{saldoAnteriorNum>0?" + ant.":""}
+            </div>
           </div>
           <div style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,padding:"10px 12px"}}>
             <div style={{color:"#6B7280",fontSize:10,fontWeight:700}}>DESPESAS</div>
@@ -11832,6 +11860,20 @@ function FinanceiroTab({ team, uid }) {
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
           <Ico.Users/> MENSALIDADE
         </div>
+        {/* Valor padrão da mensalidade */}
+        <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(34,197,94,0.06)",border:"1px solid rgba(34,197,94,0.18)",borderRadius:11,padding:"10px 13px",marginBottom:10}}>
+          <div style={{color:"#4ade80",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>VALOR PADRÃO</div>
+          <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
+            <span style={{color:"#6B7280",fontSize:13}}>R$</span>
+            <input
+              style={{...inputStyle,padding:"6px 10px",fontSize:13,flex:1}}
+              placeholder="0,00"
+              value={data?.valorMensalidade||""}
+              onChange={e=>saveDebounced({...data,valorMensalidade:e.target.value})}
+            />
+          </div>
+          {valorMensalidadeNum>0&&<div style={{color:"#4B5563",fontSize:10,whiteSpace:"nowrap"}}>{totalPagamentos}/{rosterPlayers.length} pagos</div>}
+        </div>
         {rosterPlayers.length===0?(
           <div style={{textAlign:"center",color:"#4B5563",fontSize:13,padding:"20px 0"}}>Nenhum jogador no elenco.</div>
         ):(
@@ -11847,14 +11889,29 @@ function FinanceiroTab({ team, uid }) {
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{color:item.pago?"#6ee7b7":"#E5E7EB",fontWeight:700,fontSize:13}}>{item.name}</div>
                       <div style={{fontSize:10,color:item.pago?"#34d399":"#6B7280",marginTop:1}}>
-                        {item.pago?`✓ Pago${item.dataPagamento?` em ${item.dataPagamento}`:""}`:item.obs?item.obs.slice(0,28):"Aguardando pagamento"}
+                        {item.pago?(()=>{
+                          const base=parseVal(item.valor)||valorMensalidadeNum;
+                          const adic=parseVal(item.valorAdicional);
+                          const total=base+adic;
+                          return `✓ R$ ${total.toFixed(2).replace(".",",")}${item.dataPagamento?` · ${item.dataPagamento}`:""}`;
+                        })():item.obs?item.obs.slice(0,28):"Aguardando pagamento"}
                       </div>
                     </div>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2" strokeLinecap="round" style={{transform:isExp?"rotate(90deg)":"none",transition:"transform 0.2s",flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
                   </div>
                   {isExp&&(
                     <div style={{padding:"0 13px 13px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
-                      <div style={{marginTop:10,marginBottom:8}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:10,marginBottom:8}}>
+                        <div>
+                          <label style={labelStyle}>VALOR PAGO (R$)</label>
+                          <input style={inputStyle} placeholder={valorMensalidadeNum?`Padrão: ${valorMensalidadeNum.toFixed(2).replace(".",",")}`:""} value={item.valor||""} onChange={e=>updatePag(item.id,"valor",e.target.value)}/>
+                        </div>
+                        <div>
+                          <label style={labelStyle}>ADICIONAL (R$)</label>
+                          <input style={inputStyle} placeholder="0,00" value={item.valorAdicional||""} onChange={e=>updatePag(item.id,"valorAdicional",e.target.value)}/>
+                        </div>
+                      </div>
+                      <div style={{marginBottom:8}}>
                         <label style={labelStyle}>DATA PAGAMENTO</label>
                         <input style={inputStyle} placeholder="dd/mm/aaaa" value={item.dataPagamento||""} onChange={e=>updatePag(item.id,"dataPagamento",e.target.value)}/>
                       </div>
