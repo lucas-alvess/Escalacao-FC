@@ -6698,11 +6698,11 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
             </div>
           </div>
           {user&&(
-            <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
               {/* Badge de plano. Em localhost vira botão DEV para testes. */}
               {IS_DEV?(
                 <button onClick={onTogglePremium} title="[DEV] Alternar plano localmente" style={{
-                  display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,cursor:"pointer",
+                  display:"flex",alignItems:"center",gap:4,padding:"5px 8px",borderRadius:8,cursor:"pointer",
                   border:isPremium?"1px dashed rgba(250,204,21,0.5)":"1px dashed rgba(255,255,255,0.2)",
                   background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
                   color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800
@@ -6714,7 +6714,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                 </button>
               ):(
                 <div style={{
-                  display:"flex",alignItems:"center",gap:4,padding:"6px 9px",borderRadius:8,
+                  display:"flex",alignItems:"center",gap:4,padding:"5px 8px",borderRadius:8,
                   border:isPremium?"1px solid rgba(250,204,21,0.4)":"1px solid rgba(255,255,255,0.1)",
                   background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
                   color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,
@@ -6726,13 +6726,25 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                 </div>
               )}
               {user.photoURL?(
-                <img src={user.photoURL} alt={user.displayName||""} style={{width:36,height:36,borderRadius:"50%",border:"2px solid rgba(52,211,153,0.4)"}}/>
+                <img src={user.photoURL} alt={user.displayName||""} style={{width:32,height:32,borderRadius:"50%",border:"2px solid rgba(52,211,153,0.4)",flexShrink:0}}/>
               ):(
-                <div style={{width:36,height:36,borderRadius:"50%",background:"#166534",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:14,border:"2px solid rgba(52,211,153,0.4)"}}>
+                <div style={{width:32,height:32,borderRadius:"50%",background:"#166534",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,border:"2px solid rgba(52,211,153,0.4)",flexShrink:0}}>
                   {(user.displayName||user.email||"U")[0].toUpperCase()}
                 </div>
               )}
-              <button onClick={onLogout} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:9,padding:"7px 10px",color:"#f87171",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:11,fontWeight:700}}>Sair</button>
+              {/* Botão sair compacto (só ícone) para não sair da tela em celulares pequenos */}
+              <button onClick={onLogout} title="Sair" aria-label="Sair" style={{
+                display:"flex",alignItems:"center",justifyContent:"center",
+                width:32,height:32,flexShrink:0,
+                background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.25)",
+                borderRadius:9,color:"#f87171",cursor:"pointer",padding:0
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </button>
             </div>
           )}
         </div>
@@ -12370,12 +12382,18 @@ function App() {
       // No menu principal: não faz nada — impede o fechamento do app pelo botão voltar.
     };
 
-    // Capacitor App plugin (disponível no wrapper nativo)
+    // Capacitor App plugin (disponível no wrapper nativo).
+    // addListener retorna Promise<PluginListenerHandle> no Capacitor 5+,
+    // então precisamos do .then() para obter o handle real e chamar .remove().
     const cap = window.Capacitor;
-    if (cap && cap.Plugins && cap.Plugins.App) {
-      const listener = cap.Plugins.App.addListener("backButton", handleBack);
-      return () => { listener.remove(); };
-    }
+    if (!cap || !cap.Plugins || !cap.Plugins.App) return;
+
+    let cancelled = false;
+    let handle;
+    cap.Plugins.App.addListener("backButton", handleBack).then(h => {
+      if (cancelled) { h.remove(); } else { handle = h; }
+    });
+    return () => { cancelled = true; handle?.remove(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileMode, navSection, showNewTeam, editingTeam, showTeamLimitUpsell, enableCollabTeam, manageCollabTeam, showJoinCollab]);
 
