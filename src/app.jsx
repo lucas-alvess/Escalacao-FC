@@ -31,6 +31,7 @@ function getFirebase() {
     writeBatch: _fb.writeBatch,
     onSnapshot: _fb.onSnapshot,
     query: _fb.query,
+    where: _fb.where,
     orderBy: _fb.orderBy,
     serverTimestamp: _fb.serverTimestamp,
     limit: _fb.limit,
@@ -12422,6 +12423,7 @@ function App() {
       unsubAuthRef.current = fb.onAuthStateChanged(fb.auth, async (u) => {
         if (u) {
           userUidRef.current = u.uid;
+          setLoginLoading(false);
           setUser(u);
           setAuthState("loggedIn");
           logA('login', { method: 'google' });
@@ -12713,6 +12715,7 @@ setLoginLoading(false);
   const handleLogout = async () => {
     const fb = getFirebase(); if (!fb) return;
     logA('logout');
+    setLoginLoading(false);
     await fb.signOut(fb.auth);
     setActiveTeamId(null);
   };
@@ -12721,45 +12724,107 @@ setLoginLoading(false);
     const fb = getFirebase(); if (!fb) return;
     const user = fb.auth.currentUser; if (!user) return;
     const uid = user.uid;
+
+    const deleteSubcols = async (basePath, subcols) => {
+      for (const sub of subcols) {
+        const snap = await fb.getDocs(fb.collection(fb.db, ...basePath.split("/"), sub));
+        if (!snap.docs.length) continue;
+        const batch = fb.writeBatch(fb.db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
+    };
+
     try {
-      // Apagar times próprios e suas subcoleções
+      // ── 1. Times próprios (users/{uid}/teams) ──────────────────────────────
       const teamsSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "teams"));
       for (const teamDoc of teamsSnap.docs) {
-        const tid = teamDoc.id;
-        const subcols = ["players","lineups","matches","stats"];
-        for (const sub of subcols) {
-          const subSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "teams", tid, sub));
-          const batch = fb.writeBatch(fb.db);
-          subSnap.docs.forEach(d => batch.delete(d.ref));
-          if (subSnap.docs.length) await batch.commit();
-        }
+        await deleteSubcols(`users/${uid}/teams/${teamDoc.id}`, ["players","lineups","matches","stats"]);
         await fb.deleteDoc(teamDoc.ref);
       }
-      // Apagar mensalistas e mensalidades
+
+      // ── 2. Mensalistas e mensalidades ──────────────────────────────────────
       const menSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "mensalistas"));
       for (const menDoc of menSnap.docs) {
-        const mensSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "mensalistas", menDoc.id, "mensalidades"));
-        const batch = fb.writeBatch(fb.db);
-        mensSnap.docs.forEach(d => batch.delete(d.ref));
-        if (mensSnap.docs.length) await batch.commit();
+        await deleteSubcols(`users/${uid}/mensalistas/${menDoc.id}`, ["mensalidades"]);
         await fb.deleteDoc(menDoc.ref);
       }
-      // Apagar collab_refs e collab_agenda_refs
+
+      // ── 3. Times colaborativos ─────────────────────────────────────────────
       const collabRefsSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "collab_refs"));
+      for (const refDoc of collabRefsSnap.docs) {
+        const teamId = refDoc.id;
+        const teamMeta = teams.find(t => String(t.id) === teamId);
+        const isOwner = teamMeta?.ownerUid === uid;
+
+        if (isOwner) {
+          // Dono: apagar o time colaborativo inteiro
+          await deleteSubcols(`collab_teams/${teamId}`, ["players","lineups","matches","stats","members"]);
+          // Apagar convites deste time
+          const invitesSnap = await fb.getDocs(
+            fb.query(fb.collection(fb.db, "collab_invites"), fb.where("teamId", "==", teamId))
+          );
+          if (invitesSnap.docs.length) {
+            const batch = fb.writeBatch(fb.db);
+            invitesSnap.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+          await fb.deleteDoc(fb.doc(fb.db, "collab_teams", teamId));
+        } else {
+          // Membro: apenas remover a entrada de membro
+          try {
+            await fb.deleteDoc(fb.doc(fb.db, "collab_teams", teamId, "members", uid));
+          } catch {}
+        }
+      }
+
+      // ── 4. Agendas colaborativas ───────────────────────────────────────────
       const agendaRefsSnap = await fb.getDocs(fb.collection(fb.db, "users", uid, "collab_agenda_refs"));
-      const batch2 = fb.writeBatch(fb.db);
-      collabRefsSnap.docs.forEach(d => batch2.delete(d.ref));
-      agendaRefsSnap.docs.forEach(d => batch2.delete(d.ref));
-      await batch2.commit();
-      // Apagar documento raiz do usuário
+      for (const refDoc of agendaRefsSnap.docs) {
+        const agendaId = refDoc.id;
+        let isOwner = false;
+        try {
+          const agendaMeta = await fb.getDoc(fb.doc(fb.db, "collab_agendas", agendaId));
+          isOwner = agendaMeta.exists() && agendaMeta.data().ownerUid === uid;
+        } catch {}
+
+        if (isOwner) {
+          await deleteSubcols(`collab_agendas/${agendaId}`, ["mensalidades","members"]);
+          // Apagar convites desta agenda
+          const invitesSnap = await fb.getDocs(
+            fb.query(fb.collection(fb.db, "collab_agenda_invites"), fb.where("agendaId", "==", agendaId))
+          );
+          if (invitesSnap.docs.length) {
+            const batch = fb.writeBatch(fb.db);
+            invitesSnap.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+          }
+          await fb.deleteDoc(fb.doc(fb.db, "collab_agendas", agendaId));
+        } else {
+          try {
+            await fb.deleteDoc(fb.doc(fb.db, "collab_agendas", agendaId, "members", uid));
+          } catch {}
+        }
+      }
+
+      // ── 5. Índices de collab do usuário ────────────────────────────────────
+      const batch3 = fb.writeBatch(fb.db);
+      collabRefsSnap.docs.forEach(d => batch3.delete(d.ref));
+      agendaRefsSnap.docs.forEach(d => batch3.delete(d.ref));
+      await batch3.commit();
+
+      // ── 6. Documento raiz do usuário ───────────────────────────────────────
       await fb.deleteDoc(fb.doc(fb.db, "users", uid));
-      // Apagar conta de autenticação
+
+      // ── 7. Limpar dados locais ─────────────────────────────────────────────
+      try { localStorage.clear(); } catch {}
+
+      // ── 8. Apagar conta de autenticação ────────────────────────────────────
       logA('delete_account');
       await user.delete();
       setActiveTeamId(null);
     } catch(e) {
       console.error("Erro ao excluir conta:", e);
-      // Se o Firebase exigir reautenticação (token expirado), orientar o usuário
       if (e.code === "auth/requires-recent-login") {
         alert("Por segurança, faça logout e login novamente antes de excluir sua conta.");
       } else {

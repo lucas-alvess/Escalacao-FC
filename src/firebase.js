@@ -12,7 +12,7 @@ import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   doc, setDoc, getDoc, getDocFromServer, deleteDoc,
   collection, getDocs, writeBatch,
-  onSnapshot, query, orderBy, serverTimestamp, limit
+  onSnapshot, query, where, orderBy, serverTimestamp, limit
 } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
@@ -51,7 +51,7 @@ export {
   signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged,
   doc, setDoc, getDoc, getDocFromServer, deleteDoc,
   collection, getDocs, writeBatch,
-  onSnapshot, query, orderBy, serverTimestamp, limit,
+  onSnapshot, query, where, orderBy, serverTimestamp, limit,
   storageRef, uploadBytes, getDownloadURL, deleteObject,
 };
 
