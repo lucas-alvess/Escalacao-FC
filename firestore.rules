@@ -93,7 +93,7 @@ service cloud.firestore {
     // collab_teams/{teamId}
     // ─────────────────────────────────────────────────────────────────────────
     match /collab_teams/{teamId} {
-      allow read: if isAuth();
+      allow read: if isCollabMember(teamId) || isCollabOwner(teamId);
 
       // Somente usuários premium podem criar times colaborativos.
       // A verificação usa userIsPremium() que lê o Firestore — não o estado
@@ -161,7 +161,7 @@ service cloud.firestore {
           get(/databases/$(database)/documents/collab_agendas/$(agendaId)).data.ownerUid == request.auth.uid;
       }
 
-      allow read: if isAuth();
+      allow read: if isAgendaMember() || isAgendaOwner();
 
       // Somente usuários premium podem criar agendas colaborativas.
       allow create: if isAuth() &&

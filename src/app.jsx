@@ -682,7 +682,7 @@ async function migrateV3toV4(uid) {
       if (!lineupSnap.empty) return; // already migrated
 
       // Build a lineup doc from embedded fields
-      const lineupId = String(Date.now() + Math.random());
+      const lineupId = genUUID();
       const lineupDoc = {
         id: lineupId,
         name: "Titular",
@@ -12302,6 +12302,7 @@ function App() {
   // ── Collab real-time subscriptions ────────────────────────────────────────
   // Map: teamId → unsub function
   const collabUnsubsRef = useRef({});
+  const userUidRef = useRef(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   useEffect(()=>{
     const on=()=>setIsOnline(true);
@@ -12375,6 +12376,8 @@ function App() {
       if (manageCollabTeam) { setManageCollabTeam(null); return; }
       if (showJoinCollab) { setShowJoinCollab(false); return; }
 
+      // Tela de benefícios premium (rota direta por profileMode)
+      if (profileMode === "premium") { setProfileMode(null); return; }
       // Dentro do modo "field": navegar entre seções
       if (profileMode === "field") {
         if (navSection === "office" || navSection === "tactic") {
@@ -12418,6 +12421,7 @@ function App() {
       if (!fb) return;
       unsubAuthRef.current = fb.onAuthStateChanged(fb.auth, async (u) => {
         if (u) {
+          userUidRef.current = u.uid;
           setUser(u);
           setAuthState("loggedIn");
           logA('login', { method: 'google' });
@@ -12490,13 +12494,18 @@ function App() {
                   setTeams(cloudTeams);
                   saveDataLocal({ teams: cloudTeams });
                   // Subscribe em tempo real nos times colaborativos
+                  if (!getFirebase()?.auth?.currentUser) return;
                   const collabTs = cloudTeams.filter(t => t.isCollab);
                   collabTs.forEach(ct => {
                     if (!collabUnsubsRef.current[ct.id]) {
                       collabUnsubsRef.current[ct.id] = subscribeCollabTeam(ct.id, ({ type, data }) => {
+                        if (type === "deleted") {
+                          setTeams(prev => prev.filter(tm => String(tm.id) !== String(ct.id)));
+                          setActiveTeamId(prev => String(prev) === String(ct.id) ? null : prev);
+                          return;
+                        }
                         setTeams(prev => prev.map(t => {
                           if (String(t.id) !== String(ct.id)) return t;
-                          if (type === "deleted") { setTeams(prev => prev.filter(tm => String(tm.id) !== String(ct.id))); setActiveTeamId(prev => String(prev) === String(ct.id) ? null : prev); return t; }
                           if (type === "meta") return { ...t, ...data };
                           if (type === "players") return { ...t, players: data };
                           if (type === "lineups") {
@@ -12564,7 +12573,8 @@ function App() {
           Object.values(collabUnsubsRef.current).forEach(unsub => { try { unsub(); } catch {} });
           collabUnsubsRef.current = {};
           // Wipe memory cache to prevent data leaking between accounts
-          _memCache.invalidateAll(user?.uid || "");
+          _memCache.invalidateAll(userUidRef.current || "");
+          userUidRef.current = null;
         }
       });
     };
