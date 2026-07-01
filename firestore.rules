@@ -32,6 +32,31 @@ service cloud.firestore {
         get(/databases/$(database)/documents/collab_teams/$(teamId)).data.ownerUid == request.auth.uid;
     }
 
+    // Retorna o role do usuário logado dentro do time collab.
+    // Só deve ser chamado quando isCollabMember() já for true (short-circuit &&).
+    function getCollabRole(teamId) {
+      return get(/databases/$(database)/documents/collab_teams/$(teamId)/members/$(request.auth.uid))
+        .data.get("role", "default");
+    }
+
+    // Pode gerenciar financeiro: dono, vice-presidente ou papel financeiro
+    function canViewCollabFinanceiro(teamId) {
+      return isCollabOwner(teamId) ||
+        (isCollabMember(teamId) && getCollabRole(teamId) in ["vice_presidente", "financeiro"]);
+    }
+
+    // Pode adicionar/editar partidas e estatísticas: dono, vice, treinador
+    function canWriteCollabMatches(teamId) {
+      return isCollabOwner(teamId) ||
+        (isCollabMember(teamId) && getCollabRole(teamId) in ["vice_presidente", "treinador"]);
+    }
+
+    // Pode adicionar/editar jogadores do elenco: todos exceto papel financeiro puro
+    function canWriteCollabPlayers(teamId) {
+      return isCollabOwner(teamId) ||
+        (isCollabMember(teamId) && getCollabRole(teamId) in ["vice_presidente", "treinador", "default"]);
+    }
+
 
     // ─────────────────────────────────────────────────────────────────────────
     // users/{uid}
@@ -106,16 +131,16 @@ service cloud.firestore {
       allow update: if isCollabMember(teamId);
       allow delete: if isCollabOwner(teamId);
 
-      match /players/{playerId}      { allow read, write: if isCollabMember(teamId); }
+      match /players/{playerId}      { allow read: if isCollabMember(teamId); allow write: if canWriteCollabPlayers(teamId); }
       match /lineups/{lineupId}      { allow read, write: if isCollabMember(teamId); }
-      match /matches/{matchId}       { allow read, write: if isCollabMember(teamId); }
-      match /stats/{statId}          { allow read, write: if isCollabMember(teamId); }
-      match /financeiro/{mesAnoKey}  { allow read, write: if isCollabMember(teamId); }
+      match /matches/{matchId}       { allow read: if isCollabMember(teamId); allow write: if canWriteCollabMatches(teamId); }
+      match /stats/{statId}          { allow read: if isCollabMember(teamId); allow write: if canWriteCollabMatches(teamId); }
+      match /financeiro/{mesAnoKey}  { allow read, write: if canViewCollabFinanceiro(teamId); }
 
       match /members/{memberUid} {
         allow read: if isCollabMember(teamId) || (isAuth() && request.auth.uid == memberUid);
         allow create: if isAuth() && (request.auth.uid == memberUid || isCollabOwner(teamId));
-        allow update: if isCollabOwner(teamId);
+        allow update: if isCollabOwner(teamId); // somente o dono pode alterar roles
         allow delete: if isAuth() && (
           request.auth.uid == memberUid ||
           (isCollabOwner(teamId) && memberUid != request.auth.uid)

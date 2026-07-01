@@ -1131,18 +1131,18 @@ async function acceptCollabInvite(inviteData, uid, user) {
     const refSnap = await fb.getDoc(fb.doc(fb.db, "users", uid, "collab_refs", teamId));
     if (refSnap.exists()) return "already_member";
 
-    // Adiciona membro editor
+    // Adiciona membro com papel padrão
     await fb.setDoc(fb.doc(fb.db, "collab_teams", teamId, "members", uid), {
       uid,
-      name: user.displayName || user.email || "Editor",
+      name: user.displayName || user.email || "Membro",
       email: user.email || "",
-      role: "editor",
+      role: "default",
       joinedAt: now,
     });
 
-    // Índice reverso no perfil do editor
+    // Índice reverso no perfil do membro
     await fb.setDoc(fb.doc(fb.db, "users", uid, "collab_refs", teamId), {
-      teamId, role: "editor", joinedAt: now,
+      teamId, role: "default", joinedAt: now,
     });
 
     return true;
@@ -1203,19 +1203,22 @@ async function loadCollabRefs(uid) {
 }
 
 /** Carrega um time colaborativo completo (meta + players + lineups). */
-async function loadCollabTeamFull(teamId) {
+async function loadCollabTeamFull(teamId, uid) {
   const fb = getFirebase(); if (!fb) return null;
   try {
-    const [metaSnap, playersSnap, lineupsSnap] = await Promise.all([
+    const reqs = [
       fb.getDoc(fb.doc(fb.db, "collab_teams", String(teamId))),
       fb.getDocs(collabSubCol(teamId, "players")),
       fb.getDocs(collabSubCol(teamId, "lineups")),
-    ]);
+    ];
+    if (uid) reqs.push(fb.getDoc(fb.doc(fb.db, "collab_teams", String(teamId), "members", String(uid))));
+    const [metaSnap, playersSnap, lineupsSnap, memberSnap] = await Promise.all(reqs);
     if (!metaSnap.exists()) return null;
     const meta = metaSnap.data();
     const players = playersSnap.docs.map(d => d.data()).sort((a, b) => compareIds(a.id, b.id));
     const lineups = lineupsSnap.docs.map(d => d.data());
     const activeLineup = getActiveLineup(meta, lineups);
+    const myCollabRole = memberSnap?.exists() ? (memberSnap.data().role || "default") : "default";
     return {
       ...meta,
       players,
@@ -1223,6 +1226,7 @@ async function loadCollabTeamFull(teamId) {
       formation: activeLineup?.formation || meta.formation || "4-4-2",
       lineup: activeLineup?.entries || [],
       isCollab: true,
+      myCollabRole,
     };
   } catch(e) { console.warn("loadCollabTeamFull error:", e); return null; }
 }
@@ -1526,6 +1530,7 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
   const [removingUid, setRemovingUid] = useState(null);
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
   const [collabActive, setCollabActive] = useState(!!team.isCollab);
+  const [changingRoleUid, setChangingRoleUid] = useState(null);
   const isOwner = team.ownerUid === user.uid;
 
   useEffect(() => {
@@ -1569,6 +1574,23 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
     setMembers(prev => prev.filter(m => m.uid !== mUid));
     setRemovingUid(null);
     if (mUid === user.uid) onClose();
+  };
+
+  const handleChangeRole = async (mUid, newRole) => {
+    if (!isOwner || mUid === user.uid) return;
+    setChangingRoleUid(mUid);
+    const fb = getFirebase();
+    if (fb) {
+      try {
+        await fb.setDoc(
+          fb.doc(fb.db, "collab_teams", String(team.id), "members", String(mUid)),
+          { role: newRole },
+          { merge: true }
+        );
+        setMembers(prev => prev.map(m => m.uid === mUid ? { ...m, role: newRole } : m));
+      } catch(e) { console.warn("handleChangeRole error:", e); }
+    }
+    setChangingRoleUid(null);
   };
 
   const handleDeactivate = async () => {
@@ -1657,8 +1679,14 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
     }
   };
 
-  const roleLabel = { owner: "Dono", editor: "Editor" };
-  const roleColor = { owner: "#f59e0b", editor: "#60a5fa" };
+  const roleLabel = { owner: "Dono", vice_presidente: "Vice", financeiro: "Financeiro", treinador: "Treinador", default: "Padrão", editor: "Padrão" };
+  const roleColor = { owner: "#f59e0b", vice_presidente: "#a78bfa", financeiro: "#22c55e", treinador: "#34d399", default: "#60a5fa", editor: "#60a5fa" };
+  const editableRoles = [
+    { id: "default",        label: "Padrão",        desc: "Escalação + elenco (sem financeiro)" },
+    { id: "treinador",      label: "Treinador",      desc: "Elenco, escalações, stats (sem financeiro)" },
+    { id: "financeiro",     label: "Financeiro",     desc: "Acesso completo ao caixa" },
+    { id: "vice_presidente",label: "Vice-Presidente",desc: "Tudo exceto excluir time e definir roles" },
+  ];
 
   return (
     <div style={{position:"fixed",inset:0,zIndex:1200,display:"flex",alignItems:"flex-end",justifyContent:"center",background:"rgba(0,0,0,0.85)",backdropFilter:"blur(6px)"}} onClick={onClose}>
@@ -1739,26 +1767,43 @@ function CollabInviteModal({ team, user, onClose, onBeforeDeactivate, onDeactiva
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:6}}>
               {members.map(m => (
-                <div key={m.uid} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:11,border:"1px solid rgba(255,255,255,0.06)"}}>
-                  <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.25)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontFamily:"'Bebas Neue',sans-serif",color:"#60a5fa",fontSize:16}}>
-                    {(m.name||"?")[0].toUpperCase()}
+                <div key={m.uid} style={{display:"flex",flexDirection:"column",gap:6,padding:"10px 12px",background:"rgba(255,255,255,0.03)",borderRadius:11,border:"1px solid rgba(255,255,255,0.06)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(59,130,246,0.15)",border:"1px solid rgba(59,130,246,0.25)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontFamily:"'Bebas Neue',sans-serif",color:"#60a5fa",fontSize:16}}>
+                      {(m.name||"?")[0].toUpperCase()}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name || "Usuário"}</div>
+                      <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.email || ""}</div>
+                    </div>
+                    <span style={{padding:"2px 8px",borderRadius:6,background:`${(roleColor[m.role]||"#60a5fa")}1a`,border:`1px solid ${(roleColor[m.role]||"#60a5fa")}33`,color:roleColor[m.role]||"#60a5fa",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
+                      {roleLabel[m.role] || m.role}
+                    </span>
+                    {isOwner && m.role !== "owner" && (
+                      <button onClick={()=>handleRemove(m.uid)} disabled={removingUid===m.uid} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
+                        {removingUid===m.uid?"...":"Remover"}
+                      </button>
+                    )}
+                    {!isOwner && m.uid === user.uid && (
+                      <button onClick={()=>handleRemove(m.uid)} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
+                        Sair
+                      </button>
+                    )}
                   </div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{color:"#e5e7eb",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name || "Usuário"}</div>
-                    <div style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.email || ""}</div>
-                  </div>
-                  <span style={{padding:"2px 8px",borderRadius:6,background:`${roleColor[m.role]}1a`,border:`1px solid ${roleColor[m.role]}33`,color:roleColor[m.role],fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
-                    {roleLabel[m.role] || m.role}
-                  </span>
                   {isOwner && m.role !== "owner" && (
-                    <button onClick={()=>handleRemove(m.uid)} disabled={removingUid===m.uid} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
-                      {removingUid===m.uid?"...":"Remover"}
-                    </button>
-                  )}
-                  {!isOwner && m.uid === user.uid && (
-                    <button onClick={()=>handleRemove(m.uid)} style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",color:"#f87171",borderRadius:7,padding:"4px 8px",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,flexShrink:0}}>
-                      Sair
-                    </button>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",paddingLeft:46}}>
+                      {editableRoles.map(r => (
+                        <button key={r.id} disabled={changingRoleUid===m.uid} onClick={()=>handleChangeRole(m.uid,r.id)}
+                          style={{padding:"3px 8px",borderRadius:6,border:`1px solid ${m.role===r.id?(roleColor[r.id]||"#60a5fa")+"55":"rgba(255,255,255,0.08)"}`,
+                            background:m.role===r.id?`${roleColor[r.id]||"#60a5fa"}1a`:"transparent",
+                            color:m.role===r.id?(roleColor[r.id]||"#60a5fa"):"#6B7280",
+                            fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700,cursor:changingRoleUid===m.uid?"not-allowed":"pointer",
+                            opacity:changingRoleUid===m.uid?0.5:1,transition:"all 0.15s"
+                          }}>
+                          {changingRoleUid===m.uid&&m.role===r.id?"...":r.label}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               ))}
@@ -6873,15 +6918,17 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                     </span>
                     {team.isCollab&&(
                       <span style={{display:"flex",alignItems:"center",gap:3,background:"rgba(59,130,246,0.12)",color:"#60a5fa",border:"1px solid rgba(59,130,246,0.25)",borderRadius:6,padding:"2px 8px",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:700}}>
-                        🤝 {team.ownerUid===user?.uid?"Colab · Dono":"Colab · Editor"}
+                        🤝 {team.ownerUid===user?.uid?"Colab · Dono":team.myCollabRole==="vice_presidente"?"Colab · Vice":team.myCollabRole==="financeiro"?"Colab · Financeiro":team.myCollabRole==="treinador"?"Colab · Treinador":"Colab · Membro"}
                       </span>
                     )}
                   </div>
                 </div>
 
                 <div style={{display:"flex",flexDirection:"column",gap:5,flexShrink:0}}>
-                  <button onClick={e=>{e.stopPropagation();onEditTeam(team);}} aria-label={`Editar ${team.name}`} className="tc-action-btn"
-                    style={{background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.2)",color:"#60a5fa"}}><Ico.Edit/></button>
+                  {(!team.isCollab || team.ownerUid===user?.uid || team.myCollabRole==="vice_presidente")&&(
+                    <button onClick={e=>{e.stopPropagation();onEditTeam(team);}} aria-label={`Editar ${team.name}`} className="tc-action-btn"
+                      style={{background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.2)",color:"#60a5fa"}}><Ico.Edit/></button>
+                  )}
                   {/* Botao COPIA — sempre visível para o dono; oculto para editores collab */}
                   {(!team.isCollab || team.ownerUid===user?.uid)&&(
                     <button onClick={e=>{e.stopPropagation();setShareTeam(team);}} aria-label={`Compartilhar copia de ${team.name}`} title="Compartilhar copia" className="tc-action-btn"
@@ -10269,7 +10316,7 @@ function MatchModal({initial,players,onSave,onClose}) {
 }
 
 // ─── Stats View (per-player stats within OfficeView) ──────────────────────────
-function StatsView({team,stats,onUpdateStat}) {
+function StatsView({team,stats,onUpdateStat,readOnly=false}) {
   const allPlayers=team.players||[];
   const players=allPlayers.filter(p=>!p.isGuest);
   const guests=allPlayers.filter(p=>!!p.isGuest);
@@ -10308,11 +10355,11 @@ function StatsView({team,stats,onUpdateStat}) {
             <div key={key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
               <Icon id={icon} size={14} title={label} style={{color}}/>
               <div style={{display:"flex",alignItems:"center",gap:3}}>
-                <button onClick={()=>onUpdateStat(p.id,key,Math.max(0,(st[key]||0)-1))}
-                  style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>-</button>
+                {!readOnly&&<button onClick={()=>onUpdateStat(p.id,key,Math.max(0,(st[key]||0)-1))}
+                  style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>-</button>}
                 <span style={{color,fontFamily:"'Bebas Neue',sans-serif",fontSize:18,minWidth:20,textAlign:"center"}}>{st[key]||0}</span>
-                <button onClick={()=>onUpdateStat(p.id,key,(st[key]||0)+1)}
-                  style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+                {!readOnly&&<button onClick={()=>onUpdateStat(p.id,key,(st[key]||0)+1)}
+                  style={{width:20,height:20,borderRadius:6,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#9CA3AF",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>}
               </div>
               <span style={{color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:7,fontWeight:700,textTransform:"uppercase",textAlign:"center",maxWidth:44,lineHeight:1.2}}>{label}</span>
             </div>
@@ -12034,8 +12081,19 @@ function FinanceiroTab({ team, uid }) {
   );
 }
 
-function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
+function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium,myCollabRole}) {
+  // Para times collab, derivar permissões do papel do membro atual
+  const collabRole = team?.isCollab ? (myCollabRole || team?.myCollabRole || "default") : "owner";
+  const canViewFinanceiro = !team?.isCollab || ["owner","vice_presidente","financeiro"].includes(collabRole);
+  const canEditMatches    = !team?.isCollab || ["owner","vice_presidente","treinador"].includes(collabRole);
+  const canEditStats      = !team?.isCollab || ["owner","vice_presidente","treinador"].includes(collabRole);
+
   const [officeTab,setOfficeTab]=useState("calendar"); // "calendar" | "stats" | "import" | "financeiro"
+
+  // Se o tab atual virou inacessível (ex: papel mudou), voltar para calendar
+  React.useEffect(() => {
+    if (officeTab === "financeiro" && !canViewFinanceiro) setOfficeTab("calendar");
+  }, [canViewFinanceiro, officeTab]);
   const [matches,setMatches]=useState(null); // null=loading, []+=loaded
   const [stats,setStats]=useState({});
   const [showMatchModal,setShowMatchModal]=useState(false);
@@ -12257,7 +12315,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
 
       {/* Sub-tabs */}
       <div className="office-tabs" style={{display:"flex",gap:0,margin:"14px 16px 0",background:"rgba(255,255,255,0.04)",borderRadius:12,padding:3}}>
-        {[["calendar","Calendário","calendar"],["stats","Stats","stats"],["financeiro","Financeiro","fin"],["import","Importar","import"]].map(([id,label,ico])=>(
+        {[["calendar","Calendário","calendar"],["stats","Stats","stats"],canViewFinanceiro&&["financeiro","Financeiro","fin"],["import","Importar","import"]].filter(Boolean).map(([id,label,ico])=>(
           <button key={id} onClick={()=>setOfficeTab(id)} style={{
             flex:1,padding:"9px 2px",borderRadius:9,border:"none",cursor:"pointer",
             fontFamily:"'DM Sans',sans-serif",fontSize:9,fontWeight:800,letterSpacing:0.2,
@@ -12278,13 +12336,19 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
         {/* ── Calendar tab ── */}
         {officeTab==="calendar"&&(
           <>
-          <button className="office-new-match-btn" onClick={()=>{setEditingMatch(null);setShowMatchModal(true);}} style={{
-            width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-            padding:"11px 0",borderRadius:12,border:"none",cursor:"pointer",marginBottom:14,
-            background:`linear-gradient(135deg,${c1},${c2})`,color:"#fff",
-            fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
-            boxShadow:`0 4px 16px ${c1}55`
-          }}><Ico.Plus/> NOVA PARTIDA</button>
+          {canEditMatches ? (
+            <button className="office-new-match-btn" onClick={()=>{setEditingMatch(null);setShowMatchModal(true);}} style={{
+              width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+              padding:"11px 0",borderRadius:12,border:"none",cursor:"pointer",marginBottom:14,
+              background:`linear-gradient(135deg,${c1},${c2})`,color:"#fff",
+              fontFamily:"'Bebas Neue',sans-serif",fontSize:16,letterSpacing:1,
+              boxShadow:`0 4px 16px ${c1}55`
+            }}><Ico.Plus/> NOVA PARTIDA</button>
+          ) : (
+            <div style={{padding:"10px 12px",marginBottom:14,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,color:"#4B5563",fontFamily:"'DM Sans',sans-serif",fontSize:12,textAlign:"center"}}>
+              Apenas o dono, vice-presidente e treinador podem gerenciar partidas.
+            </div>
+          )}
 
           {matches===null?(
             <div style={{display:"flex",justifyContent:"center",padding:32}}>
@@ -12335,10 +12399,10 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
                           if(r)setToast(r==="shared"?"✅ Partida compartilhada!":"✅ Copiado!");
                         }} aria-label="Compartilhar partida"
                         style={{background:"rgba(96,165,250,0.1)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:8,padding:"5px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Share/></button>
-                        <button onClick={()=>{setEditingMatch(m);setShowMatchModal(true);}} aria-label="Editar partida"
-                          style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:8,padding:"5px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>
-                        <button onClick={()=>setConfirmDelMatch(m.id)} aria-label="Excluir partida"
-                          style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,padding:"5px 8px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>
+                        {canEditMatches&&<button onClick={()=>{setEditingMatch(m);setShowMatchModal(true);}} aria-label="Editar partida"
+                          style={{background:"rgba(59,130,246,0.12)",border:"1px solid rgba(59,130,246,0.25)",borderRadius:8,padding:"5px 8px",color:"#60a5fa",cursor:"pointer"}}><Ico.Edit/></button>}
+                        {canEditMatches&&<button onClick={()=>setConfirmDelMatch(m.id)} aria-label="Excluir partida"
+                          style={{background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,padding:"5px 8px",color:"#f87171",cursor:"pointer"}}><Ico.Trash/></button>}
                       </div>
                     </div>
                     <div style={{display:"flex",flexWrap:"wrap",gap:10}}>
@@ -12428,7 +12492,7 @@ function OfficeView({team,uid,onUpdateTeam,onSavePlayer,isPremium}) {
               </div>
             );
           })()}
-          <div className="office-stats-view"><StatsView team={team} stats={stats} onUpdateStat={updateStat}/></div>
+          <div className="office-stats-view"><StatsView team={team} stats={stats} onUpdateStat={updateStat} readOnly={!canEditStats}/></div>
           </>
         )}
         {/* ── Import tab ── */}
@@ -13153,7 +13217,7 @@ function App() {
             const collabRefs = await loadCollabRefs(u.uid);
             let collabTeams = [];
             if (collabRefs.length > 0) {
-              const loaded = await Promise.all(collabRefs.map(r => loadCollabTeamFull(r.teamId)));
+              const loaded = await Promise.all(collabRefs.map(r => loadCollabTeamFull(r.teamId, u.uid)));
               collabTeams = loaded.filter(Boolean);
             }
             // Deduplicar por id: cloudTeams pode já incluir o time collab (marcado _collabMigrated)
@@ -13893,7 +13957,7 @@ setLoginLoading(false);
                 });
               }
               // Recarregar dados completos ao abrir
-              const full = await loadCollabTeamFull(t.id);
+              const full = await loadCollabTeamFull(t.id, u);
               if (full) setTeams(prev => prev.map(tm => tm.id === t.id ? { ...tm, ...full } : tm));
             }
             setActiveTeamId(t.id);
@@ -13963,7 +14027,7 @@ setLoginLoading(false);
 
       {/* Office: calendar + stats */}
       {navSection === "office" && activeTeam && (
-        <OfficeView team={activeTeam} uid={uid} onUpdateTeam={updateTeam} onSavePlayer={scheduleSavePlayer} isPremium={isPremium}/>
+        <OfficeView team={activeTeam} uid={uid} onUpdateTeam={updateTeam} onSavePlayer={scheduleSavePlayer} isPremium={isPremium} myCollabRole={activeTeam?.myCollabRole}/>
       )}
 
       {/* Bottom navigation — only when logged in with a team selected */}
@@ -13991,7 +14055,7 @@ setLoginLoading(false);
           onClose={()=>setEnableCollabTeam(null)}
           onEnabled={async () => {
             // Recarregar o time agora como colaborativo
-            const full = await loadCollabTeamFull(enableCollabTeam.id);
+            const full = await loadCollabTeamFull(enableCollabTeam.id, uid);
             if (full) {
               setTeams(prev => prev.map(t => t.id === enableCollabTeam.id ? { ...t, ...full } : t));
               // Ativar subscribe
@@ -14044,7 +14108,7 @@ setLoginLoading(false);
           }}
           onEnabled={async () => {
             const teamId = manageCollabTeam.id;
-            const full = await loadCollabTeamFull(teamId);
+            const full = await loadCollabTeamFull(teamId, uid);
             if (full) {
               setTeams(prev => prev.map(t => t.id === teamId ? { ...t, ...full, isCollab: true } : t));
               if (!collabUnsubsRef.current[teamId]) {
@@ -14079,7 +14143,7 @@ setLoginLoading(false);
           onJoined={async (teamId) => {
             // Carregar o time colaborativo que acabou de entrar
             if (teamId) {
-              const full = await loadCollabTeamFull(teamId);
+              const full = await loadCollabTeamFull(teamId, uid);
               if (full) {
                 setTeams(prev => {
                   if (prev.some(t => String(t.id) === String(teamId))) {
