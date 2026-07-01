@@ -11422,8 +11422,8 @@ function FinanceiroExportModal({ team, uid, mesPadrao, anoPadrao, onClose, showT
   );
 
   return (
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:800,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1117",border:"1px solid rgba(34,197,94,0.2)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"22px 20px 40px",display:"flex",flexDirection:"column",gap:16}}>
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1400,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1117",border:"1px solid rgba(34,197,94,0.2)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"22px 20px calc(40px + env(safe-area-inset-bottom, 0px))",display:"flex",flexDirection:"column",gap:16,marginBottom:0}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>EXPORTAR CSV</span>
           <button onClick={onClose} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:20}}>✕</button>
