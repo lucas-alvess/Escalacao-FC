@@ -106,10 +106,11 @@ service cloud.firestore {
       allow update: if isCollabMember(teamId);
       allow delete: if isCollabOwner(teamId);
 
-      match /players/{playerId}   { allow read, write: if isCollabMember(teamId); }
-      match /lineups/{lineupId}   { allow read, write: if isCollabMember(teamId); }
-      match /matches/{matchId}    { allow read, write: if isCollabMember(teamId); }
-      match /stats/{statId}       { allow read, write: if isCollabMember(teamId); }
+      match /players/{playerId}      { allow read, write: if isCollabMember(teamId); }
+      match /lineups/{lineupId}      { allow read, write: if isCollabMember(teamId); }
+      match /matches/{matchId}       { allow read, write: if isCollabMember(teamId); }
+      match /stats/{statId}          { allow read, write: if isCollabMember(teamId); }
+      match /financeiro/{mesAnoKey}  { allow read, write: if isCollabMember(teamId); }
 
       match /members/{memberUid} {
         allow read: if isCollabMember(teamId) || (isAuth() && request.auth.uid == memberUid);

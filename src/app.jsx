@@ -11377,7 +11377,9 @@ function FinanceiroExportModal({ team, uid, mesPadrao, anoPadrao, onClose, showT
   const fetchMes = async (m, a) => {
     const fb = getFirebase(); if(!fb||!uid) return null;
     const key = `${String(m+1).padStart(2,"0")}_${a}`;
-    const path = `users/${uid}/teams/${String(team.id)}/financeiro/${key}`;
+    const path = team.isCollab
+      ? `collab_teams/${String(team.id)}/financeiro/${key}`
+      : `users/${uid}/teams/${String(team.id)}/financeiro/${key}`;
     try {
       const snap = await fb.getDoc(fb.doc(fb.db, path));
       return snap.exists() ? snap.data() : null;
@@ -11580,7 +11582,11 @@ function FinanceiroTab({ team, uid }) {
 
   const saveTimer = useRef(null);
   const mesAnoKey = `${String(mes+1).padStart(2,"0")}_${ano}`;
-  const docPath = uid ? `users/${uid}/teams/${String(team.id)}/financeiro/${mesAnoKey}` : null;
+  const docPath = uid && team?.id ? (
+    team.isCollab
+      ? `collab_teams/${String(team.id)}/financeiro/${mesAnoKey}`
+      : `users/${uid}/teams/${String(team.id)}/financeiro/${mesAnoKey}`
+  ) : null;
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(null),2200); };
 
   // Jogadores do elenco (excluindo convidados)
@@ -13454,7 +13460,7 @@ setLoginLoading(false);
 
         if (isOwner) {
           // Dono: apagar o time colaborativo inteiro
-          await deleteSubcols(`collab_teams/${teamId}`, ["players","lineups","matches","stats","members"]);
+          await deleteSubcols(`collab_teams/${teamId}`, ["players","lineups","matches","stats","members","financeiro"]);
           // Apagar convites deste time
           const invitesSnap = await fb.getDocs(
             fb.query(fb.collection(fb.db, "collab_invites"), fb.where("teamId", "==", teamId))
