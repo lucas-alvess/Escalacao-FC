@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as _fb from './firebase.js';
+import { App as CapApp } from '@capacitor/app';
 
 const LOGO_URI = "/assets/images/logo.png";
 const LOGO_URI2 = "/assets/images/escalacao-blue.png";
@@ -12382,15 +12383,13 @@ function App() {
       // No menu principal: não faz nada — impede o fechamento do app pelo botão voltar.
     };
 
-    // Capacitor App plugin (disponível no wrapper nativo).
-    // addListener retorna Promise<PluginListenerHandle> no Capacitor 5+,
-    // então precisamos do .then() para obter o handle real e chamar .remove().
-    const cap = window.Capacitor;
-    if (!cap || !cap.Plugins || !cap.Plugins.App) return;
+    // Só registra o listener no contexto nativo (Capacitor no Android/iOS).
+    // No browser, window.Capacitor é undefined e pulamos sem erro.
+    if (typeof window === "undefined" || !window.Capacitor?.isNativePlatform?.()) return;
 
     let cancelled = false;
     let handle;
-    cap.Plugins.App.addListener("backButton", handleBack).then(h => {
+    CapApp.addListener("backButton", handleBack).then(h => {
       if (cancelled) { h.remove(); } else { handle = h; }
     });
     return () => { cancelled = true; handle?.remove(); };
