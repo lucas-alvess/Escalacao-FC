@@ -3629,7 +3629,7 @@ function PremiumBenefitsScreen({ onBack, isPremium }) {
   ];
 
   return (
-    <div style={{minHeight:"100vh",background:"#050c0a",display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif",overflowY:"auto"}}>
+    <div style={{minHeight:"100%",background:"#050c0a",display:"flex",flexDirection:"column",fontFamily:"'DM Sans',sans-serif"}}>
       {/* Header */}
       <div style={{position:"sticky",top:0,zIndex:10,background:"rgba(5,12,10,0.96)",backdropFilter:"blur(12px)",borderBottom:"1px solid rgba(250,204,21,0.1)",padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
         <button onClick={onBack} style={{background:"none",border:"none",padding:"6px 8px",cursor:"pointer",color:"#9ca3af",display:"flex",alignItems:"center",borderRadius:8}}>
@@ -13337,7 +13337,7 @@ setLoginLoading(false);
 
       {/* ── Overlay de tela Premium (acessível de qualquer ponto do app) ── */}
       {showPremiumOverlay && (
-        <div style={{position:"fixed",inset:0,zIndex:9000}}>
+        <div style={{position:"fixed",inset:0,zIndex:9000,overflowY:"auto"}}>
           <PremiumBenefitsScreen onBack={()=>setShowPremiumOverlay(false)} isPremium={isPremium}/>
         </div>
       )}
