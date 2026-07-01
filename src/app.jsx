@@ -11361,6 +11361,191 @@ function ImportPlayersModal({team, onClose, onImport}) {
 
 const MESES_FIN = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 
+function FinanceiroExportModal({ team, uid, mesPadrao, anoPadrao, onClose, showToast }) {
+  const now = new Date();
+  const [modo, setModo] = useState("mes"); // "mes" | "ano" | "intervalo"
+  const [anoSel, setAnoSel] = useState(anoPadrao);
+  const [mesDe, setMesDe] = useState(mesPadrao);
+  const [anoDe, setAnoDe] = useState(anoPadrao);
+  const [mesAte, setMesAte] = useState(mesPadrao);
+  const [anoAte, setAnoAte] = useState(anoPadrao);
+  const [exporting, setExporting] = useState(false);
+
+  const anosDisp = [];
+  for(let y=2024;y<=now.getFullYear()+1;y++) anosDisp.push(y);
+
+  const fetchMes = async (m, a) => {
+    const fb = getFirebase(); if(!fb||!uid) return null;
+    const key = `${String(m+1).padStart(2,"0")}_${a}`;
+    const path = `users/${uid}/teams/${String(team.id)}/financeiro/${key}`;
+    try {
+      const snap = await fb.getDoc(fb.doc(fb.db, path));
+      return snap.exists() ? snap.data() : null;
+    } catch { return null; }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      let pares = []; // [{m, a}]
+      if(modo==="mes"){
+        pares=[{m:mesPadrao,a:anoPadrao}];
+      } else if(modo==="ano"){
+        for(let m=0;m<12;m++) pares.push({m,a:anoSel});
+      } else {
+        // intervalo: de mesDe/anoDe até mesAte/anoAte
+        let m=mesDe,a=anoDe;
+        while(a<anoAte||(a===anoAte&&m<=mesAte)){
+          pares.push({m,a});
+          m++; if(m>11){m=0;a++;}
+          if(pares.length>24) break; // limite 2 anos
+        }
+      }
+      const mesesData = [];
+      for(const {m,a} of pares){
+        const d = await fetchMes(m,a);
+        if(d) mesesData.push({label:`${MESES_FIN[m]} ${a}`,data:d});
+      }
+      if(mesesData.length===0){ showToast("Nenhum dado encontrado no período."); setExporting(false); return; }
+      const csv = buildFinanceiroCsv(team, mesesData);
+      const periodo = modo==="mes"?`${MESES_FIN[mesPadrao]}_${anoPadrao}`:modo==="ano"?`${anoSel}`:`${MESES_FIN[mesDe]}${anoDe}-${MESES_FIN[mesAte]}${anoAte}`;
+      const filename = `Financeiro_${team.name.replace(/\s+/g,"_")}_${periodo}.csv`;
+      await shareFinanceiroCSV(csv, filename);
+      onClose();
+    } catch { showToast("Erro ao gerar CSV."); }
+    setExporting(false);
+  };
+
+  const selStyle = {background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,color:"#fff",padding:"8px 10px",fontFamily:"'DM Sans',sans-serif",fontSize:13,outline:"none",flex:1};
+  const modoBtn = (id,label) => (
+    <button onClick={()=>setModo(id)} style={{flex:1,padding:"9px 4px",borderRadius:9,border:`1px solid ${modo===id?"rgba(34,197,94,0.5)":"rgba(255,255,255,0.1)"}`,background:modo===id?"rgba(34,197,94,0.12)":"rgba(255,255,255,0.03)",color:modo===id?"#4ade80":"#9CA3AF",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700,cursor:"pointer"}}>{label}</button>
+  );
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:800,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d1117",border:"1px solid rgba(34,197,94,0.2)",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:480,padding:"22px 20px 40px",display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <span style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1}}>EXPORTAR CSV</span>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#6B7280",cursor:"pointer",fontSize:20}}>✕</button>
+        </div>
+
+        <div style={{display:"flex",gap:6}}>{modoBtn("mes","Mês Atual")}{modoBtn("ano","Ano Inteiro")}{modoBtn("intervalo","Intervalo")}</div>
+
+        {modo==="mes"&&(
+          <div style={{color:"#9CA3AF",fontSize:13,textAlign:"center"}}>{MESES_FIN[mesPadrao]} {anoPadrao}</div>
+        )}
+
+        {modo==="ano"&&(
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <label style={{color:"#9CA3AF",fontSize:12,fontWeight:700}}>ANO</label>
+            <select value={anoSel} onChange={e=>setAnoSel(Number(e.target.value))} style={selStyle}>
+              {anosDisp.map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        )}
+
+        {modo==="intervalo"&&(<>
+          <div>
+            <div style={{color:"#9CA3AF",fontSize:10,fontWeight:700,letterSpacing:1,marginBottom:6}}>DE</div>
+            <div style={{display:"flex",gap:8}}>
+              <select value={mesDe} onChange={e=>setMesDe(Number(e.target.value))} style={selStyle}>
+                {MESES_FIN.map((m,i)=><option key={i} value={i}>{m}</option>)}
+              </select>
+              <select value={anoDe} onChange={e=>setAnoDe(Number(e.target.value))} style={{...selStyle,flex:"0 0 80px"}}>
+                {anosDisp.map(y=><option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <div style={{color:"#9CA3AF",fontSize:10,fontWeight:700,letterSpacing:1,marginBottom:6}}>ATÉ</div>
+            <div style={{display:"flex",gap:8}}>
+              <select value={mesAte} onChange={e=>setMesAte(Number(e.target.value))} style={selStyle}>
+                {MESES_FIN.map((m,i)=><option key={i} value={i}>{m}</option>)}
+              </select>
+              <select value={anoAte} onChange={e=>setAnoAte(Number(e.target.value))} style={{...selStyle,flex:"0 0 80px"}}>
+                {anosDisp.map(y=><option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+          </div>
+        </>)}
+
+        <button onClick={handleExport} disabled={exporting} style={{padding:"14px 0",borderRadius:13,border:"none",cursor:exporting?"default":"pointer",background:"linear-gradient(135deg,#15803d,#22c55e)",color:"#fff",fontFamily:"'Bebas Neue',sans-serif",fontSize:17,letterSpacing:1.5,opacity:exporting?0.7:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+          {exporting?<><div style={{width:18,height:18,border:"2px solid rgba(255,255,255,0.4)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>Gerando...</>:"Exportar e Compartilhar"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function buildFinanceiroCsv(team, mesesData) {
+  // mesesData: [{label, data}]
+  const esc = v => `"${String(v||"").replace(/"/g,'""')}"`;
+  const rows = [];
+  const parseVal = v => parseFloat(String(v||"").replace(/[^\d.,]/g,"").replace(",","."))||0;
+
+  rows.push([esc(`RELATÓRIO FINANCEIRO — ${team.name}`)]);
+  rows.push([]);
+
+  // Resumo mensal
+  rows.push(["=== RESUMO MENSAL ==="].map(esc));
+  rows.push(["Mês","Entradas","Outros Caixas","Saldo Anterior","Despesas","Saldo Final","Pagantes","Total Elenco"].map(esc));
+  for(const {label,data:d} of mesesData){
+    const entradas=(d.entradas||[]).reduce((s,e)=>s+parseVal(e.valor),0);
+    const outros=(d.outrosCaixas||[]).reduce((s,c)=>s+parseVal(c.valor),0);
+    const ant=parseVal(d.saldoAnterior);
+    const desp=(d.despesas||[]).reduce((s,x)=>s+parseVal(x.valor),0);
+    const saldo=entradas+outros+ant-desp;
+    const pagantes=(d.pagamentos||[]).filter(p=>p.pago).length;
+    const total=(d.pagamentos||[]).length;
+    rows.push([label,entradas.toFixed(2),outros.toFixed(2),ant.toFixed(2),desp.toFixed(2),saldo.toFixed(2),pagantes,total].map(esc));
+  }
+  rows.push([]);
+
+  // Mensalidade detalhada
+  rows.push(["=== MENSALIDADE ==="].map(esc));
+  rows.push(["Mês","Jogador","Status","Data Pagamento","Observação"].map(esc));
+  for(const {label,data:d} of mesesData){
+    for(const p of (d.pagamentos||[])){
+      rows.push([label,p.name,p.pago?"Pago":"Pendente",p.dataPagamento||"",p.obs||""].map(esc));
+    }
+  }
+  rows.push([]);
+
+  // Entradas
+  rows.push(["=== ENTRADAS ==="].map(esc));
+  rows.push(["Mês","Descrição","Valor","Data"].map(esc));
+  for(const {label,data:d} of mesesData){
+    for(const e of (d.entradas||[])){
+      rows.push([label,e.desc,parseVal(e.valor).toFixed(2),e.data||""].map(esc));
+    }
+  }
+  rows.push([]);
+
+  // Despesas
+  rows.push(["=== DESPESAS ==="].map(esc));
+  rows.push(["Mês","Descrição","Valor","Data"].map(esc));
+  for(const {label,data:d} of mesesData){
+    for(const d2 of (d.despesas||[])){
+      rows.push([label,d2.desc,parseVal(d2.valor).toFixed(2),d2.data||""].map(esc));
+    }
+  }
+
+  return "﻿" + rows.map(r=>r.join(";")).join("\r\n");
+}
+
+async function shareFinanceiroCSV(csv, filename) {
+  const blob = new Blob([csv], {type:"text/csv;charset=utf-8;"});
+  const file = new File([blob], filename, {type:"text/csv"});
+  if(navigator.canShare && navigator.canShare({files:[file]})){
+    try{ await navigator.share({files:[file],title:filename}); return; }catch(e){ if(e.name==="AbortError") return; }
+  }
+  // fallback: download direto
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href=url; a.download=filename; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+
 function FinanceiroTab({ team, uid }) {
   const now = new Date();
   const [mes, setMes] = useState(now.getMonth());
@@ -11369,6 +11554,7 @@ function FinanceiroTab({ team, uid }) {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Entradas avulsas
   const [showAddEntrada, setShowAddEntrada] = useState(false);
@@ -11563,36 +11749,36 @@ function FinanceiroTab({ team, uid }) {
     navigator.clipboard.writeText(text).then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2000);}).catch(()=>{});
   };
 
-  const inputStyle={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:10,padding:"10px 12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,outline:"none",boxSizing:"border-box"};
+  const inputStyle={width:"100%",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:10,padding:"10px 12px",color:"#fff",fontFamily:"'DM Sans',sans-serif",fontSize:13,outline:"none",boxSizing:"border-box"};
   const labelStyle={color:"#9CA3AF",fontSize:10,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:5,display:"block"};
 
   return (
     <div style={{flex:1,padding:"14px 0 40px",display:"flex",flexDirection:"column",gap:14}}>
-      {toast&&<div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",background:"#1d4ed8",color:"#fff",padding:"10px 22px",borderRadius:20,fontSize:13,fontWeight:600,zIndex:999,whiteSpace:"nowrap",pointerEvents:"none",animation:"toastIn 0.25s ease"}}>{toast}</div>}
+      {toast&&<div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",background:"#166534",color:"#fff",padding:"10px 22px",borderRadius:20,fontSize:13,fontWeight:600,zIndex:999,whiteSpace:"nowrap",pointerEvents:"none",animation:"toastIn 0.25s ease"}}>{toast}</div>}
 
       {/* Nav mês */}
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(59,130,246,0.15)",borderRadius:14,padding:"10px 14px"}}>
-        <button onClick={()=>navMes(-1)} style={{width:32,height:32,borderRadius:8,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(255,255,255,0.03)",border:"1px solid rgba(34,197,94,0.15)",borderRadius:14,padding:"10px 14px"}}>
+        <button onClick={()=>navMes(-1)} style={{width:32,height:32,borderRadius:8,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#4ade80",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div style={{textAlign:"center"}}>
           <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:20,color:"#fff",letterSpacing:1.5}}>{mesLabel}</div>
           <div style={{fontSize:10,color:"#4B5563",fontWeight:700}}>{totalPagamentos}/{rosterPlayers.length} PAGAMENTOS CONFIRMADOS</div>
         </div>
-        <button onClick={()=>navMes(1)} style={{width:32,height:32,borderRadius:8,border:"1px solid rgba(59,130,246,0.2)",background:"rgba(59,130,246,0.08)",color:"#60a5fa",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <button onClick={()=>navMes(1)} style={{width:32,height:32,borderRadius:8,border:"1px solid rgba(34,197,94,0.2)",background:"rgba(34,197,94,0.08)",color:"#4ade80",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
       </div>
 
       {loading?(
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"40px 0"}}>
-          <div style={{width:28,height:28,border:"3px solid rgba(59,130,246,0.3)",borderTopColor:"#3b82f6",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+          <div style={{width:28,height:28,border:"3px solid rgba(34,197,94,0.3)",borderTopColor:"#22c55e",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
         </div>
       ):(<>
 
       {/* Painel do caixa */}
-      <div style={{background:"linear-gradient(135deg,#0a1628,#0d1f38)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:16,padding:16}}>
-        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#60a5fa",display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
+      <div style={{background:"linear-gradient(135deg,#071a0e,#0d2215)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:16,padding:16}}>
+        <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#4ade80",display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
           <Ico.Money/> CAIXA DO MÊS
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
@@ -11635,7 +11821,7 @@ function FinanceiroTab({ team, uid }) {
             <button onClick={addOutroCaixa} style={{background:"rgba(52,211,153,0.15)",border:"1px solid rgba(52,211,153,0.3)",borderRadius:8,padding:"8px 12px",color:"#34d399",cursor:"pointer",fontSize:12,fontWeight:700}}>OK</button>
           </div>
         ):(
-          <button onClick={()=>setShowAddCaixa(true)} style={{width:"100%",background:"rgba(59,130,246,0.08)",border:"1px dashed rgba(59,130,246,0.3)",borderRadius:9,padding:"8px",color:"#60a5fa",cursor:"pointer",fontSize:11,fontWeight:700}}>
+          <button onClick={()=>setShowAddCaixa(true)} style={{width:"100%",background:"rgba(34,197,94,0.08)",border:"1px dashed rgba(34,197,94,0.3)",borderRadius:9,padding:"8px",color:"#4ade80",cursor:"pointer",fontSize:11,fontWeight:700}}>
             + Adicionar Caixa
           </button>
         )}
@@ -11706,7 +11892,7 @@ function FinanceiroTab({ team, uid }) {
           ))}
         </div>
         {showAddEntrada?(
-          <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(59,130,246,0.15)",borderRadius:12,padding:12}}>
+          <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:8,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(34,197,94,0.15)",borderRadius:12,padding:12}}>
             <div>
               <label style={labelStyle}>DESCRIÇÃO</label>
               <input autoFocus style={inputStyle} placeholder="Ex: Patrocínio, Rifa..." value={entradaDesc} onChange={e=>setEntradaDesc(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addEntrada();}}/>
@@ -11768,12 +11954,19 @@ function FinanceiroTab({ team, uid }) {
       {/* Exportar relatório */}
       <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:14}}>
         <div style={{fontFamily:"'Bebas Neue',sans-serif",fontSize:15,letterSpacing:1,color:"#E5E7EB",marginBottom:10,display:"flex",alignItems:"center",gap:6}}><Ico.Share/> EXPORTAR</div>
-        <button onClick={()=>copyText(buildTextoRelatorio(),setCopiedRel)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px",borderRadius:12,border:"1px solid rgba(59,130,246,0.25)",background:"rgba(59,130,246,0.07)",color:"#60a5fa",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
-          {copiedRel?<><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>Copiado!</>:<><Ico.Stats/>Copiar relatório mensal (WhatsApp)</>}
-        </button>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <button onClick={()=>copyText(buildTextoRelatorio(),setCopiedRel)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px",borderRadius:12,border:"1px solid rgba(34,197,94,0.25)",background:"rgba(34,197,94,0.07)",color:"#4ade80",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
+            {copiedRel?<><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>Copiado!</>:<><Ico.Stats/>Copiar relatório mensal (WhatsApp)</>}
+          </button>
+          <button onClick={()=>setShowExportModal(true)} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"11px",borderRadius:12,border:"1px solid rgba(255,255,255,0.12)",background:"rgba(255,255,255,0.04)",color:"#E5E7EB",cursor:"pointer",fontFamily:"'DM Sans',sans-serif",fontSize:12,fontWeight:700}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+            Exportar CSV por período
+          </button>
+        </div>
       </div>
 
       </>)}
+      {showExportModal&&<FinanceiroExportModal team={team} uid={uid} mesPadrao={mes} anoPadrao={ano} onClose={()=>setShowExportModal(false)} showToast={showToast}/>}
     </div>
   );
 }
