@@ -11753,7 +11753,7 @@ function FinanceiroTab({ team, uid }) {
   const labelStyle={color:"#9CA3AF",fontSize:10,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:5,display:"block"};
 
   return (
-    <div style={{flex:1,padding:"14px 0 40px",display:"flex",flexDirection:"column",gap:14}}>
+    <div style={{flex:1,padding:"14px 0 100px",display:"flex",flexDirection:"column",gap:14}}>
       {toast&&<div style={{position:"fixed",bottom:32,left:"50%",transform:"translateX(-50%)",background:"#166534",color:"#fff",padding:"10px 22px",borderRadius:20,fontSize:13,fontWeight:600,zIndex:999,whiteSpace:"nowrap",pointerEvents:"none",animation:"toastIn 0.25s ease"}}>{toast}</div>}
 
       {/* Nav mês */}
