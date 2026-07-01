@@ -142,17 +142,18 @@ function compareIds(a, b) {
 
 // ─── In-memory cache ─────────────────────────────────────────────────────────
 // Avoids redundant Firestore reads within the same session.
-// Structure: { teams: Map<uid, {value, ts}>, players: Map<uid_teamId, {value, ts}>, lineups: Map<uid_teamId, {value, ts}> }
-// Each entry carries a timestamp (ts) and expires after CACHE_TTL_MS — this
-// prevents unbounded memory growth in long-lived sessions (e.g. an app left
-// open for hours while browsing many teams). Expired entries are simply
-// re-fetched from Firestore on next access, same as a cache miss.
+// Structure: { teams, players, lineups, matches, stats } — all keyed by
+// `${uid}_${teamId}` (or just uid for teams). Each entry carries a timestamp
+// (ts) and expires after CACHE_TTL_MS — this prevents unbounded memory growth
+// in long-lived sessions (e.g. the app left open for hours).
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 const _memCache = {
   teams: new Map(),      // uid → {value: team[], ts}
   players: new Map(),    // `${uid}_${teamId}` → {value: player[], ts}
   lineups: new Map(),    // `${uid}_${teamId}` → {value: lineup[], ts}
+  matches: new Map(),    // `${uid}_${teamId}` → {value: match[], ts}
+  stats: new Map(),      // `${uid}_${teamId}` → {value: stats{}, ts}
 
   _fresh(map, key) {
     const entry = map.get(key);
@@ -174,19 +175,21 @@ const _memCache = {
     const key = `${uid}_${teamId}`;
     this.players.delete(key);
     this.lineups.delete(key);
+    this.matches.delete(key);
+    this.stats.delete(key);
     // Invalidate team list so next full load picks up changes
     this.teams.delete(uid);
   },
   invalidateAll(uid) {
     this.teams.delete(uid);
-    // Remove all player/lineup keys for this uid
-    for (const k of [...this.players.keys()]) { if (k.startsWith(uid + "_")) this.players.delete(k); }
-    for (const k of [...this.lineups.keys()]) { if (k.startsWith(uid + "_")) this.lineups.delete(k); }
+    for (const map of [this.players, this.lineups, this.matches, this.stats]) {
+      for (const k of [...map.keys()]) { if (k.startsWith(uid + "_")) map.delete(k); }
+    }
   },
   /** Removes all expired entries across every map. Call periodically (e.g. every few minutes). */
   purgeExpired() {
     const now = Date.now();
-    for (const map of [this.teams, this.players, this.lineups]) {
+    for (const map of [this.teams, this.players, this.lineups, this.matches, this.stats]) {
       for (const [k, entry] of map) {
         if (now - entry.ts >= CACHE_TTL_MS) map.delete(k);
       }
@@ -506,6 +509,7 @@ async function saveMatchCloud(uid, teamId, match) {
   try {
     const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "matches", String(match.id));
     await fb.setDoc(ref, { ...match, updatedAt: fb.serverTimestamp() }, { merge: true });
+    _memCache.matches.delete(`${uid}_${teamId}`);
     return true;
   } catch(e) { console.warn("saveMatchCloud error:", e); return false; }
 }
@@ -513,15 +517,21 @@ async function deleteMatchCloud(uid, teamId, matchId) {
   const fb = getFirebase(); if (!fb) return false;
   try {
     await fb.deleteDoc(fb.doc(fb.db, "users", uid, "teams", String(teamId), "matches", String(matchId)));
+    _memCache.matches.delete(`${uid}_${teamId}`);
     return true;
   } catch(e) { console.warn("deleteMatchCloud error:", e); return false; }
 }
 async function loadMatchesCloud(uid, teamId) {
+  const key = `${uid}_${teamId}`;
+  const cached = _memCache.get(_memCache.matches, key);
+  if (cached !== undefined) return cached;
   const fb = getFirebase(); if (!fb) return null;
   try {
     const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "matches");
     const snap = await fb.getDocs(col);
-    return snap.empty ? [] : snap.docs.map(d => d.data());
+    const result = snap.empty ? [] : snap.docs.map(d => d.data());
+    _memCache.set(_memCache.matches, key, result);
+    return result;
   } catch(e) { console.warn("loadMatchesCloud error:", e); return null; }
 }
 
@@ -532,15 +542,21 @@ async function savePlayerStatsCloud(uid, teamId, stats) {
   try {
     const ref = fb.doc(fb.db, "users", uid, "teams", String(teamId), "stats", String(stats.playerId));
     await fb.setDoc(ref, { ...stats, updatedAt: fb.serverTimestamp() }, { merge: true });
+    _memCache.stats.delete(`${uid}_${teamId}`);
     return true;
   } catch(e) { console.warn("savePlayerStatsCloud error:", e); return false; }
 }
 async function loadAllStatsCloud(uid, teamId) {
+  const key = `${uid}_${teamId}`;
+  const cached = _memCache.get(_memCache.stats, key);
+  if (cached !== undefined) return cached;
   const fb = getFirebase(); if (!fb) return null;
   try {
     const col = fb.collection(fb.db, "users", uid, "teams", String(teamId), "stats");
     const snap = await fb.getDocs(col);
-    return snap.empty ? {} : Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
+    const result = snap.empty ? {} : Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
+    _memCache.set(_memCache.stats, key, result);
+    return result;
   } catch(e) { console.warn("loadAllStatsCloud error:", e); return null; }
 }
 
@@ -3957,8 +3973,8 @@ function MainMenuScreen({user, onSelect, onLogout, onDeleteAccount, isPremium, o
           </div>
         </button>
 
-        {/* Card 3 — Seja Premium (only FREE users) */}
-        {!isPremium&&(
+        {/* Card 3 — Seja Premium (only FREE users; hidden while loading isPremium) */}
+        {isPremium===false&&(
           <button className="pm-card" onClick={(e)=>{const b=e.currentTarget;const r=document.createElement("span");r.className="pm-ripple";const rect=b.getBoundingClientRect();r.style.left=(e.clientX-rect.left)+"px";r.style.top=(e.clientY-rect.top)+"px";b.appendChild(r);b.classList.add("pm-pressing");setTimeout(()=>{r.remove();b.classList.remove("pm-pressing");},600);onSelect("premium");}} aria-label="Seja Premium" style={{background:"linear-gradient(135deg,#1a0a00,#3d1500)"}}>
             <div className="pm-card-img-wrap" style={{height:140,background:"linear-gradient(135deg,#1a0a00 0%,#78350f 50%,#92400e 100%)"}}>
               <img
@@ -4001,14 +4017,14 @@ function MainMenuScreen({user, onSelect, onLogout, onDeleteAccount, isPremium, o
               <div style={{color:"#e5e7eb",fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.displayName||user?.email||""}</div>
               {IS_DEV?(
                 <button onClick={onTogglePremium} title="[DEV] Alternar plano localmente" style={{background:"none",border:"1px dashed rgba(250,204,21,0.35)",borderRadius:6,padding:"3px 7px",cursor:"pointer",color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3}}>
-                  {isPremium
+                  {isPremium===null?"…":isPremium
                     ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
                     :"FREE"}
                   <span style={{fontSize:8,color:"#6b7280",marginLeft:1}}>DEV</span>
                 </button>
               ):(
                 <div style={{background:"none",border:"none",padding:0,color:isPremium?"#facc15":"#4B5563",fontSize:10,fontWeight:800,letterSpacing:0.5,display:"flex",alignItems:"center",gap:3,userSelect:"none"}}>
-                  {isPremium
+                  {isPremium===null?"…":isPremium
                     ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
                     :"FREE"}
                 </div>
@@ -6709,7 +6725,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                   background:isPremium?"rgba(250,204,21,0.12)":"rgba(255,255,255,0.04)",
                   color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800
                 }}>
-                  {isPremium
+                  {isPremium===null?"…":isPremium
                     ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
                     :"FREE"}
                   <span style={{fontSize:8,color:"#6b7280",marginLeft:1}}>DEV</span>
@@ -6722,7 +6738,7 @@ function HomePage({teams,onSelectTeam,onNewTeam,onDeleteTeam,onEditTeam,user,onL
                   color:isPremium?"#facc15":"#6B7280",fontFamily:"'DM Sans',sans-serif",fontSize:10,fontWeight:800,
                   userSelect:"none"
                 }}>
-                  {isPremium
+                  {isPremium===null?"…":isPremium
                     ?<><svg width="10" height="10" viewBox="0 0 24 24" fill="#facc15"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>PRO</>
                     :"FREE"}
                 </div>
@@ -12281,7 +12297,7 @@ const TUTORIAL_OFFICE_IMPORT = [
 function App() {
   const [authState, setAuthState] = useState("loading"); // "loading" | "loggedOut" | "loggedIn"
   const [user, setUser] = useState(null);
-  const [isPremium, setIsPremium] = useState(false);
+  const [isPremium, setIsPremium] = useState(null); // null = carregando, false = free, true = premium
   const [navSection, setNavSection] = useState("home"); // "home" | "tactic" | "office"
   const [profileMode, setProfileMode] = useState(null); // null = main menu | "field" | "monthly"
   const [showPremiumOverlay, setShowPremiumOverlay] = useState(false);
@@ -12637,9 +12653,13 @@ function App() {
     }, 800);
   }, [user, beginSync, startSyncing, endSync]);
 
-  // ── Save on tab close ──────────────────────────────────────────────────────
+  // ── Save on app background / tab close ────────────────────────────────────
+  // `visibilitychange` fires reliably on Android WebView when the app is
+  // backgrounded or closed — `beforeunload` does NOT fire reliably in Capacitor
+  // because the WebView process is killed before the event can complete.
   useEffect(() => {
-    const handleUnload = (e) => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "hidden") return;
       if (!loaded || !user) return;
       // Nunca persistir times collab no cache local — eles são sempre carregados
       // do Firestore no próximo boot via loadCollabRefs. Persistir collab no
@@ -12650,15 +12670,10 @@ function App() {
         if (t.isCollab) saveCollabTeamMeta(t);
         else saveTeamCloud(user.uid, t);
       });
-      if (syncStatus === "pending" || syncStatus === "syncing" || syncStatus === "error") {
-        e.preventDefault();
-        e.returnValue = "";
-        return "";
-      }
     };
-    window.addEventListener("beforeunload", handleUnload);
-    return () => window.removeEventListener("beforeunload", handleUnload);
-  }, [teams, loaded, user, syncStatus]);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [teams, loaded, user]);
 
   // ── Force-save (called from TeamView save button) ─────────────────────────
   const handleForceSave = useCallback(async () => {
@@ -13108,7 +13123,7 @@ setLoginLoading(false);
           isPremium={isPremium}
           onTogglePremium={()=>{
             if(!IS_DEV) return;
-            const next=!isPremium;
+            const next=isPremium!==true; // null → true, true → false, false → true
             setIsPremium(next);
             if(!next) handlePremiumDowngrade(user?.uid, teams);
           }}
@@ -13158,7 +13173,7 @@ setLoginLoading(false);
           isPremium={isPremium}
           onTogglePremium={()=>{
             if(!IS_DEV) return; // botão só ativo em localhost
-            const next=!isPremium;
+            const next=isPremium!==true;
             setIsPremium(next);
             // Em dev: só muda estado local — não grava no Firestore
             // (as rules bloqueiam escrita de isPremium pelo cliente)
